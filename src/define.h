@@ -8,9 +8,10 @@
  * @copyright Copyright (c) 2019
  * 
  */
+
+#ifndef __MAPPER_DEFINE_H__
 #define __MAPPER_DEFINE_H__
 
-#include <mutex>
 #include "sessionBuffer.hpp"
 
 namespace mapper
@@ -29,17 +30,48 @@ typedef enum STATE_MACHINE
     FAIL
 } StateMachine_t;
 
+typedef enum SOCK_TYPE
+{
+    CLIENT_SOCK = 0,
+    HOST_SOCK
+} SockType_t;
+
+struct SESSION;
+
+typedef struct SOCK
+{
+    int soc;
+    int events;
+    SockType_t type;
+    SESSION *pSession;
+
+    void init(SockType_t _type, SESSION *_pSession, int _soc = 0, int _events = 0)
+    {
+        type = _type;
+        pSession = _pSession;
+
+        soc = _soc;
+        events = _events;
+    }
+} Sock_t;
+
 typedef struct SESSION
 {
-    int clientSoc;
-    int hostSoc;
+    Sock_t clientSoc;
+    Sock_t hostSoc;
     int64_t lastAccessTime;
     StateMachine_t status;
 
-    std::mutex sessionMutex;
+    SessionBuffer<BUFFER_SIZE, BUFFER_SIZE> buffer;
 
-    SessionBuffer<BUFFER_SIZE, BUFFER_SIZE> toHostBuffer;
-    SessionBuffer<BUFFER_SIZE, BUFFER_SIZE> toClientBuffer;
+    void init(int _clientSoc, int _clientEvents, int _hostSoc = 0, int _hostEvents = 0)
+    {
+        clientSoc.init(SOCK_TYPE::CLIENT_SOCK, this, _clientSoc, _clientEvents);
+        hostSoc.init(SOCK_TYPE::HOST_SOCK, this, _hostSoc, _hostEvents);
+        int64_t lastAccessTime = 0;
+        StateMachine_t status = STATE_MACHINE::INIT;
+        buffer.init();
+    }
 } Session_t;
 
 typedef struct FREE_ITEM
