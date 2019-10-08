@@ -19,7 +19,7 @@
 namespace mapper
 {
 
-template <int RECV_CAPACITY, int SEND_CAPACITY>
+template <int TO_NORTH_CAPACITY, int TO_SOUTH_CAPACITY>
 struct SessionBuffer
 {
     using BufInfo = std::tuple<char *, unsigned int>;
@@ -28,93 +28,93 @@ struct SessionBuffer
 
     inline void init()
     {
-        recvStart = recvEnd = 0;
-        sendStart = sendEnd = 0;
+        toNorthStart = toNorthEnd = 0;
+        toSouthStart = toSouthEnd = 0;
     }
 
-    unsigned int recvStart, recvEnd;
-    unsigned int sendStart, sendEnd;
+    unsigned int toNorthStart, toNorthEnd;
+    unsigned int toSouthStart, toSouthEnd;
 
-    char recvBuf[RECV_CAPACITY];
-    char sendBuf[SEND_CAPACITY];
+    char toNorthBuf[TO_NORTH_CAPACITY];
+    char toSouthBuf[TO_SOUTH_CAPACITY];
 
     inline bool validate()
     {
-        return recvStart >= 0 && recvStart <= recvEnd && recvEnd <= RECV_CAPACITY &&
-               sendStart >= 0 && sendStart <= sendEnd && sendEnd <= SEND_CAPACITY;
+        return toNorthStart >= 0 && toNorthStart <= toNorthEnd && toNorthEnd <= TO_NORTH_CAPACITY &&
+               toSouthStart >= 0 && toSouthStart <= toSouthEnd && toSouthEnd <= TO_SOUTH_CAPACITY;
     }
 
-    inline bool recvBufEmpty() { return recvStart == recvEnd; }
-    inline bool recvBufFull() { return RECV_CAPACITY == recvEnd ? !defragRecvBuf() : false; }
-    inline bool sendBufEmpty() { return sendStart == sendEnd; }
-    inline bool sendBufFull() { return SEND_CAPACITY == sendEnd ? !defragSendBuf() : false; }
-    inline bool defragRecvBuf()
+    inline bool toNorthBufEmpty() { return toNorthStart == toNorthEnd; }
+    inline bool toNorthBufFull() { return TO_NORTH_CAPACITY == toNorthEnd ? !defragToNorthBuf() : false; }
+    inline bool toSouthBufEmpty() { return toSouthStart == toSouthEnd; }
+    inline bool toSouthBufFull() { return TO_SOUTH_CAPACITY == toSouthEnd ? !defragToSouthBuf() : false; }
+    inline bool defragToNorthBuf()
     {
-        if (0 == recvStart)
+        if (0 == toNorthStart)
         {
-            return RECV_CAPACITY != recvEnd;
+            return TO_NORTH_CAPACITY != toNorthEnd;
         }
 
-        memmove(recvBuf, recvBuf + recvStart, recvStart);
-        recvEnd -= recvStart;
-        recvStart = 0;
+        memmove(toNorthBuf, toNorthBuf + toNorthStart, toNorthStart);
+        toNorthEnd -= toNorthStart;
+        toNorthStart = 0;
         return true;
     }
-    inline bool defragSendBuf()
+    inline bool defragToSouthBuf()
     {
-        if (0 == sendStart)
+        if (0 == toSouthStart)
         {
-            return SEND_CAPACITY != sendEnd;
+            return TO_SOUTH_CAPACITY != toSouthEnd;
         }
 
-        memmove(sendBuf, sendBuf + sendStart, sendStart);
-        sendEnd -= sendStart;
-        sendStart = 0;
+        memmove(toSouthBuf, toSouthBuf + toSouthStart, toSouthStart);
+        toSouthEnd -= toSouthStart;
+        toSouthStart = 0;
         return true;
     }
-    inline bool defrag() { return defragRecvBuf() && defragSendBuf(); }
+    inline bool defrag() { return defragToNorthBuf() && defragToSouthBuf(); }
 
-    inline unsigned int getRecvBufSize() { return recvBufFull() ? 0 : RECV_CAPACITY - recvEnd; }
-    inline unsigned int getSendBufSize() { return sendBufFull() ? 0 : SEND_CAPACITY - sendEnd; }
-    inline unsigned int getRecvDataSize() { return recvEnd - recvStart; }
-    inline unsigned int getSendDataSize() { return sendEnd - sendStart; }
+    inline unsigned int getToNorthBufSize() { return toNorthBufFull() ? 0 : TO_NORTH_CAPACITY - toNorthEnd; }
+    inline unsigned int getToSouthBufSize() { return toSouthBufFull() ? 0 : TO_SOUTH_CAPACITY - toSouthEnd; }
+    inline unsigned int getToNorthDataSize() { return toNorthEnd - toNorthStart; }
+    inline unsigned int getToSouthDataSize() { return toSouthEnd - toSouthStart; }
 
-    inline BufInfo getRecvBuf()
+    inline BufInfo getToNorthBuf()
     {
-        unsigned int size = getRecvBufSize();
-        return 0 < size ? BufInfo(recvBuf + recvEnd, size) : BufInfo(nullptr, 0);
+        unsigned int size = getToNorthBufSize();
+        return 0 < size ? BufInfo(toNorthBuf + toNorthEnd, size) : BufInfo(nullptr, 0);
     }
-    inline BufInfo getSendBuf()
+    inline BufInfo getToSouthBuf()
     {
-        unsigned int size = getSendBufSize();
-        return 0 < size ? BufInfo(sendBuf + sendEnd, size) : BufInfo(nullptr, 0);
-    }
-
-    inline BufInfo getRecvData()
-    {
-        unsigned int size = getRecvDataSize();
-        return 0 < size ? BufInfo(recvBuf + recvStart, size) : BufInfo(nullptr, 0);
-    }
-    inline BufInfo getSendData()
-    {
-        unsigned int size = getSendDataSize();
-        return 0 < size ? BufInfo(sendBuf + sendStart, size) : BufInfo(nullptr, 0);
+        unsigned int size = getToSouthBufSize();
+        return 0 < size ? BufInfo(toSouthBuf + toSouthEnd, size) : BufInfo(nullptr, 0);
     }
 
-    inline void incRecvStart(uint32_t num)
+    inline BufInfo getToNorthData()
     {
-        recvStart += num;
-        if (recvStart == recvEnd)
-            recvStart = recvEnd = 0;
+        unsigned int size = getToNorthDataSize();
+        return 0 < size ? BufInfo(toNorthBuf + toNorthStart, size) : BufInfo(nullptr, 0);
     }
-    inline void incSendStart(uint32_t num)
+    inline BufInfo getToSouthData()
     {
-        sendStart += num;
-        if (sendStart == sendEnd)
-            sendStart = sendEnd = 0;
+        unsigned int size = getToSouthDataSize();
+        return 0 < size ? BufInfo(toSouthBuf + toSouthStart, size) : BufInfo(nullptr, 0);
     }
-    inline void incRecvEnd(uint32_t num) { recvEnd += num; }
-    inline void incSendEnd(uint32_t num) { sendEnd += num; }
+
+    inline void incToNorthStart(uint32_t num)
+    {
+        toNorthStart += num;
+        if (toNorthStart == toNorthEnd)
+            toNorthStart = toNorthEnd = 0;
+    }
+    inline void incToSouthStart(uint32_t num)
+    {
+        toSouthStart += num;
+        if (toSouthStart == toSouthEnd)
+            toSouthStart = toSouthEnd = 0;
+    }
+    inline void incToNorthEnd(uint32_t num) { toNorthEnd += num; }
+    inline void incToSouthEnd(uint32_t num) { toSouthEnd += num; }
 };
 
 } // namespace mapper
