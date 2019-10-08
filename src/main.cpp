@@ -16,6 +16,7 @@
 #include "mapper.h"
 #include "define.h"
 
+static const char *CONFIG_FILE = "config.json";
 static const char *LOG_FILE = "mapper.log";
 static const auto LOG_LEVEL = spdlog::level::debug;
 
