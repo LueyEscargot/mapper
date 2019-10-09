@@ -1,7 +1,7 @@
 /**
  * @file buffer.hpp
  * @author Liu Yu (source@liuyu.com)
- * @brief Session Buffer template class.
+ * @brief Buffer template class.
  *  Porting from project RosCar(https://github.com/liuyustudio/RosCar)
  * @version 1.0
  * @date 2019-10-07
@@ -13,6 +13,7 @@
 #ifndef __MAPPER_BUFFER_HPP__
 #define __MAPPER_BUFFER_HPP__
 
+#include <assert.h>
 #include <string.h>
 #include <tuple>
 
@@ -32,8 +33,6 @@ struct Buffer
     inline bool validate() { return start >= 0 && start <= end && end <= CAPACITY; }
     inline bool empty() { return start == end; }
     inline bool full() { return CAPACITY == end ? !defrag() : false; }
-    inline bool toSouthBufEmpty() { return toSouthStart == toSouthEnd; }
-    inline bool toSouthBufFull() { return TO_SOUTH_CAPACITY == toSouthEnd ? !defragToSouthBuf() : false; }
     inline bool defrag()
     {
         if (0 == start)
