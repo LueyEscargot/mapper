@@ -36,11 +36,10 @@ typedef enum STATE_MACHINE
 
 typedef enum SOCK_TYPE
 {
-    CLIENT_SOCK = 0,
+    SVR_SOCK = 0,
+    CLIENT_SOCK,
     HOST_SOCK
 } SockType_t;
-
-struct SESSION;
 
 typedef struct MAP_DATA
 {
@@ -48,57 +47,102 @@ typedef struct MAP_DATA
     char target[MAX_HOST_NAME + 1];
     int targetPort;
 
-    MAP_DATA(int _port, std::string _target, int _targetPort) : MAP_DATA(_port, _target.c_str(), _targetPort) {}
-    MAP_DATA(int _port, const char *_target, int _targetPort)
+    MAP_DATA(int _port, const char *_target, int _targetPort) { init(_port, _target, _targetPort); }
+    MAP_DATA(int _port, std::string _target, int _targetPort) { init(_port, _target.c_str(), _targetPort); }
+    void init(int _port, std::string _target, int _targetPort) { init(_port, _target.c_str(), _targetPort); }
+    void init(int _port, const char *_target, int _targetPort)
     {
         assert(0 <= _port && _port <= 65535 && _target && strlen(_target) && 0 <= _targetPort && _targetPort <= 65535);
         port = _port, snprintf(target, MAX_HOST_NAME + 1, "%s", _target), targetPort = _targetPort;
     }
 } MapData_t;
 
-typedef struct SOCK
+typedef struct SOCK_BASE
 {
+    SockType_t type;
     int soc;
     int events;
-    bool fullFlag;
-    SOCK *pareSock;
-    SockType_t type;
-    SESSION *pSession;
-    Buffer<BUFFER_SIZE> buffer;
 
-    void init(SOCK_TYPE _type, SESSION *_pSession)
+    void init(SockType_t _type) { type = _type, init(0, 0); }
+    void init(int _soc, int _events) { soc = _soc, events = _events; }
+} SockBase_t;
+
+typedef struct SOCK_SVR : SOCK_BASE
+{
+    MAP_DATA mapData;
+
+    void init(int port, const char *target, int targetPort)
     {
-        type = _type;
+        SOCK_BASE::init(SOCK_TYPE::SVR_SOCK);
+        mapData.init(port, target, targetPort);
+    }
+} SockSvr_t;
+
+struct SOCK_HOST;
+struct SESSION;
+
+typedef struct SOCK_CLIENT : SOCK_BASE
+{
+    Buffer<BUFFER_SIZE> buffer;
+    bool fullFlag;
+    SOCK_HOST *pHostSock;
+    SESSION *pSession;
+
+    void init(SESSION *_pSession, SOCK_HOST *_pHostSock)
+    {
+        SOCK_BASE::init(SOCK_TYPE::CLIENT_SOCK);
         pSession = _pSession;
-        if (type == SOCK_TYPE::CLIENT_SOCK)
-        {
-            pareSock = &pSession->hostSoc;
-        }
-        else
-        {
-            pareSock = &pSession->clientSoc;
-        }
+        pHostSock = _pHostSock;
     }
     void init(int _soc, int _events)
     {
-        soc = _soc;
-        events = _events;
+        SOCK_BASE::init(_soc, _events);
         fullFlag = false;
         buffer.init();
     }
+} SockClient_t;
+
+typedef struct SOCK_HOST : SOCK_BASE
+{
+    Buffer<BUFFER_SIZE> buffer;
+    bool fullFlag;
+    SOCK_CLIENT *pClientSock;
+    SESSION *pSession;
+
+    void init(SESSION *_pSession, SOCK_CLIENT *_pClientSock)
+    {
+        SOCK_BASE::init(SOCK_TYPE::HOST_SOCK);
+        pSession = _pSession;
+        pClientSock = _pClientSock;
+    }
+    void init(int _soc, int _events)
+    {
+        SOCK_BASE::init(_soc, _events);
+        fullFlag = false;
+        buffer.init();
+    }
+} SockHost_t;
+
+typedef struct SOCK
+{
+    union {
+        SOCK_SVR svrSock;
+        SOCK_CLIENT clientSock;
+        SOCK_HOST hostSock;
+    };
 } Sock_t;
 
 typedef struct SESSION
 {
-    Sock_t clientSoc;
-    Sock_t hostSoc;
+    SockClient_t clientSoc;
+    SockHost_t hostSoc;
     int64_t lastAccessTime;
     StateMachine_t status;
 
     void init()
     {
-        clientSoc.init(SOCK_TYPE::CLIENT_SOCK, this);
-        hostSoc.init(SOCK_TYPE::HOST_SOCK, this);
+        clientSoc.init(this, &hostSoc);
+        hostSoc.init(this, &clientSoc);
     }
     void init(int _clientSoc, int _clientEvents, int _hostSoc = 0, int _hostEvents = 0)
     {
