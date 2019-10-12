@@ -47,6 +47,7 @@ typedef struct MAP_DATA
     char target[MAX_HOST_NAME + 1];
     int targetPort;
 
+    MAP_DATA() {}
     MAP_DATA(int _port, const char *_target, int _targetPort) { init(_port, _target, _targetPort); }
     MAP_DATA(int _port, std::string _target, int _targetPort) { init(_port, _target.c_str(), _targetPort); }
     void init(int _port, std::string _target, int _targetPort) { init(_port, _target.c_str(), _targetPort); }
@@ -63,6 +64,8 @@ typedef struct SOCK_BASE
     int soc;
     int events;
 
+    SOCK_BASE(SockType_t _type, int _soc, int _events = 0)
+        : type(_type), soc(_soc), events(_events) {}
     void init(SockType_t _type) { type = _type, init(0, 0); }
     void init(int _soc, int _events) { soc = _soc, events = _events; }
 } SockBase_t;
@@ -71,11 +74,9 @@ typedef struct SOCK_SVR : SOCK_BASE
 {
     MAP_DATA mapData;
 
-    void init(int port, const char *target, int targetPort)
-    {
-        SOCK_BASE::init(SOCK_TYPE::SVR_SOCK);
-        mapData.init(port, target, targetPort);
-    }
+    SOCK_SVR(int soc, int port, const char *target, int targetPort)
+        : SOCK_BASE(SOCK_TYPE::SVR_SOCK, soc),
+          mapData(port, target, targetPort) {}
 } SockSvr_t;
 
 struct SOCK_HOST;
