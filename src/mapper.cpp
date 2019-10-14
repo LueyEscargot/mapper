@@ -16,36 +16,27 @@ Mapper::~Mapper()
     release();
 }
 
-bool Mapper::run(const int maxSessions)
+bool Mapper::run(const int maxSessions, vector<MapData_t> *pMapDatas)
 {
     spdlog::info("[Mapper::run] max sessions: {}", maxSessions);
 
-    if (!init(maxSessions))
+    // start net manager
+    if (!mNetMgr.start(maxSessions, pMapDatas))
     {
-        spdlog::error("[Mapper::run] init fail.");
+        spdlog::error("[Mapper::run] start net manager fail.");
         return false;
     }
 
-    return true;
-}
-
-bool Mapper::init(const int maxSessions)
-{
-    // init session manager
-    if (!mSessionMgr.init(maxSessions))
-    {
-        spdlog::error("[Mapper::init] session manager init fail.");
-        return false;
-    }
+    mNetMgr.join();
 
     return true;
 }
 
 void Mapper::release()
 {
-    // release session
-    spdlog::debug("[Mapper::release] release session.");
-    mSessionMgr.release();
+    // stpo net manager
+    spdlog::debug("[Mapper::release] stpo net manager.");
+    mNetMgr.stop();
 }
 
 } // namespace mapper

@@ -12,7 +12,9 @@
 #ifndef __MAPPER_MAPPER_H__
 #define __MAPPER_MAPPER_H__
 
-#include "sessionMgr.h"
+#include <vector>
+#include "define.h"
+#include "netMgr.h"
 
 namespace mapper
 {
@@ -23,13 +25,12 @@ public:
     Mapper();
     ~Mapper();
 
-    bool run(const int maxSessions);
+    bool run(const int maxSessions, std::vector<mapper::MapData_t> *pMapDatas);
 
 protected:
-    bool init(const int maxSessions);
     void release();
 
-    SessionMgr mSessionMgr;
+    NetMgr mNetMgr;
 };
 
 } // namespace mapper

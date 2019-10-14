@@ -14,7 +14,9 @@
 
 #include <assert.h>
 #include <stdio.h>
+#include <regex>
 #include <string>
+#include <sstream>
 #include "buffer.hpp"
 
 namespace mapper
@@ -47,14 +49,85 @@ typedef struct MAP_DATA
     char target[MAX_HOST_NAME + 1];
     int targetPort;
 
-    MAP_DATA() {}
     MAP_DATA(int _port, const char *_target, int _targetPort) { init(_port, _target, _targetPort); }
     MAP_DATA(int _port, std::string _target, int _targetPort) { init(_port, _target.c_str(), _targetPort); }
+    MAP_DATA(const MAP_DATA &src) { init(src.port, src.target, src.targetPort); }
+    MAP_DATA &operator=(const MAP_DATA &src) { init(src.port, src.target, src.targetPort); }
     void init(int _port, std::string _target, int _targetPort) { init(_port, _target.c_str(), _targetPort); }
     void init(int _port, const char *_target, int _targetPort)
     {
         assert(0 <= _port && _port <= 65535 && _target && strlen(_target) && 0 <= _targetPort && _targetPort <= 65535);
         port = _port, snprintf(target, MAX_HOST_NAME + 1, "%s", _target), targetPort = _targetPort;
+    }
+    bool parse(std::string &dataEntry)
+    {
+        try
+        {
+            const char *REG_STRING = R"(^\s*\d{1,5}\s*\:\s*\S{1,253}\s*\:\s*\d{1,5}\s*$)";
+            const char DELIM = ':';
+
+            std::regex re(REG_STRING);
+            std::smatch match;
+            if (!std::regex_search(dataEntry, match, re))
+            {
+                // spdlog::debug("[struct MAP_DATA] invlaid map data: [{}]", dataEntry);
+                return false;
+            }
+
+            std::size_t current, previous = 0;
+
+            // port
+            current = dataEntry.find(DELIM);
+            int _port = atoi(dataEntry.substr(previous, current - previous).c_str());
+            // target
+            previous = current + 1;
+            current = dataEntry.find(DELIM, previous);
+            std::string _target = dataEntry.substr(previous, current - previous);
+            // trim from start (in place)
+            _target.erase(_target.begin(),
+                          std::find_if(_target.begin(),
+                                       _target.end(),
+                                       [](int ch) {
+                                           return !std::isspace(ch);
+                                       }));
+
+            // trim from end (in place)
+            _target.erase(std::find_if(_target.rbegin(),
+                                       _target.rend(),
+                                       [](int ch) {
+                                           return !std::isspace(ch);
+                                       })
+                              .base(),
+                          _target.end());
+            // targetPort
+            previous = current + 1;
+            int _targetPort = atoi(dataEntry.substr(previous).c_str());
+
+            if (0 > _port || _port > 65535 || 0 > _targetPort || _targetPort > 65535)
+            {
+                // spdlog::debug("[struct MAP_DATA] invlaid config data: [{}]", dataEntry);
+                return false;
+            }
+
+            init(_port, _target, _targetPort);
+
+            return true;
+        }
+        catch (std::regex_error &e)
+        {
+            // spdlog::error("[struct MAP_DATA] catch an exception: [{}]", e);
+        }
+    }
+    inline bool parse(const char *dataEntry)
+    {
+        std::string _dataEntry(dataEntry);
+        return parse(_dataEntry);
+    }
+    std::string toString()
+    {
+        std::stringstream ss;
+        ss << port << ":" << target << ":" << targetPort;
+        return ss.str();
     }
 } MapData_t;
 

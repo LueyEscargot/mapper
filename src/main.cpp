@@ -10,6 +10,7 @@
  */
 #include <stdlib.h>
 #include <stdio.h>
+#include <vector>
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
@@ -29,8 +30,15 @@ int main(int argc, char *argv[])
 
     spdlog::info("Start");
 
+    std::vector<mapper::MapData_t> mapDatas;
+    mapper::MapData_t mapData1(6911, "192.168.1.66", 6911);
+    mapper::MapData_t mapData2(8118, "192.168.1.66", 8118);
+
+    mapDatas.push_back(mapData1);
+    mapDatas.push_back(mapData2);
+
     // run mapper
-    if (!gMapper.run(mapper::MAX_SESSIONS))
+    if (!gMapper.run(mapper::MAX_SESSIONS, &mapDatas))
     {
         spdlog::error("[main] run mapper fail");
         std::exit(EXIT_FAILURE);

@@ -8,6 +8,8 @@
  * @copyright Copyright (c) 2019
  * 
  */
+
+#ifndef __MAPPER_SESSIONMGR_H__
 #define __MAPPER_SESSIONMGR_H__
 
 #include "define.h"

@@ -49,6 +49,7 @@ bool SessionMgr::init(const int maxSessions)
     for (int i = 0; i < maxSessions; ++i)
     {
         mpFreeItems[i].next = mpFreeItems + i + 1;
+        mpFreeItems[i].session.init();
     }
     mpFreeItems[maxSessions - 1].next = nullptr;
 
