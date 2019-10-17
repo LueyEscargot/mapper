@@ -1,0 +1,14 @@
+{
+    "mapper": {
+        "log": {
+            "level": "debug"
+        },
+        "session": {
+            "max": 10240,
+            "timeout": 90
+        },
+        "mapping": [
+            "2222:2.2.2.2:2222"
+        ]
+    }
+}
