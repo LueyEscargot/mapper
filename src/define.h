@@ -46,18 +46,18 @@ typedef enum SOCK_TYPE
 typedef struct MAP_DATA
 {
     int port;
-    char target[MAX_HOST_NAME + 1];
-    int targetPort;
+    char host[MAX_HOST_NAME + 1];
+    int hostPort;
 
-    MAP_DATA(int _port, const char *_target, int _targetPort) { init(_port, _target, _targetPort); }
-    MAP_DATA(int _port, std::string _target, int _targetPort) { init(_port, _target.c_str(), _targetPort); }
-    MAP_DATA(const MAP_DATA &src) { init(src.port, src.target, src.targetPort); }
-    MAP_DATA &operator=(const MAP_DATA &src) { init(src.port, src.target, src.targetPort); }
-    void init(int _port, std::string _target, int _targetPort) { init(_port, _target.c_str(), _targetPort); }
-    void init(int _port, const char *_target, int _targetPort)
+    MAP_DATA(int _port, const char *_host, int _hostPort) { init(_port, _host, _hostPort); }
+    MAP_DATA(int _port, std::string _host, int _hostPort) { init(_port, _host.c_str(), _hostPort); }
+    MAP_DATA(const MAP_DATA &src) { init(src.port, src.host, src.hostPort); }
+    MAP_DATA &operator=(const MAP_DATA &src) { init(src.port, src.host, src.hostPort); }
+    void init(int _port, std::string _host, int _hostPort) { init(_port, _host.c_str(), _hostPort); }
+    void init(int _port, const char *_host, int _hostPort)
     {
-        assert(0 <= _port && _port <= 65535 && _target && strlen(_target) && 0 <= _targetPort && _targetPort <= 65535);
-        port = _port, snprintf(target, MAX_HOST_NAME + 1, "%s", _target), targetPort = _targetPort;
+        assert(0 <= _port && _port <= 65535 && _host && strlen(_host) && 0 <= _hostPort && _hostPort <= 65535);
+        port = _port, snprintf(host, MAX_HOST_NAME + 1, "%s", _host), hostPort = _hostPort;
     }
     bool parse(std::string &dataEntry)
     {
@@ -79,37 +79,37 @@ typedef struct MAP_DATA
             // port
             current = dataEntry.find(DELIM);
             int _port = atoi(dataEntry.substr(previous, current - previous).c_str());
-            // target
+            // host
             previous = current + 1;
             current = dataEntry.find(DELIM, previous);
-            std::string _target = dataEntry.substr(previous, current - previous);
+            std::string _host = dataEntry.substr(previous, current - previous);
             // trim from start (in place)
-            _target.erase(_target.begin(),
-                          std::find_if(_target.begin(),
-                                       _target.end(),
+            _host.erase(_host.begin(),
+                          std::find_if(_host.begin(),
+                                       _host.end(),
                                        [](int ch) {
                                            return !std::isspace(ch);
                                        }));
 
             // trim from end (in place)
-            _target.erase(std::find_if(_target.rbegin(),
-                                       _target.rend(),
+            _host.erase(std::find_if(_host.rbegin(),
+                                       _host.rend(),
                                        [](int ch) {
                                            return !std::isspace(ch);
                                        })
                               .base(),
-                          _target.end());
-            // targetPort
+                          _host.end());
+            // hostPort
             previous = current + 1;
-            int _targetPort = atoi(dataEntry.substr(previous).c_str());
+            int _hostPort = atoi(dataEntry.substr(previous).c_str());
 
-            if (0 > _port || _port > 65535 || 0 > _targetPort || _targetPort > 65535)
+            if (0 > _port || _port > 65535 || 0 > _hostPort || _hostPort > 65535)
             {
                 // spdlog::debug("[struct MAP_DATA] invlaid config data: [{}]", dataEntry);
                 return false;
             }
 
-            init(_port, _target, _targetPort);
+            init(_port, _host, _hostPort);
 
             return true;
         }
@@ -126,7 +126,7 @@ typedef struct MAP_DATA
     std::string toString()
     {
         std::stringstream ss;
-        ss << port << ":" << target << ":" << targetPort;
+        ss << port << ":" << host << ":" << hostPort;
         return ss.str();
     }
 } MapData_t;
@@ -135,21 +135,20 @@ typedef struct SOCK_BASE
 {
     SockType_t type;
     int soc;
-    int events;
 
-    SOCK_BASE(SockType_t _type, int _soc, int _events = 0)
-        : type(_type), soc(_soc), events(_events) {}
-    void init(SockType_t _type) { type = _type, init(0, 0); }
-    void init(int _soc, int _events) { soc = _soc, events = _events; }
+    SOCK_BASE(SockType_t _type, int _soc)
+        : type(_type), soc(_soc) {}
+    void init(SockType_t _type) { type = _type, init(0); }
+    void init(int _soc) { soc = _soc; }
 } SockBase_t;
 
 typedef struct SOCK_SVR : SOCK_BASE
 {
     MAP_DATA mapData;
 
-    SOCK_SVR(int soc, int port, const char *target, int targetPort)
+    SOCK_SVR(int soc, int port, const char *host, int hostPort)
         : SOCK_BASE(SOCK_TYPE::SVR_SOCK, soc),
-          mapData(port, target, targetPort) {}
+          mapData(port, host, hostPort) {}
 } SockSvr_t;
 
 struct SOCK_HOST;
@@ -168,9 +167,9 @@ typedef struct SOCK_CLIENT : SOCK_BASE
         pSession = _pSession;
         pHostSock = _pHostSock;
     }
-    void init(int _soc, int _events)
+    void init(int _soc)
     {
-        SOCK_BASE::init(_soc, _events);
+        SOCK_BASE::init(_soc);
         fullFlag = false;
         buffer.init();
     }
@@ -189,9 +188,9 @@ typedef struct SOCK_HOST : SOCK_BASE
         pSession = _pSession;
         pClientSock = _pClientSock;
     }
-    void init(int _soc, int _events)
+    void init(int _soc)
     {
-        SOCK_BASE::init(_soc, _events);
+        SOCK_BASE::init(_soc);
         fullFlag = false;
         buffer.init();
     }
@@ -218,12 +217,12 @@ typedef struct SESSION
         clientSoc.init(this, &hostSoc);
         hostSoc.init(this, &clientSoc);
     }
-    void init(int _clientSoc, int _clientEvents, int _hostSoc = 0, int _hostEvents = 0)
+    void init(int _clientSoc, int _hostSoc, StateMachine_t _status = STATE_MACHINE::CONNECTING)
     {
-        clientSoc.init(_clientSoc, _clientEvents);
-        hostSoc.init(_hostSoc, _hostEvents);
-        int64_t lastAccessTime = 0;
-        StateMachine_t status = STATE_MACHINE::INITIALIZED;
+        clientSoc.init(_clientSoc);
+        hostSoc.init(_hostSoc);
+        lastAccessTime = 0;
+        status = _status;
     }
 } Session_t;
 
