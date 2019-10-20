@@ -85,20 +85,20 @@ typedef struct MAP_DATA
             std::string _host = dataEntry.substr(previous, current - previous);
             // trim from start (in place)
             _host.erase(_host.begin(),
-                          std::find_if(_host.begin(),
-                                       _host.end(),
-                                       [](int ch) {
-                                           return !std::isspace(ch);
-                                       }));
+                        std::find_if(_host.begin(),
+                                     _host.end(),
+                                     [](int ch) {
+                                         return !std::isspace(ch);
+                                     }));
 
             // trim from end (in place)
             _host.erase(std::find_if(_host.rbegin(),
-                                       _host.rend(),
-                                       [](int ch) {
-                                           return !std::isspace(ch);
-                                       })
-                              .base(),
-                          _host.end());
+                                     _host.rend(),
+                                     [](int ch) {
+                                         return !std::isspace(ch);
+                                     })
+                            .base(),
+                        _host.end());
             // hostPort
             previous = current + 1;
             int _hostPort = atoi(dataEntry.substr(previous).c_str());
@@ -156,8 +156,6 @@ struct SESSION;
 
 typedef struct SOCK_CLIENT : SOCK_BASE
 {
-    Buffer<BUFFER_SIZE> buffer;
-    bool fullFlag;
     SOCK_HOST *pHostSock;
     SESSION *pSession;
 
@@ -170,15 +168,11 @@ typedef struct SOCK_CLIENT : SOCK_BASE
     void init(int _soc)
     {
         SOCK_BASE::init(_soc);
-        fullFlag = false;
-        buffer.init();
     }
 } SockClient_t;
 
 typedef struct SOCK_HOST : SOCK_BASE
 {
-    Buffer<BUFFER_SIZE> buffer;
-    bool fullFlag;
     SOCK_CLIENT *pClientSock;
     SESSION *pSession;
 
@@ -191,8 +185,6 @@ typedef struct SOCK_HOST : SOCK_BASE
     void init(int _soc)
     {
         SOCK_BASE::init(_soc);
-        fullFlag = false;
-        buffer.init();
     }
 } SockHost_t;
 
@@ -211,6 +203,12 @@ typedef struct SESSION
     SockHost_t hostSoc;
     int64_t lastAccessTime;
     StateMachine_t status;
+    bool toClientSockFail;
+    bool toHostSockFail;
+    Buffer<BUFFER_SIZE> buffer2Client;
+    Buffer<BUFFER_SIZE> buffer2Host;
+    bool fullFlag2Client;
+    bool fullFlag2Host;
 
     void init()
     {
@@ -223,6 +221,12 @@ typedef struct SESSION
         hostSoc.init(_hostSoc);
         lastAccessTime = 0;
         status = _status;
+        toClientSockFail = false;
+        toHostSockFail = false;
+        buffer2Client.init();
+        buffer2Host.init();
+        fullFlag2Client = false;
+        fullFlag2Host = false;
     }
 } Session_t;
 
