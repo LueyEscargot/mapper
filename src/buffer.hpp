@@ -23,10 +23,10 @@ namespace mapper
 template <uint32_t CAPACITY>
 struct Buffer
 {
-    using BufInfo = std::tuple<char *, unsigned int>;
+    using BufInfo = std::tuple<char *, uint32_t>;
 
     char buffer[CAPACITY];
-    unsigned int start, end;
+    uint32_t start, end;
 
     Buffer() { assert(CAPACITY > 0), init(); }
     inline void init() { start = end = 0; }
@@ -46,18 +46,18 @@ struct Buffer
         return true;
     }
 
-    inline unsigned int getBufSize() { return full() ? 0 : CAPACITY - end; }
-    inline unsigned int getDataSize() { return end - start; }
+    inline uint32_t getBufSize() { return full() ? 0 : CAPACITY - end; }
+    inline uint32_t getDataSize() { return end - start; }
 
     inline BufInfo getBuf()
     {
-        unsigned int size = getBufSize();
+        uint32_t size = getBufSize();
         return size ? BufInfo(buffer + end, size) : BufInfo(nullptr, 0);
     }
 
     inline BufInfo getData()
     {
-        unsigned int size = getDataSize();
+        uint32_t size = getDataSize();
         return size ? BufInfo(buffer + start, size) : BufInfo(nullptr, 0);
     }
 
