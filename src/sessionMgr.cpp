@@ -46,12 +46,13 @@ bool SessionMgr::init(const int maxSessions)
 
     // init free items
     mpFreeItems = static_cast<FreeItem_t *>(mpMemBlock);
-    for (int i = 0; i < maxSessions; ++i)
+    FreeItem_t *pItem = mpFreeItems;
+    FreeItem_t *pNext = pItem + 1;
+    for (int i = 0; i < maxSessions - 1; ++i, ++pItem, ++pNext)
     {
-        mpFreeItems[i].next = mpFreeItems + i + 1;
-        mpFreeItems[i].session.init();
+        pItem->next = pNext;
     }
-    mpFreeItems[maxSessions - 1].next = nullptr;
+    pItem->next = nullptr;
 
     mMaxSessions = maxSessions;
     mFreeSessions = maxSessions;
@@ -87,6 +88,7 @@ Session_t *SessionMgr::allocSession()
     assert(pFreeObj);
     assert(mFreeSessions >= 0);
 
+    pFreeObj->session.init();
     return &pFreeObj->session;
 }
 
@@ -104,7 +106,7 @@ void SessionMgr::freeSession(void *pSession)
     pFreeObj->next = mpFreeItems;
     mpFreeItems = pFreeObj;
     ++mFreeSessions;
-    assert(mFreeSessions < mMaxSessions);
+    assert(mFreeSessions <= mMaxSessions);
 }
 
 } // namespace mapper
