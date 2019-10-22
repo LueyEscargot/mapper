@@ -66,7 +66,7 @@ struct Buffer
         start += num;
         if (start == end)
             start = end = 0;
-        assert(start < end);
+        assert(start <= end);
     }
     inline void incEnd(uint32_t num) { end += num, assert(end <= CAPACITY); }
 };
