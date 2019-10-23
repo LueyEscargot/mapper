@@ -25,7 +25,7 @@ namespace mapper
 static const int MAX_HOST_NAME = 253;
 static const int MAX_SESSIONS = 10240;
 static const int SESSION_TIMEOUT = 90;
-static const int BUFFER_SIZE = 1024;
+static const int BUFFER_SIZE = 4096;
 
 typedef enum STATE_MACHINE
 {
@@ -70,7 +70,6 @@ typedef struct MAP_DATA
             std::smatch match;
             if (!std::regex_search(dataEntry, match, re))
             {
-                // spdlog::debug("[struct MAP_DATA] invlaid map data: [{}]", dataEntry);
                 return false;
             }
 
@@ -105,7 +104,6 @@ typedef struct MAP_DATA
 
             if (0 > _port || _port > 65535 || 0 > _hostPort || _hostPort > 65535)
             {
-                // spdlog::debug("[struct MAP_DATA] invlaid config data: [{}]", dataEntry);
                 return false;
             }
 
@@ -115,7 +113,7 @@ typedef struct MAP_DATA
         }
         catch (std::regex_error &e)
         {
-            // spdlog::error("[struct MAP_DATA] catch an exception: [{}]", e);
+            printf("[MAP_DATA::parse] catch an exception: [%s]", e.what());
         }
     }
     inline bool parse(const char *dataEntry)
@@ -123,7 +121,7 @@ typedef struct MAP_DATA
         std::string _dataEntry(dataEntry);
         return parse(_dataEntry);
     }
-    std::string toString()
+    std::string toStr()
     {
         std::stringstream ss;
         ss << port << ":" << host << ":" << hostPort;
