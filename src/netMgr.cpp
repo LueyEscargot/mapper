@@ -34,7 +34,10 @@ NetMgr::~NetMgr()
 
 bool NetMgr::start(const int maxSessions, vector<mapper::MapData_t> *pMapDatas)
 {
-    assert(pMapDatas && pMapDatas->size());
+    if(!pMapDatas ||! pMapDatas->size()) {
+        spdlog::warn("[NetMgr::start] no mapping data!");
+    }
+
     mpMapDatas = pMapDatas;
 
     // start thread
