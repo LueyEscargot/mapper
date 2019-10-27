@@ -30,6 +30,7 @@ bool hasArg(char **begin, char **end, const std::string &arg);
 char *getArg(char **begin, char **end, const std::string &arg);
 void getArgMapData(int argc, char *argv[], const char *arg, std::vector<std::string> &argMapData);
 
+int32_t gSessions = 0;
 mapper::Config gConf;
 mapper::Mapper gMapper;
 
@@ -47,7 +48,7 @@ int main(int argc, char *argv[])
 
     // run mapper
     spdlog::debug("[main] run mapper");
-    if (!gMapper.run(mapper::MAX_SESSIONS, &gConf.getMapData()))
+    if (!gMapper.run(gSessions, &gConf.getMapData()))
     {
         spdlog::error("[main] run mapper fail");
         std::exit(EXIT_FAILURE);
@@ -62,8 +63,9 @@ void showSantax(char *argv[])
 {
     printf("\n");
     printf("%s -c config -m mapData -s maxSessions -h\n", argv[0]);
-    printf("    -c config: config file.\n");
+    printf("    -c config: config file, default is .\\config.ini\n");
     printf("    -m mapData: sport:host:dport, for example: 8000:192.168.1.22:8000\n");
+    printf("    -s maxSession: max client sessions, default is 1024.\n");
     printf("    -h show this help message.\n");
     printf("\n");
 }
@@ -72,16 +74,31 @@ void init(int argc, char *argv[])
 {
     try
     {
-        // parse args
+        // load config
         const char *cfgFile = getArg(argv, argv + argc, "-c");
         std::vector<std::string> argMapData;
         getArgMapData(argc, argv, "-m", argMapData);
-
-        // load config
         if (!gConf.parse(cfgFile ? cfgFile : CONFIG_FILE, argMapData))
         {
             perror("[init] load config file fail");
             std::exit(EXIT_FAILURE);
+        }
+
+        // get max sessions
+        {
+            const char *strSessions = getArg(argv, argv + argc, "-s");
+            if (strSessions)
+            {
+                // read from args
+                gSessions = strSessions ? atoi(strSessions) : 0;
+            }
+            else
+            {
+                std::string sRet = gConf.get("sessions", "global", "");
+                // read from config file
+                gSessions = atoi(sRet.c_str());
+            }
+            gSessions = gSessions < mapper::DEFAULT_SESSIONS ? mapper::DEFAULT_SESSIONS : gSessions;
         }
 
         // init logger

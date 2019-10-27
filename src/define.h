@@ -23,7 +23,7 @@ namespace mapper
 {
 
 static const int MAX_HOST_NAME = 253;
-static const int MAX_SESSIONS = 10240;
+static const int DEFAULT_SESSIONS = 64;
 static const int SESSION_TIMEOUT = 90;
 static const int BUFFER_SIZE = 4096;
 
