@@ -41,7 +41,7 @@ protected:
 public:
     Config();
 
-    bool parse(const char *file);
+    bool parse(const char *file, std::vector<std::string> &argMapData);
     std::string get(std::string key, std::string section = "", std::string defaultValue = "");
     std::vector<MapData_t> &getMapData();
 

@@ -10,6 +10,7 @@
  */
 #include <stdlib.h>
 #include <stdio.h>
+#include <algorithm>
 #include <exception>
 #include <vector>
 #include <spdlog/spdlog.h>
@@ -23,13 +24,24 @@ static const char *CONFIG_FILE = "config.ini";
 static const char *LOG_FILE = "mapper.log";
 static const auto LOG_LEVEL = spdlog::level::debug;
 
-void init();
+void showSantax(char *argv[]);
+void init(int argc, char *argv[]);
+bool hasArg(char **begin, char **end, const std::string &arg);
+char *getArg(char **begin, char **end, const std::string &arg);
+void getArgMapData(int argc, char *argv[], const char *arg, std::vector<std::string> &argMapData);
+
 mapper::Config gConf;
 mapper::Mapper gMapper;
 
 int main(int argc, char *argv[])
 {
-    init();
+    if (hasArg(argv, argv + argc, "-h"))
+    {
+        showSantax(argv);
+        return 0;
+    }
+
+    init(argc, argv);
 
     spdlog::info("[main] Start");
 
@@ -46,13 +58,29 @@ int main(int argc, char *argv[])
     return EXIT_SUCCESS;
 }
 
-void init()
+void showSantax(char *argv[])
+{
+    printf("\n");
+    printf("%s -c config -m mapData -s maxSessions -h\n", argv[0]);
+    printf("    -c config: config file.\n");
+    printf("    -m mapData: sport:host:dport, for example: 8000:192.168.1.22:8000\n");
+    printf("    -h show this help message.\n");
+    printf("\n");
+}
+
+void init(int argc, char *argv[])
 {
     try
     {
-        if (!gConf.parse(CONFIG_FILE))
+        // parse args
+        const char *cfgFile = getArg(argv, argv + argc, "-c");
+        std::vector<std::string> argMapData;
+        getArgMapData(argc, argv, "-m", argMapData);
+
+        // load config
+        if (!gConf.parse(cfgFile ? cfgFile : CONFIG_FILE, argMapData))
         {
-            printf("[init] load config file[%s] fail", CONFIG_FILE);
+            perror("[init] load config file fail");
             std::exit(EXIT_FAILURE);
         }
 
@@ -71,7 +99,29 @@ void init()
     }
     catch (std::exception &e)
     {
-        printf("[init] catch an exception: %s", e.what());
+        perror("[init] catch an exception");
         std::exit(EXIT_FAILURE);
+    }
+}
+
+bool hasArg(char **begin, char **end, const std::string &arg)
+{
+    return std::find(begin, end, arg) != end;
+}
+
+char *getArg(char **begin, char **end, const std::string &arg)
+{
+    char **itr = std::find(begin, end, arg);
+    return itr != end && ++itr != end ? *itr : nullptr;
+}
+
+void getArgMapData(int argc, char *argv[], const char *arg, std::vector<std::string> &argMapData)
+{
+    for (int i = 1; i < argc - 1; ++i)
+    {
+        if (strcasecmp(argv[i], arg) == 0)
+        {
+            argMapData.emplace_back(argv[++i]);
+        }
     }
 }
