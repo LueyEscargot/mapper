@@ -50,19 +50,20 @@
 
 ### 3.1. 编译、运行
 
-```sh
-mkdir -p build
-cd build
-cmake .. && make
+- 编译
 
-./mapper
-```
+  ```sh
+  mkdir -p build
+  cd build
+  cmake .. && make
+
+  ./mapper -c config.ini -s 128 -m 1022:192.168.2:22 -m 1080:192.168.1.2:80
+  ```
 
 ### 3.2. 第三方库
 
 在本项目中用到的第三方库有：
 
-- rapidjson: [http://rapidjson.org/](http://rapidjson.org/)
 - spdlog: [https://github.com/gabime/spdlog](https://github.com/gabime/spdlog)
 
 ### 3.3. 推荐列表
