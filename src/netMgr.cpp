@@ -519,6 +519,7 @@ void NetMgr::acceptClient(SockSvr_t *pSoc)
         spdlog::error("[NetMgr::acceptClient] alloc session object fail.");
         close(soc);
         close(hostSoc);
+        return;
     }
     pSession->init(soc, hostSoc);
 
@@ -534,6 +535,7 @@ void NetMgr::acceptClient(SockSvr_t *pSoc)
         close(soc);
         close(hostSoc);
         mSessionMgr.freeSession(pSession);
+        return;
     }
 
     // add host soc into epoll
@@ -546,6 +548,7 @@ void NetMgr::acceptClient(SockSvr_t *pSoc)
         close(soc);
         close(hostSoc);
         mSessionMgr.freeSession(pSession);
+        return;
     }
 
     spdlog::debug("[NetMgr::acceptClient] Accept client-{} for [{}]", soc, pSoc->mapData.toStr());
