@@ -9,6 +9,8 @@ find_package(Threads REQUIRED)
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=gnu++0x")
 
+file(COPY config.ini DESTINATION .)
+
 enable_testing()
 
 aux_source_directory(. SRC_FILES)
