@@ -32,10 +32,9 @@ bool SessionMgr::init(const int maxSessions)
     }
 
     // alloc memory
-    auto reqSize = sizeof(Session_t) * maxSessions;
+    auto entrySize = sizeof(Session_t);
+    auto reqSize = entrySize * maxSessions;
     mpMemBlock = malloc(reqSize);
-    spdlog::debug("[SessionMgr::init] alloc [{}] bytes for {} sessions",
-                  reqSize, maxSessions);
     if (!mpMemBlock)
     {
         spdlog::error("[SessionMgr::init] alloc [{}] bytes fail: {} - {}",
@@ -43,6 +42,8 @@ bool SessionMgr::init(const int maxSessions)
         return false;
     }
     mpMemBlockEndPos = static_cast<char *>(mpMemBlock) + reqSize;
+    spdlog::debug("[SessionMgr::init] alloc[{} x {} = {}] bytes at blk[ {} - {} ]",
+                  entrySize, maxSessions, reqSize, mpMemBlock, mpMemBlockEndPos);
 
     // init free items
     mpFreeItems = static_cast<FreeItem_t *>(mpMemBlock);

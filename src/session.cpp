@@ -172,7 +172,7 @@ bool Session::recvFromClient(Session_t *pSession)
         if (bufSize == 0)
         {
             pSession->fullFlag2Host = true;
-            spdlog::debug("[Session::recvFromClient] to host buffer full");
+            spdlog::trace("[Session::recvFromClient] to host buffer full");
             break;
         }
 
@@ -218,7 +218,7 @@ bool Session::recvFromHost(Session_t *pSession)
         if (bufSize == 0)
         {
             pSession->fullFlag2Client = true;
-            spdlog::debug("[Session::recvFromHost] to client buffer full");
+            spdlog::trace("[Session::recvFromHost] to client buffer full");
             break;
         }
 
