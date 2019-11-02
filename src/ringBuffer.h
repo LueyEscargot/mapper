@@ -12,6 +12,8 @@
 #ifndef __MAPPER_RINGBUFFER_H__
 #define __MAPPER_RINGBUFFER_H__
 
+#include <stdint.h>
+
 namespace mapper
 {
 
@@ -28,8 +30,8 @@ public:
     inline void init() { readPos = writePos = 0, stopRecv = false; }
     inline char *getWritePos() { return address + writePos; }
     inline char *getReadPos() { return address + readPos; }
-    inline void incWritePos(uint64_t count) { writePos += count; }
-    inline void incReadPos(uint64_t count)
+    inline void incFreeSize(uint64_t count) { writePos += count; }
+    inline void incDataSize(uint64_t count)
     {
         readPos += count;
 
