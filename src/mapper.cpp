@@ -9,19 +9,22 @@ using namespace std;
 namespace mapper
 {
 
-Mapper::Mapper() {}
+Mapper::Mapper(uint32_t bufSize)
+    : mNetMgr(bufSize)
+{
+}
 
 Mapper::~Mapper()
 {
     release();
 }
 
-bool Mapper::run(const int maxSessions, vector<MapData_t> *pMapDatas)
+bool Mapper::run(const int maxSessions, vector<MapData_t> &mapDatas)
 {
     spdlog::info("[Mapper::run] max sessions: {}", maxSessions);
 
     // start net manager
-    if (!mNetMgr.start(maxSessions, pMapDatas))
+    if (!mNetMgr.start(maxSessions, mapDatas))
     {
         spdlog::error("[Mapper::run] start net manager fail.");
         return false;

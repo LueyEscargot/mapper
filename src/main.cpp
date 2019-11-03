@@ -32,7 +32,7 @@ void getArgMapData(int argc, char *argv[], const char *arg, std::vector<std::str
 
 int32_t gSessions = 0;
 mapper::Config gConf;
-mapper::Mapper gMapper;
+mapper::Mapper gMapper(mapper::BUFFER_SIZE);
 
 int main(int argc, char *argv[])
 {
@@ -48,7 +48,7 @@ int main(int argc, char *argv[])
 
     // run mapper
     spdlog::debug("[main] run mapper");
-    if (!gMapper.run(gSessions, &gConf.getMapData()))
+    if (!gMapper.run(gSessions, gConf.getMapData()))
     {
         spdlog::error("[main] run mapper fail");
         std::exit(EXIT_FAILURE);
