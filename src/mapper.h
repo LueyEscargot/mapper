@@ -22,10 +22,10 @@ namespace mapper
 class Mapper
 {
 public:
-    Mapper();
+    Mapper(uint32_t bufSize);
     ~Mapper();
 
-    bool run(const int maxSessions, std::vector<mapper::MapData_t> *pMapDatas);
+    bool run(const int maxSessions, std::vector<mapper::MapData_t> &mapDatas);
 
 protected:
     void release();

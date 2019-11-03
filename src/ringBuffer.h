@@ -28,10 +28,10 @@ public:
     static void release(RingBuffer *pRingBuffer);
 
     inline void init() { readPos = writePos = 0, stopRecv = false; }
-    inline char *getWritePos() { return address + writePos; }
-    inline char *getReadPos() { return address + readPos; }
-    inline void incFreeSize(uint64_t count) { writePos += count; }
-    inline void incDataSize(uint64_t count)
+    inline char *getBuffer() { return address + writePos; }
+    inline char *getData() { return address + readPos; }
+    inline void incDataSize(uint64_t count) { writePos += count; }
+    inline void incFreeSize(uint64_t count)
     {
         readPos += count;
 

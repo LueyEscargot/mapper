@@ -12,7 +12,9 @@
 #ifndef __MAPPER_SESSIONMGR_H__
 #define __MAPPER_SESSIONMGR_H__
 
+#include <memory>
 #include "define.h"
+#include "session.h"
 
 namespace mapper
 {
@@ -20,7 +22,7 @@ namespace mapper
 class SessionMgr
 {
 public:
-    SessionMgr();
+    SessionMgr(int bufSize);
     ~SessionMgr();
 
     bool init(const int maxSessions);
@@ -28,9 +30,12 @@ public:
     inline bool isFree() { return mFreeSessions == mMaxSessions; }
 
     Session_t *allocSession();
-    void freeSession(void *pSession);
+    void freeSession(Session_t *pSession);
+    Session *alloc(int northSoc, int southSoc);
+    void free(Session *pSession);
 
 protected:
+    int mBufSize;
     int mMaxSessions;
     int mFreeSessions;
     void *mpMemBlock;

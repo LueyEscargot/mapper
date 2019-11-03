@@ -14,9 +14,12 @@
 
 #include <sys/epoll.h>
 #include <string.h>
+#include <list>
+#include <memory>
 #include <thread>
 #include <vector>
 #include "define.h"
+#include "endpoint.h"
 #include "sessionMgr.h"
 
 namespace mapper
@@ -24,15 +27,20 @@ namespace mapper
 
 class NetMgr
 {
+    typedef union CONVERTER {
+        uint32_t u32;
+        void *ptr;
+    } Converter_t;
+
 public:
     static const int INTERVAL_EPOLL_RETRY;
     static const int INTERVAL_CONNECT_RETRY;
     static const int EPOLL_MAX_EVENTS = 16;
 
-    NetMgr();
+    NetMgr(uint32_t bufSize);
     virtual ~NetMgr();
 
-    bool start(const int maxSessions, std::vector<mapper::MapData_t> *pMapDatas);
+    bool start(const int maxSessions, std::vector<mapper::MapData_t> &mapDatas);
     void stop();
 
     inline void join()
@@ -47,22 +55,25 @@ protected:
     bool initEnv();
     void closeEnv();
 
-    void onSoc(int64_t curTime, epoll_event &event);
-    void onSvrSoc(int64_t curTime, uint32_t events, SockSvr_t *pSoc);
-    void onHostSoc(int64_t curTime, uint32_t events, SockHost_t *pSoc);
-    void onClientSoc(int64_t curTime, uint32_t events, SockClient_t *pSoc);
+    void onSoc(int64_t curTime, epoll_event &event, std::list<Endpoint *> &failedEndpoints);
+    void onService(int64_t curTime, uint32_t events, Endpoint *pEndpoint);
 
-    void acceptClient(SockSvr_t *pSoc);
-    int createHostSoc(SockSvr_t *pSoc);
+    void acceptClient(Endpoint *pEndpoint);
+    int createNorthSoc(MapData_t *pMapData);
     void postProcess(int64_t curTime);
-    void onFail(Session_t *pSession);
+    void onFail(Endpoint *pEndpoint);
+    void onFail(Session *pSession);
     void removeAndCloseSoc(int sock);
 
-    std::vector<mapper::MapData_t> *mpMapDatas;
+    bool resetEpollMode(int soc, uint32_t mode, void *tag);
+    void *serviceIndexToPtr(uint32_t index);
+    uint32_t ptrToServiceIndex(void *p);
+
+    std::vector<mapper::MapData_t> mMapDatas;
 
     int mEpollfd;
     SessionMgr mSessionMgr;
-    std::vector<SockSvr_t *> mpSvrSocs;
+    std::vector<std::shared_ptr<Endpoint>> mSvrEndpoints;
     std::vector<std::thread> mThreads;
     bool mStopFlag;
 };

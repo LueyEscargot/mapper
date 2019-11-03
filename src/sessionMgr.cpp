@@ -2,6 +2,7 @@
 #include <assert.h>
 #include <errno.h>
 #include <string.h>
+#include <exception>
 #include <spdlog/spdlog.h>
 
 using namespace std;
@@ -9,8 +10,9 @@ using namespace std;
 namespace mapper
 {
 
-SessionMgr::SessionMgr()
-    : mMaxSessions(0),
+SessionMgr::SessionMgr(int bufSize)
+    : mBufSize(bufSize),
+      mMaxSessions(0),
       mFreeSessions(0),
       mpMemBlock(nullptr),
       mpMemBlockEndPos(nullptr),
@@ -68,7 +70,7 @@ void SessionMgr::release()
     // release mpMemBlock
     if (mpMemBlock)
     {
-        free(mpMemBlock);
+        ::free(mpMemBlock);
         mpMemBlock = nullptr;
         mpFreeItems = nullptr;
         mMaxSessions = 0;
@@ -93,7 +95,28 @@ Session_t *SessionMgr::allocSession()
     return &pFreeObj->session;
 }
 
-void SessionMgr::freeSession(void *pSession)
+Session *SessionMgr::alloc(int northSoc, int southSoc)
+{
+    if (mFreeSessions == 0)
+    {
+        spdlog::trace("[SessionMgr::alloc] no free session");
+        return nullptr;
+    }
+
+    try
+    {
+        --mFreeSessions;
+        return new Session(mBufSize, northSoc, southSoc);
+    }
+    catch (exception &e)
+    {
+        spdlog::error("[SessionMgr::alloc] catch an exception: {}", e.what());
+        ++mFreeSessions;
+        return nullptr;
+    }
+}
+
+void SessionMgr::freeSession(Session_t *pSession)
 {
     if (!pSession)
     {
@@ -103,11 +126,22 @@ void SessionMgr::freeSession(void *pSession)
     assert(mpMemBlock <= pSession);
     assert(pSession < mpMemBlockEndPos);
 
-    FreeItem_t *pFreeObj = static_cast<FreeItem_t *>(pSession);
+    FreeItem_t *pFreeObj = reinterpret_cast<FreeItem_t *>(pSession);
     pFreeObj->next = mpFreeItems;
     mpFreeItems = pFreeObj;
     ++mFreeSessions;
     assert(mFreeSessions <= mMaxSessions);
+}
+
+void SessionMgr::free(Session *pSession)
+{
+    if (!pSession)
+    {
+        return;
+    }
+
+    delete pSession;
+    ++mFreeSessions;
 }
 
 } // namespace mapper

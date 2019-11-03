@@ -2,27 +2,44 @@
 #define __MAPPER_SESSION_H__
 
 #include "define.h"
+#include "endpoint.h"
+#include "ringBuffer.h"
+#include "session.h"
 
 namespace mapper
 {
 
 class Session
 {
-protected:
-    Session() = default;
-    ~Session() = default;
-
 public:
-    static bool onClientSockRecv(Session_t *pSession);
-    static bool onHostSockRecv(Session_t *pSession);
-    static bool onClientSockSend(Session_t *pSession);
-    static bool onHostSockSend(Session_t *pSession, int epollfd);
+    typedef enum STATE
+    {
+        INITIALIZED = 1,
+        CONNECTING = 1 << 1,
+        ESTABLISHED = 1 << 2,
+        CLOSE = 1 << 3,
+        FAIL = 1 << 4
+    } State_t;
 
-protected:
-    static bool recvFromClient(Session_t *pSession);
-    static bool recvFromHost(Session_t *pSession);
-    static bool sendToClient(Session_t * pSession);
-    static bool sendToHost(Session_t * pSession);
+    Session(uint32_t bufSize, int northSoc, int southSoc);
+    ~Session();
+
+    bool onSoc(Endpoint *pEndpoint, uint32_t events, int epollfd);
+    bool northSocRecv(int epollfd);
+    bool northSocSend(int epollfd);
+    bool southSocRecv(int epollfd);
+    bool southSocSend(int epollfd);
+
+    Endpoint mNorthEndpoint;
+    Endpoint mSouthEndpoint;
+
+    RingBuffer *mpToNorthBuffer;
+    RingBuffer *mpToSouthBuffer;
+
+    State_t mStatus;
+
+    protected:
+    bool resetEpollMode(int epollfd, int soc, uint32_t mode, void *tag);
 };
 
 } // namespace mapper

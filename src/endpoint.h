@@ -9,9 +9,9 @@ class Endpoint
 public:
     typedef enum TYPE
     {
-        SERVICE = 0,
-        NORTH,
-        SOUTH
+        SERVICE = 1,
+        NORTH = 1 << 1,
+        SOUTH = 1 << 2
     } Type_t;
 
     Endpoint(Type_t type, int soc, void *tag = nullptr);
@@ -19,6 +19,11 @@ public:
     Type_t type;
     int soc;
     void *tag;
+    bool valid;
+
+    bool check() {
+        return (type & (TYPE::SERVICE | TYPE::NORTH | TYPE::SOUTH));
+    }
 };
 
 } // namespace mapper
