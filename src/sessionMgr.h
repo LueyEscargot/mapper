@@ -29,8 +29,8 @@ public:
     void release();
     inline bool isFree() { return mFreeSessions == mMaxSessions; }
 
-    Session_t *allocSession();
-    void freeSession(Session_t *pSession);
+    // Session_t *allocSession();
+    // void freeSession(Session_t *pSession);
     Session *alloc(int northSoc, int southSoc);
     void free(Session *pSession);
 
@@ -40,7 +40,7 @@ protected:
     int mFreeSessions;
     void *mpMemBlock;
     void *mpMemBlockEndPos;
-    FreeItem_t *mpFreeItems;
+    // FreeItem_t *mpFreeItems;
 };
 
 } // namespace mapper
