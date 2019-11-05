@@ -1,10 +1,10 @@
 #ifndef __MAPPER_SESSION_H__
 #define __MAPPER_SESSION_H__
 
-#include "buffer.h"
 #include "define.h"
 #include "endpoint.h"
 #include "session.h"
+#include "buffer/buffer.h"
 
 namespace mapper
 {
