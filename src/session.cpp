@@ -43,6 +43,17 @@ Session::~Session()
     mpToSouthBuffer = nullptr;
 }
 
+void Session::init(int northSoc, int southSoc)
+{
+    mpToNorthBuffer->init();
+    mpToSouthBuffer->init();
+    mNorthEndpoint.soc = northSoc;
+    mSouthEndpoint.soc = southSoc;
+    mNorthEndpoint.valid = true;
+    mSouthEndpoint.valid = true;
+    mStatus = State_t::INITIALIZED;
+}
+
 bool Session::onSoc(Endpoint *pEndpoint, uint32_t events, int epollfd)
 {
     assert(pEndpoint->type & (Endpoint::Type_t::NORTH | Endpoint::Type_t::SOUTH));

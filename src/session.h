@@ -24,6 +24,8 @@ public:
     Session(uint32_t bufSize, int northSoc, int southSoc);
     ~Session();
 
+    void init(int northSoc, int southSoc);
+
     bool onSoc(Endpoint *pEndpoint, uint32_t events, int epollfd);
     bool northSocRecv(int epollfd);
     bool northSocSend(int epollfd);
