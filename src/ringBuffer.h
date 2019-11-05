@@ -13,11 +13,12 @@
 #define __MAPPER_RINGBUFFER_H__
 
 #include <stdint.h>
+#include "buffer.h"
 
 namespace mapper
 {
 
-class RingBuffer
+class RingBuffer : public Buffer
 {
 protected:
     RingBuffer(uint32_t capacity);
@@ -27,35 +28,20 @@ public:
     static RingBuffer *alloc(uint32_t capacity);
     static void release(RingBuffer *pRingBuffer);
 
-    inline void init() { readPos = writePos = 0, stopRecv = false; }
-    inline char *getBuffer() { return address + writePos; }
-    inline char *getData() { return address + readPos; }
-    inline void incDataSize(uint64_t count) { writePos += count; }
-    inline void incFreeSize(uint64_t count)
-    {
-        readPos += count;
-
-        if (readPos >= capacity)
-        {
-            readPos -= capacity;
-            writePos -= capacity;
-        }
-    }
-    inline uint64_t dataSize() { return writePos - readPos; }
-    inline uint64_t freeSize() { return capacity - dataSize(); }
-    inline bool empty() { return !dataSize(); }
-    inline bool full() { return !freeSize(); }
-    inline bool writable() { return dataSize(); }
-
-    bool stopRecv;
+    void init() override;
+    char *getBuffer() override;
+    char *getData() override;
+    void incDataSize(uint64_t count) override;
+    void incFreeSize(uint64_t count) override;
+    uint64_t dataSize() override;
+    uint64_t freeSize() override;
+    bool empty() override;
+    bool full() override;
+    bool writable() override;
+    bool defrag() override;
 
 protected:
     static uint64_t alignToPageSize(uint64_t size);
-
-    char *address;
-    uint64_t capacity;
-    uint64_t readPos;
-    uint64_t writePos;
 };
 
 } // namespace mapper

@@ -19,12 +19,12 @@ Session::Session(uint32_t bufSize, int northSoc, int southSoc)
       mSouthEndpoint(Endpoint::Type_t::SOUTH, southSoc, this),
       mStatus(INITIALIZED)
 {
-    mpToNorthBuffer = RingBuffer::alloc(bufSize);
+    mpToNorthBuffer = Buffer::alloc(bufSize);
     if (!mpToNorthBuffer)
     {
         throw("create to north buffer fail");
     }
-    mpToSouthBuffer = RingBuffer::alloc(bufSize);
+    mpToSouthBuffer = Buffer::alloc(bufSize);
     if (!mpToSouthBuffer)
     {
         throw("create to south buffer fail");
@@ -37,8 +37,8 @@ Session::~Session()
                   (void *)this,
                   mSouthEndpoint.soc, (void *)&mSouthEndpoint,
                   mNorthEndpoint.soc, (void *)&mNorthEndpoint);
-    RingBuffer::release(mpToNorthBuffer);
-    RingBuffer::release(mpToSouthBuffer);
+    Buffer::release(mpToNorthBuffer);
+    Buffer::release(mpToSouthBuffer);
     mpToNorthBuffer = nullptr;
     mpToSouthBuffer = nullptr;
 }

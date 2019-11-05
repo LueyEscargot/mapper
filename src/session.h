@@ -1,9 +1,9 @@
 #ifndef __MAPPER_SESSION_H__
 #define __MAPPER_SESSION_H__
 
+#include "buffer.h"
 #include "define.h"
 #include "endpoint.h"
-#include "ringBuffer.h"
 #include "session.h"
 
 namespace mapper
@@ -35,12 +35,12 @@ public:
     Endpoint mNorthEndpoint;
     Endpoint mSouthEndpoint;
 
-    RingBuffer *mpToNorthBuffer;
-    RingBuffer *mpToSouthBuffer;
+    Buffer *mpToNorthBuffer;
+    Buffer *mpToSouthBuffer;
 
     State_t mStatus;
 
-    protected:
+protected:
     bool resetEpollMode(int epollfd, int soc, uint32_t mode, void *tag);
 };
 
