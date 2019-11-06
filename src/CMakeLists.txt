@@ -27,6 +27,12 @@ target_include_directories(mapper PUBLIC
     "${PROJECT_BINARY_DIR}"
     "${PROJECT_SOURCE_DIR}/Buffer"
     )
+set_target_properties(mapper
+    PROPERTIES
+    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
+)
 
 # install(TARGETS mapper DESTINATION lib)
-# file(COPY config.ini DESTINATION .)
+configure_file(config.ini ${CMAKE_BINARY_DIR}/config.ini COPYONLY)
