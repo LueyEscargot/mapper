@@ -1,12 +1,60 @@
 #ifndef _PROJECT_H_
 #define _PROJECT_H_
 
-#cmakedefine FORCE_USE_GENERIC_BUFFER
+#include <string>
+#include <sstream>
 
-#define PROJECT_NAME "@PROJECT_NAME@"
-#define PROJECT_VER  "@PROJECT_VERSION@"
-#define PROJECT_VER_MAJOR "@PROJECT_VERSION_MAJOR@"
-#define PROJECT_VER_MINOR "@PROJECT_VERSION_MINOR@"
-#define PTOJECT_VER_PATCH "@PROJECT_VERSION_PATCH@"
+// project info
+typedef struct PROJECT_INFO
+{
+    const char *NAME = "@PROJECT_NAME@";
+    const char *VERSION = "@PROJECT_VERSION@";
+    const char *VERSION_MAJOR = "@PROJECT_VERSION_MAJOR@";
+    const char *VERSION_MINOR = "@PROJECT_VERSION_MINOR@";
+    const char *VERSION_PATCH = "@PROJECT_VERSION_PATCH@";
+
+    // std::string getProjectInfo() const
+    std::string toStr() const
+    {
+        std::stringstream ss;
+        ss << NAME << "(" << VERSION << ")";
+        return ss.str();
+    }
+} ProjectInfo_t;
+
+// build env
+typedef struct BUILD_ENV
+{
+    const char *HOST_SYSTEM_NAME = "@CMAKE_HOST_SYSTEM_NAME@";
+    const char *HOST_SYSTEM_PROCESSOR = "@CMAKE_HOST_SYSTEM_PROCESSOR@";
+    const char *HOST_SYSTEM = "@CMAKE_HOST_SYSTEM@";
+    const char *HOST_SYSTEM_VERSION = "@CMAKE_HOST_SYSTEM_VERSION@";
+    const char *LIBRARY_ARCHITECTURE = "@CMAKE_LIBRARY_ARCHITECTURE@";
+
+    std::string toStr() const
+    {
+        std::stringstream ss;
+        ss << HOST_SYSTEM << "," << LIBRARY_ARCHITECTURE << "";
+        return ss.str();
+    }
+} BuildEnv_t;
+
+// project
+typedef struct PROJECT
+{
+    ProjectInfo_t info;
+    BuildEnv_t env;
+    std::string toStr() const
+    {
+        return info.toStr() + "," + env.toStr();
+    }
+} Project_t;
+
+// wrapper function
+inline std::string projectDesc()
+{
+    Project_t proj;
+    return proj.toStr();
+}
 
 #endif // _PROJECT_H_

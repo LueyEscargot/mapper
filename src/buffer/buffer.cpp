@@ -1,29 +1,22 @@
 #include "buffer.h"
 #include <spdlog/spdlog.h>
-#include "project.h"
 
-#ifdef __linux__
-#ifndef FORCE_USE_GENERIC_BUFFER
-#define _USE_RINGBUFFER_ (1)
-#endif // FORCE_USE_GENERIC_BUFFER
-#endif // __linux__
-
-#ifdef _USE_RINGBUFFER_
+#ifdef USE_RINGBUFFER
 #include "ringBuffer.h"
 #else
 #include "genericBuffer.h"
-#endif // _USE_RINGBUFFER_
+#endif // USE_RINGBUFFER
 
 class _Reporter
 {
 public:
     _Reporter()
     {
-#ifdef _USE_RINGBUFFER_
+#ifdef USE_RINGBUFFER
         spdlog::info("buffer mode: RingBuffer.");
 #else
         spdlog::info("buffer mode: GenericBuffer.");
-#endif // _USE_RINGBUFFER_
+#endif // USE_RINGBUFFER
     }
 };
 
@@ -42,7 +35,7 @@ Buffer::~Buffer(){};
 
 Buffer *Buffer::alloc(uint32_t capacity)
 {
-#ifdef _USE_RINGBUFFER_
+#ifdef USE_RINGBUFFER
     return RingBuffer::alloc(capacity);
 #else
     return GenericBuffer::alloc(capacity);
@@ -51,7 +44,7 @@ Buffer *Buffer::alloc(uint32_t capacity)
 
 void Buffer::release(Buffer *pBuffer)
 {
-#ifdef _USE_RINGBUFFER_
+#ifdef USE_RINGBUFFER
     return RingBuffer::release(static_cast<RingBuffer *>(pBuffer));
 #else
     return GenericBuffer::release(static_cast<GenericBuffer *>(pBuffer));

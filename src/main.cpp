@@ -19,6 +19,7 @@
 #include "config.h"
 #include "define.h"
 #include "mapper.h"
+#include "project.h"
 
 static const char *CONFIG_FILE = "config.ini";
 static const char *LOG_FILE = "mapper.log";
@@ -44,7 +45,7 @@ int main(int argc, char *argv[])
 
     init(argc, argv);
 
-    spdlog::info("[main] Start");
+    spdlog::info("{} Start", projectDesc());
 
     // run mapper
     spdlog::debug("[main] run mapper");
