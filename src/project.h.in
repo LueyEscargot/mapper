@@ -39,14 +39,32 @@ typedef struct BUILD_ENV
     }
 } BuildEnv_t;
 
+// build info
+typedef struct BUILD_INFO
+{
+    const char *SINCE = "@BUILD_INFO_SINCE@";
+    const char *LAST = "@BUILD_INFO_LAST@";
+    const char *COUNT = "@BUILD_INFO_COUNT@";
+
+    std::string toStr() const
+    {
+        std::stringstream ss;
+        ss << SINCE << "," << LAST << "," << COUNT << "";
+        return ss.str();
+    }
+} BuildInfo_t;
+
 // project
 typedef struct PROJECT
 {
-    ProjectInfo_t info;
-    BuildEnv_t env;
+    ProjectInfo_t projectInfo;
+    BuildEnv_t buildEnv;
+    BuildInfo_t buildInfo;
     std::string toStr() const
     {
-        return info.toStr() + "," + env.toStr();
+        return projectInfo.toStr() + "," +
+               buildEnv.toStr() + "," +
+               buildInfo.toStr();
     }
 } Project_t;
 

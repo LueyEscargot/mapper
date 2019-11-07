@@ -18,11 +18,11 @@ include(GNUInstallDirs)
 #------------------------------------------------------------------------------
 # Transmit System Infomation and compile options to project
 #------------------------------------------------------------------------------
-message( "CMAKE_HOST_SYSTEM_NAME:       " ${CMAKE_HOST_SYSTEM_NAME} )
-message( "CMAKE_HOST_SYSTEM_PROCESSOR:  " ${CMAKE_HOST_SYSTEM_PROCESSOR} )
-message( "CMAKE_HOST_SYSTEM:            " ${CMAKE_HOST_SYSTEM} )
-message( "CMAKE_HOST_SYSTEM_VERSION:    " ${CMAKE_HOST_SYSTEM_VERSION} )
-message( "CMAKE_LIBRARY_ARCHITECTURE:   " ${CMAKE_LIBRARY_ARCHITECTURE} )
+message( "HOST_SYSTEM_NAME:       " ${CMAKE_HOST_SYSTEM_NAME} )
+message( "HOST_SYSTEM_PROCESSOR:  " ${CMAKE_HOST_SYSTEM_PROCESSOR} )
+message( "HOST_SYSTEM:            " ${CMAKE_HOST_SYSTEM} )
+message( "HOST_SYSTEM_VERSION:    " ${CMAKE_HOST_SYSTEM_VERSION} )
+message( "LIBRARY_ARCHITECTURE:   " ${CMAKE_LIBRARY_ARCHITECTURE} )
 
 add_definitions( -DCMAKE_HOST_SYSTEM_NAME=${CMAKE_HOST_SYSTEM_NAME} )
 add_definitions( -DCMAKE_HOST_SYSTEM_PROCESSOR=${CMAKE_HOST_SYSTEM_PROCESSOR} )
@@ -39,13 +39,21 @@ if( USE_RINGBUFFER )
 endif()
 
 #------------------------------------------------------------------------------
-# Setup Compile Operation
+# build in sub-directory: buffer
 #------------------------------------------------------------------------------
-configure_file(project.h.in project.h)
-
 add_subdirectory(buffer)
-aux_source_directory(. SRC_FILES)
-add_executable(mapper ${SRC_FILES})
+
+#------------------------------------------------------------------------------
+# build main program: mapper
+#------------------------------------------------------------------------------
+add_executable(mapper main.cpp
+    endpoint.cpp
+    mapper.cpp
+    session.cpp
+    config.cpp
+    netMgr.cpp
+    sessionMgr.cpp
+    )
 target_link_libraries(mapper PUBLIC
     Threads::Threads
     Lib_Buffer
@@ -60,3 +68,63 @@ set_target_properties(mapper
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
 )
+
+#------------------------------------------------------------------------------
+# build program: buildInfo
+#------------------------------------------------------------------------------
+add_executable(buildInfo
+    buildInfo.cpp
+    config.cpp
+    )
+
+#------------------------------------------------------------------------------
+# run custom command, buildInfo, to update build information
+#------------------------------------------------------------------------------
+add_custom_target(_always_run_target ALL
+    DEPENDS
+        ${CMAKE_CURRENT_BINARY_DIR}/auto_refresh_for_increment_build_number
+    )
+add_custom_command (
+    OUTPUT
+        ${CMAKE_CURRENT_BINARY_DIR}/auto_refresh_for_increment_build_number
+    DEPENDS
+        buildInfo
+    COMMAND
+        buildInfo
+    ARGS
+        ${CMAKE_BINARY_DIR}/.buildinfo
+    )
+
+#------------------------------------------------------------------------------
+# initialize CMake variables with build info data
+#------------------------------------------------------------------------------
+execute_process(
+    COMMAND
+        ${PROJECT_BINARY_DIR}/buildInfo ${CMAKE_BINARY_DIR}/.buildinfo -since
+    OUTPUT_VARIABLE
+        BUILD_INFO_SINCE
+)
+execute_process(
+    COMMAND
+        ${PROJECT_BINARY_DIR}/buildInfo ${CMAKE_BINARY_DIR}/.buildinfo -last
+    OUTPUT_VARIABLE
+        BUILD_INFO_LAST
+)
+execute_process(
+    COMMAND
+        ${PROJECT_BINARY_DIR}/buildInfo ${CMAKE_BINARY_DIR}/.buildinfo -count
+    OUTPUT_VARIABLE
+        BUILD_INFO_COUNT
+)
+
+#------------------------------------------------------------------------------
+# update project info file: project.h
+#------------------------------------------------------------------------------
+configure_file(project.h.in project.h)
+set_source_files_properties (project.h.in
+    PROPERTIES
+    OBJECT_DEPENDS
+        BUILD_INFO_SINCE
+        BUILD_INFO_LAST
+        BUILD_INFO_COUNT
+    )
