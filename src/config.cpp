@@ -25,16 +25,19 @@ Config::Config()
 {
 }
 
-bool Config::parse(const char *file, vector<string> &argMapData)
+bool Config::parse(const char *file, bool silence)
 {
     // parse config file
     {
         ifstream ifs(file);
         if (!ifs.is_open())
         {
-            char cwd[PATH_MAX];
-            spdlog::error("[Config::parse] config file[{}/{}] open fail. {}: {}",
-                          getcwd(cwd, PATH_MAX), file, errno, strerror(errno));
+            if (!silence)
+            {
+                char cwd[PATH_MAX];
+                spdlog::error("[Config::parse] cwd[{}]. config file[{}] open fail. {}",
+                              getcwd(cwd, PATH_MAX), file, errno, strerror(errno));
+            }
             return false;
         }
 
@@ -45,14 +48,22 @@ bool Config::parse(const char *file, vector<string> &argMapData)
         }
     }
 
+    return true;
+}
+
+bool Config::parse(const char *file, vector<string> &argMapData)
+{
+    // parse config file
+    if (!parse(file))
+    {
+        return false;
+    }
+
     // parse map data from args
     for (auto mapData : argMapData)
     {
         parseLine(mapData);
     }
-
-    // clean output data(it will be rebuilt when needed)
-    mMapDatas.clear();
 
     return true;
 }
