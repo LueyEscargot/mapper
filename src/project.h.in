@@ -42,9 +42,9 @@ typedef struct BUILD_ENV
 // build info
 typedef struct BUILD_INFO
 {
-    const char *SINCE = "@BUILD_INFO_SINCE@";
-    const char *LAST = "@BUILD_INFO_LAST@";
-    const char *COUNT = "@BUILD_INFO_COUNT@";
+    const char *SINCE = "";
+    const char *LAST = "";
+    const char *COUNT = "";
 
     std::string toStr() const
     {
