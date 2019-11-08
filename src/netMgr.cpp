@@ -372,13 +372,20 @@ void NetMgr::acceptClient(Endpoint *pEndpoint)
     uint32_t index = ptrToServiceIndex(pEndpoint->tag);
 
     // accept client
-    int southSoc = accept(pEndpoint->soc, NULL, NULL);
+    struct sockaddr_in address;
+    int addrlen = sizeof(address);
+
+    int southSoc = accept(pEndpoint->soc, (struct sockaddr *)&address, (socklen_t *)&addrlen);
     if (southSoc == -1)
     {
         spdlog::error("[NetMgr::acceptClient] accept fail: {} - {}", errno, strerror(errno));
         return;
     }
 
+    char ip[INET_ADDRSTRLEN];
+    inet_ntop(AF_INET, &address.sin_addr, ip, INET_ADDRSTRLEN);
+
+    int northSoc;
     if ([&]() -> bool {
             // set socket to non-blocking mode
             if (fcntl(southSoc, F_SETFL, O_NONBLOCK) < 0)
@@ -388,7 +395,7 @@ void NetMgr::acceptClient(Endpoint *pEndpoint)
                 return false;
             }
 
-            int northSoc = createNorthSoc(&mMapDatas[index]);
+            northSoc = createNorthSoc(&mMapDatas[index]);
             if (northSoc == -1)
             {
                 spdlog::error("[NetMgr::acceptClient] create to host socket fail");
@@ -434,7 +441,12 @@ void NetMgr::acceptClient(Endpoint *pEndpoint)
             return true;
         }())
     {
-        spdlog::debug("[NetMgr::acceptClient] Accept client[{} - {}]", southSoc, mMapDatas[index].toStr());
+        spdlog::debug("[NetMgr::acceptClient] Accept client[{}:{}-{}:{}]-->{}",
+                      ip,
+                      ntohs(address.sin_port),
+                      southSoc,
+                      northSoc,
+                      mMapDatas[index].toStr());
     }
     else
     {
