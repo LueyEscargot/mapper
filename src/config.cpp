@@ -1,6 +1,5 @@
 #include "config.h"
 #include <errno.h>
-#include <unistd.h>
 #include <fstream>
 #include <string.h>
 #include <spdlog/spdlog.h>
@@ -35,8 +34,8 @@ bool Config::parse(const char *file, bool silence)
             if (!silence)
             {
                 char cwd[PATH_MAX];
-                spdlog::error("[Config::parse] cwd[{}]. config file[{}] open fail. {}",
-                              getcwd(cwd, PATH_MAX), file, errno, strerror(errno));
+                spdlog::warn("[Config::parse] can not open config file[{}]. {} - {}",
+                              file, errno, strerror(errno));
             }
             return false;
         }
@@ -51,21 +50,17 @@ bool Config::parse(const char *file, bool silence)
     return true;
 }
 
-bool Config::parse(const char *file, vector<string> &argMapData)
+void Config::parse(const char *file, vector<string> &argMapData)
 {
     // parse config file
-    if (!parse(file))
-    {
-        return false;
-    }
+    bool silence = !argMapData.empty();
+    parse(file, silence);
 
     // parse map data from args
     for (auto mapData : argMapData)
     {
         parseLine(mapData);
     }
-
-    return true;
 }
 
 string Config::get(string key, string section, string defaultValue)

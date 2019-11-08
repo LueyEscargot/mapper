@@ -80,11 +80,7 @@ void init(int argc, char *argv[])
         const char *cfgFile = getArg(argv, argv + argc, "-c");
         std::vector<std::string> argMapData;
         getArgMapData(argc, argv, "-m", argMapData);
-        if (!gConf.parse(cfgFile ? cfgFile : CONFIG_FILE, argMapData))
-        {
-            perror("[init] load config file fail");
-            std::exit(EXIT_FAILURE);
-        }
+        gConf.parse(cfgFile ? cfgFile : CONFIG_FILE, argMapData);
 
         // get max sessions
         {
