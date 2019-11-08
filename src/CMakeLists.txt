@@ -44,6 +44,15 @@ endif()
 add_subdirectory(buffer)
 
 #------------------------------------------------------------------------------
+# copy config file
+#------------------------------------------------------------------------------
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/config.ini
+    ${CMAKE_BINARY_DIR}/config.ini
+    COPYONLY
+    )
+
+#------------------------------------------------------------------------------
 # build main program: mapper
 #------------------------------------------------------------------------------
 add_executable(mapper main.cpp
