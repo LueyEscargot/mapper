@@ -24,19 +24,24 @@
 using namespace std;
 using namespace mapper;
 
+static const string FIELD_NAME_BUILD_INFO_SINCE_TIME = R"(    const char *SINCE = ")";
+static const string FIELD_NAME_BUILD_INFO_LAST_TIME = R"(    const char *LAST = ")";
+static const string FIELD_NAME_BUILD_INFO_COUNT = R"(    const char *COUNT = ")";
+
 bool hasArg(char **begin, char **end, const std::string &arg);
 time_t currentTime();
 time_t parseTime(string &strTime);
 string timeToStr(time_t time);
+string &replaceDataField(string &str, string &sinceTime, string &curTime, string &count);
 
 int main(int argc, char *argv[])
 {
     Config conf;
 
-    if (argc < 2)
+    if (argc < 3)
     {
         cerr << "invalid args" << endl;
-        return 1;
+        return 2;
     }
 
     // parse build info file
@@ -77,7 +82,7 @@ int main(int argc, char *argv[])
         if (!ofs.is_open())
         {
             cerr << "update build info fail" << endl;
-            return 1;
+            return 2;
         }
 
         ofs << "[build]" << endl
@@ -87,6 +92,41 @@ int main(int argc, char *argv[])
 
         ofs.flush();
         ofs.close();
+    }
+
+    // replace data field
+    {
+        string fileName = argv[2];
+        string tmpFileName = fileName + ".tmp";
+
+        ifstream ifs(fileName);
+        if (!ifs.is_open())
+        {
+            cerr << "open file[" << fileName << "] fail" << endl;
+            return 3;
+        }
+        ofstream ofs(tmpFileName);
+        if (!ofs.is_open())
+        {
+            cerr << "open file[" << tmpFileName << "] fail" << endl;
+            return 4;
+        }
+
+        string curTimeStr = move(timeToStr(curTime));
+        countStr = to_string(count);
+
+        string line;
+        while (getline(ifs, line))
+        {
+            ofs << replaceDataField(line, sinceStr, curTimeStr, countStr) << endl;
+        }
+
+        ofs.flush();
+        ofs.close();
+        ifs.close();
+
+        remove(fileName.c_str());
+        rename(tmpFileName.c_str(), fileName.c_str());
     }
 
     return 0;
@@ -120,4 +160,28 @@ string timeToStr(time_t time)
     strftime(buffer, 32, "%Y%m%d%H%M%S", ptm);
 
     return buffer;
+}
+
+string &replaceDataField(string &str, string &sinceTime, string &curTime, string &count)
+{
+
+    size_t pos;
+
+    // since time
+    if (pos = str.find(FIELD_NAME_BUILD_INFO_SINCE_TIME) != std::string::npos)
+    {
+        str = FIELD_NAME_BUILD_INFO_SINCE_TIME + sinceTime + R"(";)";
+    }
+    // last time
+    else if (pos = str.find(FIELD_NAME_BUILD_INFO_LAST_TIME) != std::string::npos)
+    {
+        str = FIELD_NAME_BUILD_INFO_LAST_TIME + curTime + R"(";)";
+    }
+    // build count
+    else if (pos = str.find(FIELD_NAME_BUILD_INFO_COUNT) != std::string::npos)
+    {
+        str = FIELD_NAME_BUILD_INFO_COUNT + count + R"(";)";
+    }
+
+    return str;
 }

@@ -70,6 +70,18 @@ set_target_properties(mapper
 )
 
 #------------------------------------------------------------------------------
+# update project info file: project.h
+#------------------------------------------------------------------------------
+configure_file(project.h.in project.h)
+set_source_files_properties (project.h.in
+    PROPERTIES
+    OBJECT_DEPENDS
+        BUILD_INFO_SINCE
+        BUILD_INFO_LAST
+        BUILD_INFO_COUNT
+    )
+
+#------------------------------------------------------------------------------
 # build program: buildInfo
 #------------------------------------------------------------------------------
 add_executable(buildInfo
@@ -83,6 +95,7 @@ add_executable(buildInfo
 add_custom_target(_always_run_target ALL
     DEPENDS
         ${CMAKE_CURRENT_BINARY_DIR}/auto_refresh_for_increment_build_number
+        ${CMAKE_CURRENT_BINARY_DIR}/project.h
     )
 add_custom_command (
     OUTPUT
@@ -93,38 +106,5 @@ add_custom_command (
         buildInfo
     ARGS
         ${CMAKE_BINARY_DIR}/.buildinfo
-    )
-
-#------------------------------------------------------------------------------
-# initialize CMake variables with build info data
-#------------------------------------------------------------------------------
-execute_process(
-    COMMAND
-        ${PROJECT_BINARY_DIR}/buildInfo ${CMAKE_BINARY_DIR}/.buildinfo -since
-    OUTPUT_VARIABLE
-        BUILD_INFO_SINCE
-)
-execute_process(
-    COMMAND
-        ${PROJECT_BINARY_DIR}/buildInfo ${CMAKE_BINARY_DIR}/.buildinfo -last
-    OUTPUT_VARIABLE
-        BUILD_INFO_LAST
-)
-execute_process(
-    COMMAND
-        ${PROJECT_BINARY_DIR}/buildInfo ${CMAKE_BINARY_DIR}/.buildinfo -count
-    OUTPUT_VARIABLE
-        BUILD_INFO_COUNT
-)
-
-#------------------------------------------------------------------------------
-# update project info file: project.h
-#------------------------------------------------------------------------------
-configure_file(project.h.in project.h)
-set_source_files_properties (project.h.in
-    PROPERTIES
-    OBJECT_DEPENDS
-        BUILD_INFO_SINCE
-        BUILD_INFO_LAST
-        BUILD_INFO_COUNT
+        ${CMAKE_CURRENT_BINARY_DIR}/project.h
     )
