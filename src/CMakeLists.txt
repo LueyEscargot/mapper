@@ -55,14 +55,9 @@ configure_file(
 #------------------------------------------------------------------------------
 # build main program: mapper
 #------------------------------------------------------------------------------
-add_executable(mapper main.cpp
-    endpoint.cpp
-    mapper.cpp
-    session.cpp
-    config.cpp
-    netMgr.cpp
-    sessionMgr.cpp
-    )
+aux_source_directory(. SRC_FILES)
+list(REMOVE_ITEM SRC_FILES ./buildInfo.cpp)     # except buildInfo.cpp
+add_executable(mapper ${SRC_FILES})
 target_link_libraries(mapper PUBLIC
     Threads::Threads
     Lib_Buffer
