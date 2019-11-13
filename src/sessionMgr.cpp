@@ -31,7 +31,7 @@ bool SessionMgr::init(const int maxCount)
             for (int i = 0; i < maxCount; ++i)
             {
                 Session *pSession;
-                if (pSession = new Session(mBufSize, 0, 0))
+                if (pSession = new Session(mBufSize))
                 {
                     mFreeSessions.push_back(pSession);
                 }
@@ -61,7 +61,7 @@ void SessionMgr::release()
     mFreeSessions.clear();
 }
 
-Session *SessionMgr::alloc(int northSoc, int southSoc)
+Session *SessionMgr::alloc()
 {
     if (mFreeSessions.empty())
     {
@@ -73,7 +73,9 @@ Session *SessionMgr::alloc(int northSoc, int southSoc)
     mFreeSessions.pop_front();
     --mFreeCount;
 
-    pSession->init(northSoc, southSoc);
+    pSession->init();
+
+    return pSession;
 }
 
 void SessionMgr::free(Session *pSession)
@@ -82,8 +84,6 @@ void SessionMgr::free(Session *pSession)
     {
         return;
     }
-
-    pSession->init(0, 0);
 
     mFreeSessions.push_front(pSession);
     ++mFreeCount;

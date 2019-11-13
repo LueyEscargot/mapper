@@ -5,29 +5,42 @@
 #include <sys/epoll.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <map>
 #include <spdlog/spdlog.h>
 
 using namespace std;
+using namespace spdlog;
 
 namespace mapper
 {
 
-Session::Session(uint32_t bufSize, int northSoc, int southSoc)
+/**
+ * @brief Status Change Rules
+ * 
+ *              INITIALIZED CONNECTING   ESTABLISHED    CLOSE
+ *  INITIALIZED      -          X             X           V
+ *  CONNECTING       V          -             X           X
+ *  ESTABLISHED      X          V             -           X
+ *  CLOSE            X          V             V           - 
+ */
+map<uint64_t, uint64_t> Session::gCheckBox = {
+    {State_t::INITIALIZED, State_t::CLOSE},
+    {State_t::CONNECTING, State_t::INITIALIZED},
+    {State_t::ESTABLISHED, State_t::CONNECTING},
+    {State_t::CLOSE, (State_t::CONNECTING | State_t::ESTABLISHED)}};
+
+Session::Session(uint32_t bufSize)
     : mpToNorthBuffer(nullptr),
       mpToSouthBuffer(nullptr),
-      mNorthEndpoint(Endpoint::Type_t::NORTH, northSoc, this),
-      mSouthEndpoint(Endpoint::Type_t::SOUTH, southSoc, this),
+      mNorthEndpoint(Endpoint::Type_t::NORTH, 0, this),
+      mSouthEndpoint(Endpoint::Type_t::SOUTH, 0, this),
       mStatus(INITIALIZED)
 {
     mpToNorthBuffer = Buffer::alloc(bufSize);
-    if (!mpToNorthBuffer)
-    {
-        throw("create to north buffer fail");
-    }
     mpToSouthBuffer = Buffer::alloc(bufSize);
-    if (!mpToSouthBuffer)
+    if (!mpToNorthBuffer || !mpToSouthBuffer)
     {
-        throw("create to south buffer fail");
+        throw("[Session::Session] create buffer fail");
     }
 }
 
@@ -43,55 +56,155 @@ Session::~Session()
     mpToSouthBuffer = nullptr;
 }
 
-void Session::init(int northSoc, int southSoc)
+void Session::setStatus(State_t status)
+{
+    if (mStatus == status)
+    {
+        return;
+    }
+
+    if (!(gCheckBox[status] & mStatus))
+    {
+        spdlog::error("[Session::setStatus] change status fail: {} --x--> {}", mStatus, status);
+        return;
+    }
+
+    switch (status)
+    {
+    case State_t::INITIALIZED:
+        mStatus = status;
+        return;
+    case CONNECTING:
+        if (mCbJoinEpoll(&mNorthEndpoint, false, true) &&
+            mCbJoinEpoll(&mSouthEndpoint, false, false))
+        {
+            mStatus = status;
+        }
+        else
+        {
+            spdlog::error("[Session::setStatus] reset epoll mode fail, set connecting session to close");
+            return setStatus(State_t::CLOSE);
+        }
+        break;
+    case ESTABLISHED:
+        // 会话已建立，更改当前状态，并允许 北向及南向 soc 收发数据
+        if (mCbSetEvents(&mNorthEndpoint, true, true) &&
+            mCbSetEvents(&mSouthEndpoint, true, true))
+        {
+            mStatus = status;
+            spdlog::debug("[Session::northSocSend] session[{}-{}] established.",
+                          mSouthEndpoint.soc, mNorthEndpoint.soc);
+        }
+        else
+        {
+            spdlog::error("[Session::setStatus] reset epoll mode fail, set session to close");
+            return setStatus(State_t::CLOSE);
+        }
+        break;
+    case CLOSE:
+        if (!mCbSetEvents(&mNorthEndpoint, false, mNorthEndpoint.valid) ||
+            !mCbSetEvents(&mSouthEndpoint, false, mSouthEndpoint.valid))
+        {
+            spdlog::error("[Session::setStatus] reset epoll mode fail at close mode");
+            mSouthEndpoint.valid = false;
+            mSouthEndpoint.valid = false;
+        }
+        mStatus = status;
+        break;
+    default:
+        spdlog::critical("[Session::setStatus] invalid status: {}", mStatus);
+        assert(false);
+    }
+
+    mCbStateChange(this);
+}
+
+void Session::init()
 {
     mpToNorthBuffer->init();
     mpToSouthBuffer->init();
-    mNorthEndpoint.soc = northSoc;
-    mSouthEndpoint.soc = southSoc;
+    mNorthEndpoint.soc = 0;
+    mSouthEndpoint.soc = 0;
     mNorthEndpoint.valid = true;
     mSouthEndpoint.valid = true;
-    mStatus = State_t::INITIALIZED;
+
+    mCbJoinEpoll = nullptr;
+    mCbSetEvents = nullptr;
+    mCbStateChange = nullptr;
+
+    setStatus(State_t::INITIALIZED);
 }
 
-bool Session::onSoc(Endpoint *pEndpoint, uint32_t events, int epollfd)
+bool Session::init(int northSoc,
+                   int southSoc,
+                   CB_JoinEpoll cbJoinEpoll,
+                   CB_SetEvents cbSetEvents,
+                   CB_StateChange_t cbStateChange)
+{
+    mNorthEndpoint.soc = northSoc;
+    mSouthEndpoint.soc = southSoc;
+
+    mCbJoinEpoll = cbJoinEpoll;
+    mCbSetEvents = cbSetEvents;
+    mCbStateChange = cbStateChange;
+
+    setStatus(State_t::CONNECTING);
+
+    return getStatus() != State_t::CLOSE;
+}
+
+string Session::toStr()
+{
+    stringstream ss;
+
+    ss << this
+       << "("
+       << mNorthEndpoint.soc
+       << (mNorthEndpoint.valid ? "_:" : "x:")
+       << mSouthEndpoint.soc
+       << (mSouthEndpoint.valid ? "_:" : "x:")
+       << (mpToNorthBuffer ? mpToNorthBuffer->dataSize() : 0)
+       << ":"
+       << (mpToSouthBuffer ? mpToSouthBuffer->dataSize() : 0)
+       << ")";
+
+    return ss.str();
+}
+
+void Session::onSoc(Endpoint *pEndpoint, uint32_t events)
 {
     assert(pEndpoint->type & (Endpoint::Type_t::NORTH | Endpoint::Type_t::SOUTH));
 
-    bool bRet;
     // recv
     if (events && EPOLLIN)
         if (pEndpoint->type == Endpoint::Type_t::NORTH)
-            bRet = northSocRecv(epollfd);
+            northSocRecv();
         else
-            bRet = southSocRecv(epollfd);
+            southSocRecv();
 
     // send
     if (events && EPOLLOUT)
         if (pEndpoint->type == Endpoint::Type_t::NORTH)
-            bRet = northSocSend(epollfd) && bRet;
+            northSocSend();
         else
-            bRet = southSocSend(epollfd) && bRet;
-
-    return bRet;
+            southSocSend();
 }
 
-bool Session::northSocRecv(int epollfd)
+void Session::northSocRecv()
 {
     switch (mStatus)
     {
     case State_t::CONNECTING:
-    case State_t::FAIL:
     case State_t::CLOSE:
         // 此状态下，不接收新数据
-        return true;
+        return;
     case State_t::ESTABLISHED:
         // for recv data
         break;
     default:
         spdlog::error("[Session::northSocRecv] invalid status: {}", mStatus);
-        mStatus = State_t::FAIL;
-        return false;
+        setStatus(State_t::CLOSE);
+        return;
     }
 
     while (true)
@@ -101,7 +214,14 @@ bool Session::northSocRecv(int epollfd)
         {
             mpToSouthBuffer->stopRecv = true;
             // spdlog::trace("[Session::northSocRecv] to south buffer full");
-            return southSocSend(epollfd);
+            southSocSend();
+
+            // try again
+            bufSize = mpToSouthBuffer->freeSize();
+            if (bufSize == 0)
+            {
+                break;
+            }
         }
 
         char *buf = mpToSouthBuffer->getBuffer();
@@ -110,98 +230,58 @@ bool Session::northSocRecv(int epollfd)
         {
             if (errno == EAGAIN || errno == EWOULDBLOCK)
             {
-                return southSocSend(epollfd);
-            }
-            else if (nRet == 0)
-            {
-                // soc closed by peer
-                mStatus = State_t::CLOSE;
-                spdlog::debug("[Session::northSocRecv] sock[{}] closed by north peer", mNorthEndpoint.soc);
+                // 此次数据接收已完毕，先尝试发送缓冲区中的数据
+                southSocSend();
             }
             else
             {
-                mStatus = State_t::FAIL;
-                spdlog::error("[Session::northSocRecv] host sock[{}] recv fail: {}:[]",
-                              mNorthEndpoint.soc, errno, strerror(errno));
+                if (nRet == 0)
+                {
+                    // soc closed by peer
+                    spdlog::debug("[Session::northSocRecv] sock[{}] closed by north peer", mNorthEndpoint.soc);
+                }
+                else
+                {
+                    spdlog::error("[Session::northSocRecv] host sock[{}] recv fail: {}:[]",
+                                  mNorthEndpoint.soc, errno, strerror(errno));
+                }
+
+                mNorthEndpoint.valid = false;
+                // 设定状态为关闭前先尝试发送剩余数据
+                southSocSend();
+                setStatus(State_t::CLOSE);
             }
 
-            mNorthEndpoint.valid = false;
-            // send last data to south
-            southSocSend(epollfd);
-            return false;
+            break;
         }
         else
         {
             mpToSouthBuffer->incDataSize(nRet);
         }
     }
-
-    return true;
 }
 
-bool Session::northSocSend(int epollfd)
+void Session::northSocSend()
 {
     switch (mStatus)
     {
     case State_t::CONNECTING:
-        // 会话已建立，更改当前状态，并允许 北向及南向 soc 收发数据
-        {
-            // North Soc
-            {
-                assert(mNorthEndpoint.check());
-                if (!resetEpollMode(epollfd, mNorthEndpoint.soc,
-                                    EPOLLIN | EPOLLOUT | EPOLLET | EPOLLRDHUP, &mNorthEndpoint))
-                {
-                    spdlog::error("[Session::northSocSend] Failed to modify north soc[{}] in epoll. Error{}: {}",
-                                  mNorthEndpoint.soc, errno, strerror(errno));
-                    mNorthEndpoint.valid = false;
-                    mSouthEndpoint.valid = false;
-                    mStatus = State_t::CLOSE;
-                    return false;
-                }
-            }
-            // South Soc
-            {
-                assert(mSouthEndpoint.check());
-                if (!resetEpollMode(epollfd, mSouthEndpoint.soc,
-                                    EPOLLIN | EPOLLOUT | EPOLLET | EPOLLRDHUP, &mSouthEndpoint))
-                {
-                    spdlog::error("[Session::northSocSend] Failed to modify south soc[{}] in epoll. Error{}: {}",
-                                  mSouthEndpoint.soc, errno, strerror(errno));
-                    mNorthEndpoint.valid = false;
-                    mSouthEndpoint.valid = false;
-                    mStatus = State_t::CLOSE;
-                    return false;
-                }
-            }
-
-            spdlog::debug("[Session::northSocSend] session[{}-{}] established.",
-                          mSouthEndpoint.soc, mNorthEndpoint.soc);
-            mStatus = State_t::ESTABLISHED;
-
-            // 继续进行后续数据发送操作
-            break;
-        }
-    case State_t::FAIL:
-    case State_t::CLOSE:
-        if (mNorthEndpoint.valid)
-        {
-            // 继续进行后续数据发送操作
-            break;
-        }
-        else
-        {
-            return false;
-        }
+        // 会话已建立
+        setStatus(State_t::ESTABLISHED);
+        return;
     case State_t::ESTABLISHED:
-        // 继续进行后续数据发送操作
+    case State_t::CLOSE:
+        if (!mNorthEndpoint.valid)
+        {
+            return;
+        }
         break;
     default:
         spdlog::error("[Session::northSocSend] invalid status: {}", mStatus);
-        return false;
+        setStatus(State_t::CLOSE);
+        return;
     }
 
-    bool bRet = true;
     uint64_t bufSize;
     while (bufSize = mpToNorthBuffer->dataSize())
     {
@@ -212,18 +292,14 @@ bool Session::northSocSend(int epollfd)
         {
             if (errno == EAGAIN || errno == EWOULDBLOCK)
             {
-                // send action finished
+                // 此次发送窗口已关闭
                 break;
             }
 
             spdlog::error("[Session::northSocSend] sock[{}] send fail: {} - []",
                           mNorthEndpoint.soc, errno, strerror(errno));
             mNorthEndpoint.valid = false;
-            if (mStatus == State_t::ESTABLISHED)
-            {
-                mStatus = State_t::FAIL;
-            }
-            bRet = false;
+            setStatus(State_t::CLOSE);
             break;
         }
 
@@ -231,48 +307,34 @@ bool Session::northSocSend(int epollfd)
     }
 
     // 判断是否已有能力接收从南向来的数据
-    if (mpToNorthBuffer->stopRecv && mpToNorthBuffer->freeSize() && mSouthEndpoint.valid)
+    if (getStatus() != State_t::CLOSE &&
+        mpToNorthBuffer->stopRecv &&
+        mpToNorthBuffer->freeSize() &&
+        mSouthEndpoint.valid)
     {
         mpToNorthBuffer->stopRecv = false;
-
-        if (!resetEpollMode(epollfd, mSouthEndpoint.soc,
-                            EPOLLIN | EPOLLOUT | EPOLLET | EPOLLRDHUP,
-                            &mSouthEndpoint))
+        if (!mCbSetEvents(&mSouthEndpoint, true, true))
         {
             spdlog::error("[Session::northSocSend] reset north soc[{}] fail", mSouthEndpoint.soc);
-            mSouthEndpoint.valid = false;
-            bRet = false;
+            setStatus(State_t::CLOSE);
         }
     }
-
-    // 1) 如果是 CLOSE, FAIL 这两种状态且数据发送完毕；2）发生异常之后：直接关闭会话
-    if (mStatus & (State_t::CLOSE | State_t::FAIL) && mpToSouthBuffer->empty() ||
-        !mSouthEndpoint.valid)
-    {
-        // 通过返回 false 关闭会话。
-        mNorthEndpoint.valid = false;
-        bRet = false;
-    }
-
-    return bRet;
 }
 
-bool Session::southSocRecv(int epollfd)
+void Session::southSocRecv()
 {
     switch (mStatus)
     {
     case State_t::CONNECTING:
-    case State_t::FAIL:
     case State_t::CLOSE:
         // 此状态下，不接收新数据
-        return true;
+        return;
     case State_t::ESTABLISHED:
-        // for recv data
         break;
     default:
         spdlog::error("[Session::southSocRecv] invalid status: {}", mStatus);
-        mStatus = State_t::FAIL;
-        return false;
+        setStatus(State_t::CLOSE);
+        return;
     }
 
     while (true)
@@ -282,7 +344,14 @@ bool Session::southSocRecv(int epollfd)
         {
             mpToNorthBuffer->stopRecv = true;
             // spdlog::trace("[Session::southSocRecv] to south buffer full");
-            return northSocSend(epollfd); // 0: northSocSend 只在 CONNECTING 阶段需要 epollfd。
+            northSocSend();
+
+            // try again
+            bufSize = mpToSouthBuffer->freeSize();
+            if (bufSize == 0)
+            {
+                break;
+            }
         }
 
         char *buf = mpToNorthBuffer->getBuffer();
@@ -291,64 +360,55 @@ bool Session::southSocRecv(int epollfd)
         {
             if (errno == EAGAIN || errno == EWOULDBLOCK)
             {
-                return northSocSend(epollfd); // 0: northSocSend 只在 CONNECTING 阶段需要 epollfd。
-            }
-            else if (nRet == 0)
-            {
-                // soc closed by peer
-                mStatus = State_t::CLOSE;
-                spdlog::debug("[Session::southSocRecv] sock[{}] closed by south peer", mSouthEndpoint.soc);
+                // 此次数据接收已完毕，先尝试发送缓冲区中的数据
+                northSocSend();
             }
             else
             {
-                mStatus = State_t::FAIL;
-                spdlog::error("[Session::southSocRecv] south sock[{}] recv fail: {}:[]",
-                              mSouthEndpoint.soc, errno, strerror(errno));
+                if (nRet == 0)
+                {
+                    // soc closed by peer
+                    spdlog::debug("[Session::southSocRecv] sock[{}] closed by south peer", mSouthEndpoint.soc);
+                }
+                else
+                {
+                    spdlog::error("[Session::southSocRecv] south sock[{}] recv fail: {}:[]",
+                                  mSouthEndpoint.soc, errno, strerror(errno));
+                }
+
+                // 设定状态为关闭前先尝试发送剩余数据
+                mSouthEndpoint.valid = false;
+                northSocSend();
+                setStatus(State_t::CLOSE);
             }
 
-            mSouthEndpoint.valid = false;
-            // send last data to south
-            northSocSend(epollfd); // 0: northSocSend 只在 CONNECTING 阶段需要 epollfd。
-            return false;
+            break;
         }
         else
         {
             mpToNorthBuffer->incDataSize(nRet);
         }
     }
-
-    return true;
 }
 
-bool Session::southSocSend(int epollfd)
+void Session::southSocSend()
 {
     switch (mStatus)
     {
-    case State_t::FAIL:
-    case State_t::CLOSE:
-        if (mSouthEndpoint.valid)
-        {
-            // 如果到客户端（南向）没问题，那服务器（北向）接口的接口必然已经出错
-            assert(!mNorthEndpoint.valid);
-
-            // 继续进行后续数据发送操作
-            break;
-        }
-        else
-        {
-            return false;
-        }
     case State_t::ESTABLISHED:
-        // 继续进行后续数据发送操作
         break;
-    case State_t::CONNECTING:
-        // South Socket 不会进入此状态
+    case State_t::CLOSE:
+        if (!mSouthEndpoint.valid)
+        {
+            return;
+        }
+        break;
     default:
         spdlog::error("[Session::southSocSend] invalid status: {}", mStatus);
-        return false;
+        setStatus(State_t::CLOSE);
+        return;
     }
 
-    bool bRet = true;
     uint64_t bufSize;
     while (bufSize = mpToSouthBuffer->dataSize())
     {
@@ -359,18 +419,14 @@ bool Session::southSocSend(int epollfd)
         {
             if (errno == EAGAIN || errno == EWOULDBLOCK)
             {
-                // send action finished
+                // 此次发送窗口已关闭
                 break;
             }
 
             spdlog::error("[Session::southSocSend] sock[{}] send fail: {} - []",
                           mSouthEndpoint.soc, errno, strerror(errno));
             mSouthEndpoint.valid = false;
-            if (mStatus == State_t::ESTABLISHED)
-            {
-                mStatus = State_t::FAIL;
-            }
-            bRet = false;
+            setStatus(State_t::CLOSE);
             break;
         }
 
@@ -378,47 +434,18 @@ bool Session::southSocSend(int epollfd)
     }
 
     // 判断是否已有能力接收从北向来的数据
-    if (mpToSouthBuffer->stopRecv && mpToSouthBuffer->freeSize() && mNorthEndpoint.valid)
+    if (getStatus() != State_t::CLOSE &&
+        mpToSouthBuffer->stopRecv &&
+        mpToSouthBuffer->freeSize() &&
+        mNorthEndpoint.valid)
     {
         mpToSouthBuffer->stopRecv = false;
-
-        if (!resetEpollMode(epollfd, mNorthEndpoint.soc,
-                            EPOLLIN | EPOLLOUT | EPOLLET | EPOLLRDHUP,
-                            &mNorthEndpoint))
+        if (!mCbSetEvents(&mNorthEndpoint, true, true))
         {
             spdlog::error("[Session::southSocSend] reset north soc[{}] fail", mNorthEndpoint.soc);
-            mNorthEndpoint.valid = false;
-            bRet = false;
+            setStatus(State_t::CLOSE);
         }
     }
-
-    // 1) 如果是 CLOSE, FAIL 这两种状态且数据发送完毕；2）发生异常之后：直接关闭会话
-    if (mStatus & (State_t::CLOSE | State_t::FAIL) && mpToSouthBuffer->empty() ||
-        !mSouthEndpoint.valid)
-    {
-        // 通过返回 false 关闭会话。
-        mSouthEndpoint.valid = false;
-        bRet = false;
-    }
-
-    return bRet;
-}
-
-bool Session::resetEpollMode(int epollfd, int soc, uint32_t mode, void *tag)
-{
-    assert(epollfd && soc);
-    // spdlog::trace("[Session::resetEpollMode] soc[{}], mode[{}], tag[{}]", soc, mode, tag);
-    epoll_event event;
-    event.events = mode;
-    event.data.ptr = tag;
-    if (epoll_ctl(epollfd, EPOLL_CTL_MOD, soc, &event))
-    {
-        spdlog::error("[Session::resetEpollMode] Reset mode[{}] for soc[{}]@epoll[{}] fail. Error {}: {}",
-                      mode, soc, epollfd, errno, strerror(errno));
-        return false;
-    }
-
-    return true;
 }
 
 } // namespace mapper
