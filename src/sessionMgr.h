@@ -28,7 +28,7 @@ public:
     bool init(const int maxCount);
     void release();
 
-    Session *alloc(int northSoc, int southSoc);
+    Session *alloc();
     void free(Session *pSession);
 
 protected:

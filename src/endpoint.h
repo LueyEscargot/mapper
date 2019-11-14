@@ -1,6 +1,8 @@
 #ifndef __MAPPER_ENDPOINT_H__
 #define __MAPPER_ENDPOINT_H__
 
+#include <string>
+
 namespace mapper
 {
 
@@ -24,6 +26,8 @@ public:
     bool check() {
         return (type & (TYPE::SERVICE | TYPE::NORTH | TYPE::SOUTH));
     }
+
+    std::string toStr();
 };
 
 } // namespace mapper

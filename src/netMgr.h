@@ -14,6 +14,7 @@
 
 #include <sys/epoll.h>
 #include <string.h>
+#include <time.h>
 #include <list>
 #include <memory>
 #include <thread>
@@ -21,6 +22,7 @@
 #include "define.h"
 #include "endpoint.h"
 #include "sessionMgr.h"
+#include "timeoutContainer.h"
 
 namespace mapper
 {
@@ -36,6 +38,8 @@ public:
     static const int INTERVAL_EPOLL_RETRY;
     static const int INTERVAL_CONNECT_RETRY;
     static const int EPOLL_MAX_EVENTS = 16;
+    static const int CONNECT_TIMEOUT = 10;
+    static const int SESSION_TIMEOUT = 30;
 
     NetMgr(uint32_t bufSize);
     virtual ~NetMgr();
@@ -55,19 +59,22 @@ protected:
     bool initEnv();
     void closeEnv();
 
-    void onSoc(int64_t curTime, epoll_event &event, std::list<Endpoint *> &failedEndpoints);
-    void onService(int64_t curTime, uint32_t events, Endpoint *pEndpoint);
+    void onSoc(time_t curTime, epoll_event &event);
+    void onService(time_t curTime, uint32_t events, Endpoint *pEndpoint);
 
-    void acceptClient(Endpoint *pEndpoint);
+    void acceptClient(time_t curTime, Endpoint *pEndpoint);
     int createNorthSoc(MapData_t *pMapData);
-    void postProcess(int64_t curTime);
-    void onFail(Endpoint *pEndpoint);
-    void onFail(Session *pSession);
-    void removeAndCloseSoc(int sock);
+    void postProcess(time_t curTime);
+    void onClose(Session *pSession);
 
-    bool resetEpollMode(int soc, uint32_t mode, void *tag);
+    void removeAndCloseSoc(int sock);
+    bool joinEpoll(Endpoint *pEndpoint, bool read, bool write);
+    bool resetEpollMode(Endpoint *pEndpoint, bool read, bool write);
+
     void *serviceIndexToPtr(uint32_t index);
     uint32_t ptrToServiceIndex(void *p);
+    void onSessionStatus(Session * pSession);
+    void timeoutCheck(time_t curTime);
 
     std::vector<mapper::MapData_t> mMapDatas;
 
@@ -76,6 +83,10 @@ protected:
     std::vector<std::shared_ptr<Endpoint>> mSvrEndpoints;
     std::vector<std::thread> mThreads;
     bool mStopFlag;
+    std::list<Session*> mPostProcessList;
+
+    TimeoutContainer mConnectTimeoutContainer;
+    TimeoutContainer mSessionTimeoutContainer;
 };
 
 } // namespace mapper
