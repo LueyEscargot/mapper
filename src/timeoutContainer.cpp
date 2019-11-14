@@ -19,21 +19,26 @@ TimeoutContainer::~TimeoutContainer()
     }
 }
 
-std::list<TimeoutContainer::Client *> TimeoutContainer::removeTimeout(time_t timePoint)
+std::list<TimeoutContainer::Client *> TimeoutContainer::removeTimeout(time_t timeoutTime)
 {
-    list<Client *> list;
-
-    for (auto *pItem : mList)
+    list<Client *> timeoutList;
+    auto it = mList.begin();
+    while (it != mList.end())
     {
-        if (pItem->time <= timePoint)
+        if ((*it)->time > timeoutTime)
         {
-            list.push_back(pItem);
-            continue;
+            break;
         }
-        break;
+
+        timeoutList.push_back(*it);
+        (*it)->mpContainer = nullptr;
+
+        auto delIt = it;
+        ++it;
+        mList.erase(delIt);
     }
 
-    return move(list);
+    return move(timeoutList);
 }
 
 } // namespace mapper

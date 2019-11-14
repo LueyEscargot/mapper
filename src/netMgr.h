@@ -73,7 +73,8 @@ protected:
 
     void *serviceIndexToPtr(uint32_t index);
     uint32_t ptrToServiceIndex(void *p);
-    void onSessionStatues(Session * pSession);
+    void onSessionStatus(Session * pSession);
+    void timeoutCheck(time_t curTime);
 
     std::vector<mapper::MapData_t> mMapDatas;
 

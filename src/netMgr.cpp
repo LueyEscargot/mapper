@@ -418,7 +418,7 @@ void NetMgr::acceptClient(time_t curTime, Endpoint *pEndpoint)
     if (pSession->init(northSoc, southSoc,
                        std::bind(&NetMgr::joinEpoll, this, _1, _2, _3),
                        std::bind(&NetMgr::resetEpollMode, this, _1, _2, _3),
-                       std::bind(&NetMgr::onSessionStatues, this, _1)))
+                       std::bind(&NetMgr::onSessionStatus, this, _1)))
     {
         spdlog::debug("[NetMgr::acceptClient] Accept client[{}:{}-{}:{}]-->{}",
                       ip,
@@ -426,9 +426,6 @@ void NetMgr::acceptClient(time_t curTime, Endpoint *pEndpoint)
                       southSoc,
                       northSoc,
                       mMapDatas[index].toStr());
-
-        // add into connecting timeout container
-        mConnectTimeoutContainer.insert(curTime, pSession);
     }
     else
     {
@@ -489,75 +486,75 @@ int NetMgr::createNorthSoc(MapData_t *pMapData)
 
 void NetMgr::postProcess(time_t curTime)
 {
-    if (mPostProcessList.empty())
+    if (!mPostProcessList.empty())
     {
-        return;
-    }
-
-    // 去重
-    set<Session *> sessions;
-    for (auto *pSession : mPostProcessList)
-    {
-        if (sessions.find(pSession) == sessions.end())
+        // 去重
+        set<Session *> sessions;
+        for (auto *pSession : mPostProcessList)
         {
-            // spdlog::trace("[NetMgr::postProcess] post-processed for {}",
-            //               pSession->toStr());
-            sessions.insert(pSession);
+            if (sessions.find(pSession) == sessions.end())
+            {
+                // spdlog::trace("[NetMgr::postProcess] post-processed for {}",
+                //               pSession->toStr());
+                sessions.insert(pSession);
+            }
+            // else
+            // {
+            //     spdlog::trace("[NetMgr::postProcess] skip duplicated session {}-{}",
+            //                   pSession->mSouthEndpoint.soc,
+            //                   pSession->mNorthEndpoint.soc);
+            // }
         }
-        // else
-        // {
-        //     spdlog::trace("[NetMgr::postProcess] skip duplicated session {}-{}",
-        //                   pSession->mSouthEndpoint.soc,
-        //                   pSession->mNorthEndpoint.soc);
-        // }
-    }
-    mPostProcessList.clear();
+        mPostProcessList.clear();
 
-    // 进行会话状态处理
-    for (Session *pSession : sessions)
-    {
-        switch (pSession->getStatus())
+        // 进行会话状态处理
+        for (Session *pSession : sessions)
         {
-        case Session::State_t::CONNECTING:
-            if (pSession->valid())
+            switch (pSession->getStatus())
             {
-                // add into timeout timer
-                mConnectTimeoutContainer.insert(curTime, pSession);
-            }
-            else
-            {
-                pSession->setStatus(Session::State_t::CLOSE);
-                onClose(pSession);
-            }
-            break;
-        case Session::State_t::ESTABLISHED:
-            if (pSession->valid())
-            {
-                // switch timeout timer
+            case Session::State_t::CONNECTING:
+                if (pSession->valid())
+                {
+                    // add into timeout timer
+                    mConnectTimeoutContainer.insert(curTime, pSession);
+                }
+                else
+                {
+                    pSession->setStatus(Session::State_t::CLOSE);
+                    onClose(pSession);
+                }
+                break;
+            case Session::State_t::ESTABLISHED:
                 mConnectTimeoutContainer.remove(pSession);
-                mSessionTimeoutContainer.insert(curTime, pSession);
-            }
-            else
+                if (pSession->valid())
+                {
+                    mSessionTimeoutContainer.insert(curTime, pSession);
+                }
+                else
+                {
+                    pSession->setStatus(Session::State_t::CLOSE);
+                    onClose(pSession);
+                }
+                break;
+            case Session::State_t::CLOSE:
             {
-                pSession->setStatus(Session::State_t::CLOSE);
+                TimeoutContainer *pContainer = pSession->getContainer();
+                if (pContainer)
+                {
+                    pContainer->remove(pSession);
+                }
                 onClose(pSession);
             }
             break;
-        case Session::State_t::CLOSE:
-        {
-            TimeoutContainer *pContainer = pSession->getContainer();
-            if (pContainer)
-            {
-                pContainer->remove(pSession);
+            default:
+                spdlog::critical("[NetMgr::postProcess] invalid status: {}", pSession->getStatus());
+                assert(false);
             }
-            onClose(pSession);
-        }
-        break;
-        default:
-            spdlog::critical("[NetMgr::postProcess] invalid status: {}", pSession->getStatus());
-            assert(false);
         }
     }
+
+    // timeout check
+    timeoutCheck(curTime);
 }
 
 void NetMgr::onClose(Session *pSession)
@@ -670,9 +667,34 @@ uint32_t NetMgr::ptrToServiceIndex(void *p)
     return conv.u32;
 }
 
-void NetMgr::onSessionStatues(Session *pSession)
+void NetMgr::onSessionStatus(Session *pSession)
 {
     mPostProcessList.push_back(pSession);
+}
+
+void NetMgr::timeoutCheck(time_t curTime)
+{
+    auto fn = [](time_t curTime,
+                 uint64_t timeoutInterval,
+                 TimeoutContainer &container) {
+        std::list<TimeoutContainer::Client *> timeoutClients =
+            container.removeTimeout(curTime - timeoutInterval);
+        for (auto *pClient : timeoutClients)
+        {
+            Session *pSession = static_cast<Session *>(pClient);
+            spdlog::debug("[NetMgr::timeoutCheck] session[{}] timeout.", pSession->toStr());
+            pSession->setStatus(Session::State_t::CLOSE);
+        }
+    };
+
+    if (!mConnectTimeoutContainer.empty())
+    {
+        fn(curTime, CONNECT_TIMEOUT, mConnectTimeoutContainer);
+    }
+    if (!mSessionTimeoutContainer.empty())
+    {
+        fn(curTime, CONNECT_TIMEOUT, mSessionTimeoutContainer);
+    }
 }
 
 } // namespace mapper

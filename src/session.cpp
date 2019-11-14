@@ -102,7 +102,12 @@ void Session::setStatus(State_t status)
         }
         break;
     case CLOSE:
-        if (!mCbSetEvents(&mNorthEndpoint, false, mNorthEndpoint.valid) ||
+        if (mpToNorthBuffer->empty() && mpToSouthBuffer->empty()) {
+            spdlog::debug("[Session::setStatus] direct close.");
+            mSouthEndpoint.valid = false;
+            mSouthEndpoint.valid = false;
+        }
+        else if (!mCbSetEvents(&mNorthEndpoint, false, mNorthEndpoint.valid) ||
             !mCbSetEvents(&mSouthEndpoint, false, mSouthEndpoint.valid))
         {
             spdlog::error("[Session::setStatus] reset epoll mode fail at close mode");

@@ -27,8 +27,7 @@ public:
 
     public:
         Client()
-            : 
-            // inUse(false),
+            : // inUse(false),
               time(0),
               mpContainer(nullptr),
               pos(nullptr)
@@ -48,14 +47,14 @@ public:
     TimeoutContainer();
     ~TimeoutContainer();
 
+    inline bool empty() { return mList.empty(); }
     inline void insert(time_t curTime, Client *pItem)
     {
         assert(pItem);
-        mList.push_back(pItem);
-        // pItem->inUse = true;
+
         pItem->time = curTime;
         pItem->mpContainer = this;
-        pItem->pos = prev(mList.end());
+        pItem->pos = mList.insert(mList.end(), pItem);
     }
     inline void remove(Client *pItem)
     {
