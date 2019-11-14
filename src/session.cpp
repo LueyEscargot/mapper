@@ -102,13 +102,14 @@ void Session::setStatus(State_t status)
         }
         break;
     case CLOSE:
-        if (mpToNorthBuffer->empty() && mpToSouthBuffer->empty()) {
+        if (mpToNorthBuffer->empty() && mpToSouthBuffer->empty())
+        {
             spdlog::debug("[Session::setStatus] direct close.");
             mSouthEndpoint.valid = false;
             mSouthEndpoint.valid = false;
         }
         else if (!mCbSetEvents(&mNorthEndpoint, false, mNorthEndpoint.valid) ||
-            !mCbSetEvents(&mSouthEndpoint, false, mSouthEndpoint.valid))
+                 !mCbSetEvents(&mSouthEndpoint, false, mSouthEndpoint.valid))
         {
             spdlog::error("[Session::setStatus] reset epoll mode fail at close mode");
             mSouthEndpoint.valid = false;
@@ -176,26 +177,26 @@ string Session::toStr()
     return ss.str();
 }
 
-void Session::onSoc(Endpoint *pEndpoint, uint32_t events)
+void Session::onSoc(time_t curTime, Endpoint *pEndpoint, uint32_t events)
 {
     assert(pEndpoint->type & (Endpoint::Type_t::NORTH | Endpoint::Type_t::SOUTH));
 
     // recv
     if (events && EPOLLIN)
         if (pEndpoint->type == Endpoint::Type_t::NORTH)
-            northSocRecv();
+            northSocRecv(curTime);
         else
-            southSocRecv();
+            southSocRecv(curTime);
 
     // send
     if (events && EPOLLOUT)
         if (pEndpoint->type == Endpoint::Type_t::NORTH)
-            northSocSend();
+            northSocSend(curTime);
         else
-            southSocSend();
+            southSocSend(curTime);
 }
 
-void Session::northSocRecv()
+void Session::northSocRecv(time_t curTime)
 {
     switch (mStatus)
     {
@@ -204,7 +205,8 @@ void Session::northSocRecv()
         // 此状态下，不接收新数据
         return;
     case State_t::ESTABLISHED:
-        // for recv data
+        // refresh action time
+        mpContainer->refresh(curTime, this);
         break;
     default:
         spdlog::error("[Session::northSocRecv] invalid status: {}", mStatus);
@@ -219,7 +221,7 @@ void Session::northSocRecv()
         {
             mpToSouthBuffer->stopRecv = true;
             // spdlog::trace("[Session::northSocRecv] to south buffer full");
-            southSocSend();
+            southSocSend(curTime);
 
             // try again
             bufSize = mpToSouthBuffer->freeSize();
@@ -236,7 +238,7 @@ void Session::northSocRecv()
             if (errno == EAGAIN || errno == EWOULDBLOCK)
             {
                 // 此次数据接收已完毕，先尝试发送缓冲区中的数据
-                southSocSend();
+                southSocSend(curTime);
             }
             else
             {
@@ -253,7 +255,7 @@ void Session::northSocRecv()
 
                 mNorthEndpoint.valid = false;
                 // 设定状态为关闭前先尝试发送剩余数据
-                southSocSend();
+                southSocSend(curTime);
                 setStatus(State_t::CLOSE);
             }
 
@@ -266,7 +268,7 @@ void Session::northSocRecv()
     }
 }
 
-void Session::northSocSend()
+void Session::northSocSend(time_t curTime)
 {
     switch (mStatus)
     {
@@ -275,6 +277,9 @@ void Session::northSocSend()
         setStatus(State_t::ESTABLISHED);
         return;
     case State_t::ESTABLISHED:
+        // refresh action time
+        mpContainer->refresh(curTime, this);
+        break;
     case State_t::CLOSE:
         if (!mNorthEndpoint.valid)
         {
@@ -326,7 +331,7 @@ void Session::northSocSend()
     }
 }
 
-void Session::southSocRecv()
+void Session::southSocRecv(time_t curTime)
 {
     switch (mStatus)
     {
@@ -335,6 +340,8 @@ void Session::southSocRecv()
         // 此状态下，不接收新数据
         return;
     case State_t::ESTABLISHED:
+        // refresh action time
+        mpContainer->refresh(curTime, this);
         break;
     default:
         spdlog::error("[Session::southSocRecv] invalid status: {}", mStatus);
@@ -349,7 +356,7 @@ void Session::southSocRecv()
         {
             mpToNorthBuffer->stopRecv = true;
             // spdlog::trace("[Session::southSocRecv] to south buffer full");
-            northSocSend();
+            northSocSend(curTime);
 
             // try again
             bufSize = mpToSouthBuffer->freeSize();
@@ -366,7 +373,7 @@ void Session::southSocRecv()
             if (errno == EAGAIN || errno == EWOULDBLOCK)
             {
                 // 此次数据接收已完毕，先尝试发送缓冲区中的数据
-                northSocSend();
+                northSocSend(curTime);
             }
             else
             {
@@ -383,7 +390,7 @@ void Session::southSocRecv()
 
                 // 设定状态为关闭前先尝试发送剩余数据
                 mSouthEndpoint.valid = false;
-                northSocSend();
+                northSocSend(curTime);
                 setStatus(State_t::CLOSE);
             }
 
@@ -396,11 +403,13 @@ void Session::southSocRecv()
     }
 }
 
-void Session::southSocSend()
+void Session::southSocSend(time_t curTime)
 {
     switch (mStatus)
     {
     case State_t::ESTABLISHED:
+        // refresh action time
+        mpContainer->refresh(curTime, this);
         break;
     case State_t::CLOSE:
         if (!mSouthEndpoint.valid)

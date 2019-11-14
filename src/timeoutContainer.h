@@ -44,21 +44,25 @@ public:
         std::list<Client *>::const_iterator pos;
     };
 
+    using ContainerType = std::list<Client *>;
+    using ContainerIter = ContainerType::const_iterator;
+
     TimeoutContainer();
     ~TimeoutContainer();
 
-    inline bool empty() { return mList.empty(); }
+    inline bool empty() { return mContainer.empty(); }
     inline void insert(time_t curTime, Client *pItem)
     {
         assert(pItem);
 
         pItem->time = curTime;
         pItem->mpContainer = this;
-        pItem->pos = mList.insert(mList.end(), pItem);
+        pItem->pos = mContainer.insert(mContainer.end(), pItem);
     }
     inline void remove(Client *pItem)
     {
-        mList.erase(pItem->pos);
+        assert(pItem->mpContainer == this);
+        mContainer.erase(pItem->pos);
         pItem->mpContainer = nullptr;
     }
     inline void refresh(time_t curTime, Client *pItem)
@@ -67,10 +71,10 @@ public:
         insert(curTime, pItem);
     }
 
-    std::list<Client *> removeTimeout(time_t timePoint);
+    ContainerType removeTimeout(time_t timePoint);
 
 protected:
-    std::list<Client *> mList;
+    ContainerType mContainer;
 };
 
 } // namespace mapper

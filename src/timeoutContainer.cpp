@@ -13,32 +13,34 @@ TimeoutContainer::TimeoutContainer()
 
 TimeoutContainer::~TimeoutContainer()
 {
-    if (!mList.empty())
+    if (!mContainer.empty())
     {
         warn("[TimeoutContainer::~TimeoutContainer] list NOT empty!");
     }
 }
 
-std::list<TimeoutContainer::Client *> TimeoutContainer::removeTimeout(time_t timeoutTime)
+TimeoutContainer::ContainerType TimeoutContainer::removeTimeout(time_t timeoutTime)
 {
-    list<Client *> timeoutList;
-    auto it = mList.begin();
-    while (it != mList.end())
+    ContainerType timeoutSessions;
+    auto it = mContainer.begin();
+    while (it != mContainer.end())
     {
+        assert((*it)->mpContainer == this);
+
         if ((*it)->time > timeoutTime)
         {
             break;
         }
 
-        timeoutList.push_back(*it);
         (*it)->mpContainer = nullptr;
+        timeoutSessions.push_back(*it);
 
         auto delIt = it;
         ++it;
-        mList.erase(delIt);
+        mContainer.erase(delIt);
     }
 
-    return move(timeoutList);
+    return move(timeoutSessions);
 }
 
 } // namespace mapper

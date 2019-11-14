@@ -339,7 +339,7 @@ void NetMgr::onSoc(time_t curTime, epoll_event &event)
     case Endpoint::Type_t::SOUTH:
     {
         Session *pSession = static_cast<Session *>(pEndpoint->tag);
-        pSession->onSoc(pEndpoint, event.events);
+        pSession->onSoc(curTime, pEndpoint, event.events);
     }
     break;
     default:
@@ -677,7 +677,7 @@ void NetMgr::timeoutCheck(time_t curTime)
     auto fn = [](time_t curTime,
                  uint64_t timeoutInterval,
                  TimeoutContainer &container) {
-        std::list<TimeoutContainer::Client *> timeoutClients =
+        TimeoutContainer::ContainerType timeoutClients =
             container.removeTimeout(curTime - timeoutInterval);
         for (auto *pClient : timeoutClients)
         {
@@ -693,7 +693,7 @@ void NetMgr::timeoutCheck(time_t curTime)
     }
     if (!mSessionTimeoutContainer.empty())
     {
-        fn(curTime, CONNECT_TIMEOUT, mSessionTimeoutContainer);
+        fn(curTime, SESSION_TIMEOUT, mSessionTimeoutContainer);
     }
 }
 

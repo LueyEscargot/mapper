@@ -1,6 +1,7 @@
 #ifndef __MAPPER_SESSION_H__
 #define __MAPPER_SESSION_H__
 
+#include <time.h>
 #include <map>
 #include <string>
 #include "define.h"
@@ -42,11 +43,11 @@ public:
     inline bool valid() { return mNorthEndpoint.valid && mSouthEndpoint.valid; }
     std::string toStr();
 
-    void onSoc(Endpoint *pEndpoint, uint32_t events);
-    void northSocRecv();
-    void northSocSend();
-    void southSocRecv();
-    void southSocSend();
+    void onSoc(time_t curTime, Endpoint *pEndpoint, uint32_t events);
+    void northSocRecv(time_t curTime);
+    void northSocSend(time_t curTime);
+    void southSocRecv(time_t curTime);
+    void southSocSend(time_t curTime);
 
     Endpoint mNorthEndpoint;
     Endpoint mSouthEndpoint;
@@ -55,8 +56,6 @@ public:
     Buffer *mpToSouthBuffer;
 
 protected:
-    // void onClose();
-
     State_t mStatus;
     static std::map<uint64_t, uint64_t> gCheckBox;
 
