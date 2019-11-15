@@ -676,24 +676,25 @@ void NetMgr::timeoutCheck(time_t curTime)
 {
     auto fn = [](time_t curTime,
                  uint64_t timeoutInterval,
-                 TimeoutContainer &container) {
+                 TimeoutContainer &container,
+                 const char * containerName) {
         TimeoutContainer::ContainerType timeoutClients =
             container.removeTimeout(curTime - timeoutInterval);
         for (auto *pClient : timeoutClients)
         {
             Session *pSession = static_cast<Session *>(pClient);
-            spdlog::debug("[NetMgr::timeoutCheck] session[{}] timeout.", pSession->toStr());
+            spdlog::debug("[NetMgr::timeoutCheck] session[{}]@{} timeout.", pSession->toStr(), containerName);
             pSession->setStatus(Session::State_t::CLOSE);
         }
     };
 
     if (!mConnectTimeoutContainer.empty())
     {
-        fn(curTime, CONNECT_TIMEOUT, mConnectTimeoutContainer);
+        fn(curTime, CONNECT_TIMEOUT, mConnectTimeoutContainer, "CONN");
     }
     if (!mSessionTimeoutContainer.empty())
     {
-        fn(curTime, SESSION_TIMEOUT, mSessionTimeoutContainer);
+        fn(curTime, SESSION_TIMEOUT, mSessionTimeoutContainer, "ESTB");
     }
 }
 

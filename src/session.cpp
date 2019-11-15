@@ -254,8 +254,6 @@ void Session::northSocRecv(time_t curTime)
                 }
 
                 mNorthEndpoint.valid = false;
-                // 设定状态为关闭前先尝试发送剩余数据
-                southSocSend(curTime);
                 setStatus(State_t::CLOSE);
             }
 
@@ -388,9 +386,7 @@ void Session::southSocRecv(time_t curTime)
                                   mSouthEndpoint.soc, errno, strerror(errno));
                 }
 
-                // 设定状态为关闭前先尝试发送剩余数据
                 mSouthEndpoint.valid = false;
-                northSocSend(curTime);
                 setStatus(State_t::CLOSE);
             }
 
