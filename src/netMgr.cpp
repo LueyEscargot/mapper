@@ -301,7 +301,21 @@ void NetMgr::onSoc(time_t curTime, epoll_event &event)
     if (event.events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR))
     {
         // connection broken
-        spdlog::debug("[NetMgr::onSoc] soc[{}] broken", pEndpoint->soc);
+        stringstream ss;
+        if (event.events & EPOLLRDHUP)
+        {
+            ss << "closed by peer;";
+        }
+        if (event.events & EPOLLHUP)
+        {
+            ss << "hang up;";
+        }
+        if (event.events & EPOLLERR)
+        {
+            ss << "error;";
+        }
+        spdlog::trace("[NetMgr::onSoc] endpoint[{}] broken: {}", pEndpoint->toStr(), ss.str());
+
         pEndpoint->valid = false;
         if (pEndpoint->type & (Endpoint::Type_t::NORTH | Endpoint::Type_t::SOUTH))
         {
@@ -324,7 +338,7 @@ void NetMgr::onSoc(time_t curTime, epoll_event &event)
         }
         else
         {
-            spdlog::error("[NetMgr::onSoc] service soc[{}] broken", pEndpoint->soc);
+            spdlog::error("[NetMgr::onSoc] service endpoint[{}] broken", pEndpoint->toStr());
         }
 
         return;
@@ -339,6 +353,8 @@ void NetMgr::onSoc(time_t curTime, epoll_event &event)
     case Endpoint::Type_t::SOUTH:
     {
         Session *pSession = static_cast<Session *>(pEndpoint->tag);
+        // spdlog::trace("[NetMgr::onSoc] Session: {}", pSession->toStr());
+
         pSession->onSoc(curTime, pEndpoint, event.events);
     }
     break;
@@ -358,12 +374,12 @@ void NetMgr::onService(time_t curTime, uint32_t events, Endpoint *pEndpoint)
     if (events & (EPOLLRDHUP | EPOLLHUP))
     {
         // socket has been closed
-        spdlog::error("[NetMgr::onService] service soc-{} has been closed", pEndpoint->soc);
+        spdlog::error("[NetMgr::onService] service endpoint[{}] has been closed", pEndpoint->toStr());
     }
     if (events & EPOLLERR)
     {
         // socket error
-        spdlog::error("[NetMgr::onService] error detected at service soc-{}", pEndpoint->soc);
+        spdlog::error("[NetMgr::onService] error detected at service endpoint[{}]", pEndpoint->toStr());
     }
 }
 
@@ -603,6 +619,8 @@ void NetMgr::onClose(Session *pSession)
 
 void NetMgr::removeAndCloseSoc(int sock)
 {
+    // spdlog::trace("[NetMgr::removeAndCloseSoc] remove sock[{}]", sock);
+
     // remove from epoll driver
     if (epoll_ctl(mEpollfd, EPOLL_CTL_DEL, sock, nullptr))
     {
@@ -620,7 +638,7 @@ void NetMgr::removeAndCloseSoc(int sock)
 
 bool NetMgr::joinEpoll(Endpoint *pEndpoint, bool read, bool write)
 {
-    // spdlog::trace("[NetMgr::joinEpoll] soc[{}], read[{}], write[{}]", pEndpoint->soc, read, write);
+    // spdlog::trace("[NetMgr::joinEpoll] endpoint[{}], read[{}], write[{}]", pEndpoint->toStr(), read, write);
 
     struct epoll_event event;
     event.data.ptr = pEndpoint;
@@ -637,7 +655,7 @@ bool NetMgr::joinEpoll(Endpoint *pEndpoint, bool read, bool write)
 
 bool NetMgr::resetEpollMode(Endpoint *pEndpoint, bool read, bool write)
 {
-    // spdlog::trace("[NetMgr::resetEpollMode] soc[{}], read[{}], write[{}]", pEndpoint->soc, read, write);
+    // spdlog::trace("[NetMgr::resetEpollMode] endpoint[{}], read[{}], write[{}]", pEndpoint->toStr(), read, write);
 
     epoll_event event;
     event.data.ptr = pEndpoint;
@@ -677,7 +695,7 @@ void NetMgr::timeoutCheck(time_t curTime)
     auto fn = [](time_t curTime,
                  uint64_t timeoutInterval,
                  TimeoutContainer &container,
-                 const char * containerName) {
+                 const char *containerName) {
         TimeoutContainer::ContainerType timeoutClients =
             container.removeTimeout(curTime - timeoutInterval);
         for (auto *pClient : timeoutClients)
