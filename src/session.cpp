@@ -8,6 +8,9 @@
 #include <map>
 #include <spdlog/spdlog.h>
 
+#define GREEDY_MODE
+#undef GREEDY_MODE
+
 using namespace std;
 using namespace spdlog;
 
@@ -163,16 +166,15 @@ string Session::toStr()
 {
     stringstream ss;
 
-    ss << this
-       << "("
-       << mNorthEndpoint.soc
-       << (mNorthEndpoint.valid ? "_:" : "x:")
-       << mSouthEndpoint.soc
-       << (mSouthEndpoint.valid ? "_:" : "x:")
-       << (mpToNorthBuffer ? mpToNorthBuffer->dataSize() : 0)
-       << ":"
-       << (mpToSouthBuffer ? mpToSouthBuffer->dataSize() : 0)
-       << ")";
+    ss << "["
+       << mNorthEndpoint.toStr()
+       << ","
+       << mSouthEndpoint.toStr()
+       << ","
+       << (mpToNorthBuffer ? mpToNorthBuffer->toStr() : "NIL")
+       << ","
+       << (mpToSouthBuffer ? mpToSouthBuffer->toStr() : "NIL")
+       << "]";
 
     return ss.str();
 }
@@ -217,18 +219,26 @@ void Session::northSocRecv(time_t curTime)
     while (true)
     {
         uint64_t bufSize = mpToSouthBuffer->freeSize();
+
+        // spdlog::trace("[Session::northSocRecv] bufSize: {}, mpToSouthBuffer: {}",
+        //               bufSize, mpToSouthBuffer->toStr());
+
         if (bufSize == 0)
         {
             mpToSouthBuffer->stopRecv = true;
             // spdlog::trace("[Session::northSocRecv] to south buffer full");
             southSocSend(curTime);
 
+#ifdef GREEDY_MODE
             // try again
             bufSize = mpToSouthBuffer->freeSize();
             if (bufSize == 0)
             {
                 break;
             }
+#else
+            break;
+#endif // GREEDY_MODE
         }
 
         char *buf = mpToSouthBuffer->getBuffer();
@@ -253,9 +263,10 @@ void Session::northSocRecv(time_t curTime)
                                   mNorthEndpoint.soc, errno, strerror(errno));
                 }
 
+                spdlog::trace("[Session::northSocRecv] current stat: bufSize: {}, mpToNorthBuffer: {}",
+                              bufSize, mpToSouthBuffer->toStr());
+
                 mNorthEndpoint.valid = false;
-                // 设定状态为关闭前先尝试发送剩余数据
-                southSocSend(curTime);
                 setStatus(State_t::CLOSE);
             }
 
@@ -352,18 +363,26 @@ void Session::southSocRecv(time_t curTime)
     while (true)
     {
         uint64_t bufSize = mpToNorthBuffer->freeSize();
+
+        // spdlog::trace("[Session::southSocRecv] bufSize: {}, mpToNorthBuffer: {}",
+        //               bufSize, mpToNorthBuffer->toStr());
+
         if (bufSize == 0)
         {
             mpToNorthBuffer->stopRecv = true;
             // spdlog::trace("[Session::southSocRecv] to south buffer full");
             northSocSend(curTime);
 
+#ifdef GREEDY_MODE
             // try again
             bufSize = mpToSouthBuffer->freeSize();
             if (bufSize == 0)
             {
                 break;
             }
+#else
+            break;
+#endif // GREEDY_MODE
         }
 
         char *buf = mpToNorthBuffer->getBuffer();
@@ -388,9 +407,10 @@ void Session::southSocRecv(time_t curTime)
                                   mSouthEndpoint.soc, errno, strerror(errno));
                 }
 
-                // 设定状态为关闭前先尝试发送剩余数据
+                spdlog::trace("[Session::southSocRecv] current stat: bufSize: {}, mpToNorthBuffer: {}",
+                              bufSize, mpToNorthBuffer->toStr());
+
                 mSouthEndpoint.valid = false;
-                northSocSend(curTime);
                 setStatus(State_t::CLOSE);
             }
 

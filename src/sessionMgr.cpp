@@ -80,6 +80,7 @@ Session *SessionMgr::alloc()
 
 void SessionMgr::free(Session *pSession)
 {
+    assert(pSession->getContainer() == nullptr);
     if (!pSession)
     {
         return;

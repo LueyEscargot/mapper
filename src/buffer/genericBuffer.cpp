@@ -55,12 +55,17 @@ void GenericBuffer::release(GenericBuffer *pGenericBuffer)
 void GenericBuffer::init() { start = end = 0, stopRecv = false; }
 char *GenericBuffer::getBuffer() { return buffer + end; }
 char *GenericBuffer::getData() { return buffer + start; }
-void GenericBuffer::incDataSize(uint64_t count) { end += count; }
+void GenericBuffer::incDataSize(uint64_t count)
+{
+    end += count;
+    // assert(valid());
+}
 void GenericBuffer::incFreeSize(uint64_t count)
 {
     start += count;
     if (start == end)
         start = end = 0;
+    // assert(valid());
 }
 uint64_t GenericBuffer::dataSize() { return end - start; }
 uint64_t GenericBuffer::freeSize() { return capacity - end; }

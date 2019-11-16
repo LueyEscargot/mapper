@@ -24,9 +24,11 @@ string Endpoint::toStr()
                : (type == Type_t::NORTH)
                      ? "North"
                      : "South")
-       << ":" << soc
-       << "] "
-       << tag;
+       << ","
+       << soc
+       << ","
+       << tag
+       << "]";
 
     return ss.str();
 }

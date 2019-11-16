@@ -13,6 +13,7 @@
 #define __MAPPER_BUFFER_H__
 
 #include <stdint.h>
+#include <string>
 
 namespace mapper
 {
@@ -38,6 +39,9 @@ public:
     virtual bool full() = 0;
     virtual bool writable() = 0;
     virtual bool defrag() = 0;
+
+    virtual bool valid();
+    virtual std::string toStr();
 
     bool stopRecv;
 
