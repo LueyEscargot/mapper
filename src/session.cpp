@@ -163,16 +163,15 @@ string Session::toStr()
 {
     stringstream ss;
 
-    ss << this
-       << "("
-       << mNorthEndpoint.soc
-       << (mNorthEndpoint.valid ? "_:" : "x:")
-       << mSouthEndpoint.soc
-       << (mSouthEndpoint.valid ? "_:" : "x:")
-       << (mpToNorthBuffer ? mpToNorthBuffer->dataSize() : 0)
-       << ":"
-       << (mpToSouthBuffer ? mpToSouthBuffer->dataSize() : 0)
-       << ")";
+    ss << "["
+       << mNorthEndpoint.toStr()
+       << ","
+       << mSouthEndpoint.toStr()
+       << ","
+       << (mpToNorthBuffer ? mpToNorthBuffer->toStr() : "NIL")
+       << ","
+       << (mpToSouthBuffer ? mpToSouthBuffer->toStr() : "NIL")
+       << "]";
 
     return ss.str();
 }
