@@ -167,13 +167,13 @@ string Session::toStr()
     stringstream ss;
 
     ss << "["
-       << mNorthEndpoint.toStr()
-       << ","
        << mSouthEndpoint.toStr()
        << ","
-       << (mpToNorthBuffer ? mpToNorthBuffer->toStr() : "NIL")
+       << mNorthEndpoint.toStr()
        << ","
        << (mpToSouthBuffer ? mpToSouthBuffer->toStr() : "NIL")
+       << ","
+       << (mpToNorthBuffer ? mpToNorthBuffer->toStr() : "NIL")
        << "]";
 
     return ss.str();

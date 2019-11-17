@@ -371,15 +371,26 @@ void NetMgr::onService(time_t curTime, uint32_t events, Endpoint *pEndpoint)
     {
         acceptClient(curTime, pEndpoint);
     }
-    if (events & (EPOLLRDHUP | EPOLLHUP))
+    if (events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR))
     {
-        // socket has been closed
-        spdlog::error("[NetMgr::onService] service endpoint[{}] has been closed", pEndpoint->toStr());
-    }
-    if (events & EPOLLERR)
-    {
-        // socket error
-        spdlog::error("[NetMgr::onService] error detected at service endpoint[{}]", pEndpoint->toStr());
+        stringstream ss;
+        if (events & EPOLLRDHUP)
+        {
+            // socket has been closed
+            ss << "closed by peer";
+        }
+        if (events & EPOLLHUP)
+        {
+            // socket has been closed
+            ss << "has been closed";
+        }
+        if (events & EPOLLERR)
+        {
+            // socket error
+            ss << "socket error";
+        }
+
+        spdlog::error("[NetMgr::onService] service endpoint[{}] fail: {}", pEndpoint->toStr(), ss.str());
     }
 }
 
@@ -424,8 +435,8 @@ void NetMgr::acceptClient(time_t curTime, Endpoint *pEndpoint)
     if (!pSession)
     {
         spdlog::error("[NetMgr::acceptClient] alloc session object fail.");
-        close(northSoc);
         close(southSoc);
+        close(northSoc);
         return;
     }
 
@@ -436,18 +447,18 @@ void NetMgr::acceptClient(time_t curTime, Endpoint *pEndpoint)
                        std::bind(&NetMgr::resetEpollMode, this, _1, _2, _3),
                        std::bind(&NetMgr::onSessionStatus, this, _1)))
     {
-        spdlog::debug("[NetMgr::acceptClient] Accept client[{}:{}-{}:{}]-->{}",
-                      ip,
-                      ntohs(address.sin_port),
+        spdlog::debug("[NetMgr::acceptClient] Accept client[{}:{}] {}:{} --> {}",
                       southSoc,
                       northSoc,
+                      ip,
+                      ntohs(address.sin_port),
                       mMapDatas[index].toStr());
     }
     else
     {
         spdlog::error("[NetMgr::acceptClient] init session object fail.");
-        close(northSoc);
         close(southSoc);
+        close(northSoc);
         return;
     }
 }
@@ -582,9 +593,9 @@ void NetMgr::onClose(Session *pSession)
     {
         // release session object
         spdlog::debug("[NetMgr::onClose] close session[{}-{}]",
-                      pSession->mNorthEndpoint.soc, pSession->mSouthEndpoint.soc);
-        removeAndCloseSoc(pSession->mNorthEndpoint.soc);
+                      pSession->mSouthEndpoint.soc, pSession->mNorthEndpoint.soc);
         removeAndCloseSoc(pSession->mSouthEndpoint.soc);
+        removeAndCloseSoc(pSession->mNorthEndpoint.soc);
 
         // release session object
         mSessionMgr.free(pSession);
