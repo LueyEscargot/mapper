@@ -1,4 +1,5 @@
 #include "buffer.h"
+#include <sstream>
 #include <spdlog/spdlog.h>
 
 #ifdef USE_RINGBUFFER
@@ -6,6 +7,8 @@
 #else
 #include "genericBuffer.h"
 #endif // USE_RINGBUFFER
+
+using namespace std;
 
 class _Reporter
 {
@@ -49,6 +52,26 @@ void Buffer::release(Buffer *pBuffer)
 #else
     return GenericBuffer::release(static_cast<GenericBuffer *>(pBuffer));
 #endif
+}
+
+bool Buffer::valid()
+{
+    return start <= end && end <= capacity;
+}
+
+std::string Buffer::toStr()
+{
+    stringstream ss;
+
+    ss << "["
+       << (buffer ? "_" : "x") << ","
+       << capacity << ","
+       << start << ","
+       << end << ","
+       << (stopRecv ? "x" : "_")
+       << "]";
+
+    return ss.str();
 }
 
 } // namespace mapper
