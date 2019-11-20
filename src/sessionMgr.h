@@ -22,17 +22,15 @@ namespace mapper
 class SessionMgr
 {
 public:
-    SessionMgr(int bufSize);
     ~SessionMgr();
 
-    bool init(const int maxCount);
+    bool init(uint32_t bufSize, uint32_t maxCount);
     void release();
 
     Session *alloc();
     void free(Session *pSession);
 
 protected:
-    int mBufSize;
     int mMaxCount;
     int mFreeCount;
 

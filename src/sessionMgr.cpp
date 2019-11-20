@@ -10,19 +10,12 @@ using namespace std;
 namespace mapper
 {
 
-SessionMgr::SessionMgr(int bufSize)
-    : mBufSize(bufSize),
-      mMaxCount(0),
-      mFreeCount(0)
-{
-}
-
 SessionMgr::~SessionMgr()
 {
     release();
 }
 
-bool SessionMgr::init(const int maxCount)
+bool SessionMgr::init(uint32_t bufSize, uint32_t maxCount)
 {
     mMaxCount = maxCount;
     mFreeCount = maxCount;
@@ -31,7 +24,7 @@ bool SessionMgr::init(const int maxCount)
             for (int i = 0; i < maxCount; ++i)
             {
                 Session *pSession;
-                if (pSession = new Session(mBufSize))
+                if (pSession = new Session(bufSize))
                 {
                     mFreeSessions.push_back(pSession);
                 }

@@ -22,10 +22,11 @@ namespace mapper
 const int NetMgr::INTERVAL_EPOLL_RETRY = 100;
 const int NetMgr::INTERVAL_CONNECT_RETRY = 7;
 
-NetMgr::NetMgr(uint32_t bufSize)
+NetMgr::NetMgr()
     : mEpollfd(0),
-      mSessionMgr(bufSize),
-      mStopFlag(true)
+      mStopFlag(true),
+      mConnectTimeout(0),
+      mSessionTimeout(0)
 {
 }
 
@@ -34,14 +35,13 @@ NetMgr::~NetMgr()
     stop();
 }
 
-bool NetMgr::start(const int maxSessions, vector<mapper::MapData_t> &mapDatas)
+bool NetMgr::start(Config &cfg)
 {
-    if (!mapDatas.size())
-    {
-        spdlog::warn("[NetMgr::start] no mapping data!");
-    }
+    spdlog::debug("[NetMgr::start] start.");
 
-    mMapDatas.swap(mapDatas);
+    mMapDatas = cfg.getMapData();
+    mConnectTimeout = cfg.getAsUint32("connectionTimeout", "global", CONNECT_TIMEOUT);
+    mSessionTimeout = cfg.getAsUint32("sessionTimeout", "global", SESSION_TIMEOUT);
 
     // start thread
     {
@@ -52,7 +52,8 @@ bool NetMgr::start(const int maxSessions, vector<mapper::MapData_t> &mapDatas)
             return false;
         }
 
-        if (!mSessionMgr.init(maxSessions))
+        if (!mSessionMgr.init(cfg.getBufferSize(BUFFER_SIZE),
+                              cfg.getSessions(DEFAULT_SESSIONS)))
         {
             spdlog::error("[NetMgr::start] init session manager fail");
             return false;
@@ -719,11 +720,11 @@ void NetMgr::timeoutCheck(time_t curTime)
 
     if (!mConnectTimeoutContainer.empty())
     {
-        fn(curTime, CONNECT_TIMEOUT, mConnectTimeoutContainer, "CONN");
+        fn(curTime, mConnectTimeout, mConnectTimeoutContainer, "CONN");
     }
     if (!mSessionTimeoutContainer.empty())
     {
-        fn(curTime, SESSION_TIMEOUT, mSessionTimeoutContainer, "ESTB");
+        fn(curTime, mSessionTimeout, mSessionTimeoutContainer, "ESTB");
     }
 }
 

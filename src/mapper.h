@@ -13,6 +13,7 @@
 #define __MAPPER_MAPPER_H__
 
 #include <vector>
+#include "config.h"
 #include "define.h"
 #include "netMgr.h"
 
@@ -22,10 +23,10 @@ namespace mapper
 class Mapper
 {
 public:
-    Mapper(uint32_t bufSize);
+    Mapper();
     ~Mapper();
 
-    bool run(const int maxSessions, std::vector<mapper::MapData_t> &mapDatas);
+    bool run(Config &cfg);
 
 protected:
     void release();
