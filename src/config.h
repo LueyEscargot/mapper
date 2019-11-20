@@ -33,6 +33,7 @@ protected:
     static std::regex REG_CONFIG;
     static std::regex REG_MAPPING;
     static std::regex REG_VALID_IPV4;
+    static std::regex REG_VALID_UNSIGNED_NUMBER;
 
     using SECTION = std::map<std::string, std::string>;
     using CONFIG = std::map<std::string, SECTION>;
@@ -44,7 +45,42 @@ public:
     bool parse(const char *file, bool silence = false);
     void parse(const char *file, std::vector<std::string> &argMapData);
     std::string get(std::string key, std::string section = "", std::string defaultValue = "");
-    std::vector<MapData_t> &getMapData();
+    uint32_t getAsUint32(std::string key, std::string section = "", uint32_t defaultValue = 0);
+
+    inline uint32_t getSessions(uint32_t defaultValue = 0)
+    {
+        return getAsUint32("sessions", "global", defaultValue);
+    }
+    template <class T>
+    inline void setSessions(T sessions) { mConfig["sessions"]["global"] = sessions; }
+    inline void setSessions(uint32_t sessions) { setSessions(std::to_string(sessions)); }
+    inline uint32_t getBufferSize(uint32_t defaultValue = 0)
+    {
+        return getAsUint32("bufferSize", "global", defaultValue);
+    }
+    template <class T>
+    inline void setBufferSize(T bufferSize) { mConfig["bufferSize"]["global"] = bufferSize; }
+    inline void setBufferSize(uint32_t bufferSize) { setBufferSize(std::to_string(bufferSize)); }
+    inline uint32_t getConnectTimeoutInterval(uint32_t defaultValue = 0)
+    {
+        return getAsUint32("connectTimeout", "global", defaultValue);
+    }
+    template <class T>
+    inline void setConnectTimeoutInterval(T interval) { mConfig["connectTimeout"]["global"] = interval; }
+    inline void setConnectTimeoutInterval(uint32_t interval) { setConnectTimeoutInterval(std::to_string(interval)); }
+    inline uint32_t getSessionTimeoutInterval(uint32_t defaultValue = 0)
+    {
+        return getAsUint32("sessionTimeout", "global", defaultValue);
+    }
+    template <class T>
+    inline void setSessionTimeoutInterval(T interval) { mConfig["sessionTimeout"]["global"] = interval; }
+    inline void setSessionTimeoutInterval(uint32_t interval) { setSessionTimeoutInterval(std::to_string(interval)); }
+    template <class T>
+    inline std::string getLogLevel(T &defaultValue = "info")
+    {
+        return get("level", "log", defaultValue);
+    }
+    std::vector<MapData_t> getMapData();
 
 protected:
     void parseLine(std::string &line);
@@ -52,7 +88,6 @@ protected:
     std::string mCurSection;
     CONFIG mConfig;
     std::map<int, TARGET> mRawMapData;
-    std::vector<MapData_t> mMapDatas;
 };
 
 } // namespace mapper

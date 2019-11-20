@@ -16,9 +16,9 @@
 #include <string.h>
 #include <time.h>
 #include <list>
-#include <memory>
 #include <thread>
 #include <vector>
+#include "config.h"
 #include "define.h"
 #include "endpoint.h"
 #include "sessionMgr.h"
@@ -38,13 +38,13 @@ public:
     static const int INTERVAL_EPOLL_RETRY;
     static const int INTERVAL_CONNECT_RETRY;
     static const int EPOLL_MAX_EVENTS = 16;
-    static const int CONNECT_TIMEOUT = 10;
+    static const int CONNECT_TIMEOUT = 3;
     static const int SESSION_TIMEOUT = 30;
 
-    NetMgr(uint32_t bufSize);
+    NetMgr();
     virtual ~NetMgr();
 
-    bool start(const int maxSessions, std::vector<mapper::MapData_t> &mapDatas);
+    bool start(Config &cfg);
     void stop();
 
     inline void join()
@@ -73,7 +73,7 @@ protected:
 
     void *serviceIndexToPtr(uint32_t index);
     uint32_t ptrToServiceIndex(void *p);
-    void onSessionStatus(Session * pSession);
+    void onSessionStatus(Session *pSession);
     void timeoutCheck(time_t curTime);
 
     std::vector<mapper::MapData_t> mMapDatas;
@@ -83,10 +83,12 @@ protected:
     std::vector<std::shared_ptr<Endpoint>> mSvrEndpoints;
     std::vector<std::thread> mThreads;
     bool mStopFlag;
-    std::list<Session*> mPostProcessList;
+    std::list<Session *> mPostProcessList;
 
     TimeoutContainer mConnectTimeoutContainer;
     TimeoutContainer mSessionTimeoutContainer;
+    uint32_t mConnectTimeout;
+    uint32_t mSessionTimeout;
 };
 
 } // namespace mapper

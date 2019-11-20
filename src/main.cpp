@@ -17,7 +17,6 @@
 #include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include "config.h"
-#include "define.h"
 #include "mapper.h"
 #include "project.h"
 
@@ -31,9 +30,8 @@ bool hasArg(char **begin, char **end, const std::string &arg);
 char *getArg(char **begin, char **end, const std::string &arg);
 void getArgMapData(int argc, char *argv[], const char *arg, std::vector<std::string> &argMapData);
 
-int32_t gSessions = 0;
 mapper::Config gConf;
-mapper::Mapper gMapper(mapper::BUFFER_SIZE);
+mapper::Mapper gMapper;
 
 int main(int argc, char *argv[])
 {
@@ -50,7 +48,7 @@ int main(int argc, char *argv[])
 
     // run mapper
     spdlog::debug("[main] run mapper");
-    if (!gMapper.run(gSessions, gConf.getMapData()))
+    if (!gMapper.run(gConf))
     {
         spdlog::error("[main] run mapper fail");
         std::exit(EXIT_FAILURE);
@@ -83,20 +81,10 @@ void init(int argc, char *argv[])
         gConf.parse(cfgFile ? cfgFile : CONFIG_FILE, argMapData);
 
         // get max sessions
+        const char *strSessions = getArg(argv, argv + argc, "-s");
+        if (strSessions)
         {
-            const char *strSessions = getArg(argv, argv + argc, "-s");
-            if (strSessions)
-            {
-                // read from args
-                gSessions = strSessions ? atoi(strSessions) : 0;
-            }
-            else
-            {
-                std::string sRet = gConf.get("sessions", "global", "");
-                // read from config file
-                gSessions = atoi(sRet.c_str());
-            }
-            gSessions = gSessions < mapper::DEFAULT_SESSIONS ? mapper::DEFAULT_SESSIONS : gSessions;
+            gConf.setSessions(strSessions);
         }
 
         // init logger

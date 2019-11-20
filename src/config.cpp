@@ -1,5 +1,6 @@
 #include "config.h"
 #include <errno.h>
+#include <stdlib.h>
 #include <fstream>
 #include <string.h>
 #include <spdlog/spdlog.h>
@@ -18,6 +19,7 @@ regex Config::REG_SECTION = regex(R"(^\s*\[\s*(\w+)\s*]\s*$)");
 regex Config::REG_CONFIG = regex(R"(^\s*(\w+)\s*=\s*(\w+)\s*$)");
 regex Config::REG_MAPPING = regex(R"(^\s*(\d{1,5})\s*:\s*((\d{1,3}\.){3}\d{1,3})\s*:\s*(\d{1,5})\s*$)");
 regex Config::REG_VALID_IPV4 = regex(R"(((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?))");
+regex Config::REG_VALID_UNSIGNED_NUMBER = regex(R"(^\s*\d+\s*$)");
 
 Config::Config()
     : mCurSection(GLOBAL_SECTION)
@@ -35,7 +37,7 @@ bool Config::parse(const char *file, bool silence)
             {
                 char cwd[PATH_MAX];
                 spdlog::warn("[Config::parse] can not open config file[{}]. {} - {}",
-                              file, errno, strerror(errno));
+                             file, errno, strerror(errno));
             }
             return false;
         }
@@ -88,23 +90,30 @@ string Config::get(string key, string section, string defaultValue)
     return setting->second;
 }
 
-vector<MapData_t> &Config::getMapData()
+uint32_t Config::getAsUint32(std::string key, std::string section, uint32_t defaultValue)
 {
-    if (!mMapDatas.empty())
+    string sVal = get(key, section);
+    smatch m;
+    if (regex_match(sVal, m, REG_VALID_UNSIGNED_NUMBER))
     {
-        return mMapDatas;
+        return atoi(sVal.c_str());
     }
+    return defaultValue;
+}
 
+vector<MapData_t> Config::getMapData()
+{
+    std::vector<MapData_t> mapDatas;
     for (auto entry : mRawMapData)
     {
         auto &sport = entry.first;
         auto &host = entry.second.first;
         auto &dport = entry.second.second;
 
-        mMapDatas.emplace_back(sport, host, dport);
+        mapDatas.emplace_back(sport, host, dport);
     }
 
-    return mMapDatas;
+    return mapDatas;
 }
 
 void Config::parseLine(string &line)
