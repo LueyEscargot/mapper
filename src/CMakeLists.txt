@@ -44,6 +44,11 @@ endif()
 add_subdirectory(buffer)
 
 #------------------------------------------------------------------------------
+# build in sub-directory: config
+#------------------------------------------------------------------------------
+add_subdirectory(config)
+
+#------------------------------------------------------------------------------
 # build in sub-directory: endpoint
 #------------------------------------------------------------------------------
 add_subdirectory(endpoint)
@@ -66,11 +71,13 @@ add_executable(mapper ${SRC_FILES})
 target_link_libraries(mapper PUBLIC
     Threads::Threads
     Lib_Buffer
+    Lib_Config
     Lib_Endpoint
     )
 target_include_directories(mapper PUBLIC
     "${PROJECT_BINARY_DIR}"
     "${PROJECT_SOURCE_DIR}/buffer"
+    "${PROJECT_SOURCE_DIR}/config"
     "${PROJECT_SOURCE_DIR}/endpoint"
     )
 set_target_properties(mapper
