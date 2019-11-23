@@ -12,8 +12,9 @@ namespace endpoint
 class Base
 {
 public:
-    Base(Type_t type) : Base(type, 0, nullptr) {}
-    Base(Type_t type, int _soc, void *_tag);
+    Base(Type_t type) : Base(type, 0) {}
+    Base(Type_t type, int soc) : Base(type, soc, nullptr) {}
+    Base(Type_t type, int soc, void *tag);
 
     Type_t type;
     int soc;
