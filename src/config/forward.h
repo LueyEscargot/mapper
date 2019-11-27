@@ -12,6 +12,7 @@
 #ifndef __MAPPER_CONFIG_FORWARD_H__
 #define __MAPPER_CONFIG_FORWARD_H__
 
+#include <memory>
 #include <string>
 
 namespace mapper
@@ -22,43 +23,24 @@ namespace config
 class Forward
 {
 public:
-    inline Forward(const std::string &protocol,
+    Forward() {}
+    Forward(const std::string &protocol,
             const std::string &interface,
             const uint32_t servicePort,
             const std::string &targetHost,
-            const uint32_t targetPort)
-    {
-        init(protocol,
-             interface,
-             servicePort,
-             targetHost,
-             targetPort);
-    }
-    inline Forward(const Forward &src) : Forward(src.protocol,
-                                          src.interface,
-                                          src.servicePort,
-                                          src.targetHost,
-                                          src.targetPort) {}
-    inline Forward &operator=(const Forward &src)
-    {
-        init(src.protocol,
-             src.interface,
-             src.servicePort,
-             src.targetHost,
-             src.targetPort);
-    }
-    inline void init(const std::string &protocol,
-                     const std::string &interface,
-                     const uint32_t servicePort,
-                     const std::string &targetHost,
-                     const uint32_t targetPort)
-    {
-        this->protocol = protocol;
-        this->interface = interface;
-        this->servicePort = servicePort;
-        this->targetHost = targetHost;
-        this->targetPort = targetPort;
-    }
+            const uint32_t targetPort);
+    Forward(const Forward &src);
+    Forward(const Forward *src);
+    Forward &operator=(const Forward &src);
+
+    void init(const std::string &protocol,
+              const std::string &interface,
+              const uint32_t servicePort,
+              const std::string &targetHost,
+              const uint32_t targetPort);
+
+    static std::shared_ptr<Forward> create(std::string setting);
+    static void release(std::shared_ptr<Forward> pForward);
 
     bool parse(std::string &setting);
     std::string toStr();
