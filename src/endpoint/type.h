@@ -64,7 +64,7 @@ typedef struct ENDPOINT_SERVICE : public EndpointBase_t
                      const char *_targetPort)
     {
         // base
-        EndpointBase_t::init(Type_t::SERVICE, soc);
+        EndpointBase_t::init(Type_t::SERVICE, _soc);
         // protocol
         protocol = _protocol;
         // interface
