@@ -27,9 +27,9 @@ public:
                                             const char *servicePort,
                                             const char *targetHost,
                                             const char *targetPort);
+    static void releaseService(EndpointService_t *pService);
     static bool createTunnel(const EndpointService_t *pes, EndpointTunnel_t *pet);
 
-    static void releaseService(EndpointService_t *pService);
 
     static std::string toStr(EndpointBase_t *pEndpoint);
     static std::string toStr(EndpointService_t *pEndpoint);

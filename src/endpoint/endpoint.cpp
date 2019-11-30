@@ -128,6 +128,20 @@ EndpointService_t *Endpoint::createService(const char *strProtocol,
     }
 }
 
+void Endpoint::releaseService(EndpointService_t *pService)
+{
+    if (pService)
+    {
+        if (!dynamic_cast<EndpointService_t *>(pService))
+        {
+            spdlog::critical("[Endpoint::releaseService] pointer[{}] is NOT EndpointService_t pointer!", static_cast<void *>(pService));
+            assert(false);
+        }
+
+        delete pService;
+    }
+}
+
 bool Endpoint::createTunnel(const EndpointService_t *pes, EndpointTunnel_t *pet)
 {
     assert(pes && pet);
@@ -147,20 +161,6 @@ bool Endpoint::createTunnel(const EndpointService_t *pes, EndpointTunnel_t *pet)
     }
 
     pet->status = TunnelState_t::CONNECT;
-}
-
-void Endpoint::releaseService(EndpointService_t *pService)
-{
-    if (pService)
-    {
-        if (!dynamic_cast<EndpointService_t *>(pService))
-        {
-            spdlog::critical("[Endpoint::releaseService] pointer[{}] is NOT EndpointService_t pointer!", static_cast<void *>(pService));
-            assert(false);
-        }
-
-        delete pService;
-    }
 }
 
 string Endpoint::toStr(EndpointBase_t *pEndpoint)

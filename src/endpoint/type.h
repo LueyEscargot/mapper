@@ -91,7 +91,7 @@ typedef struct ENDPOINT_REMOTE : public EndpointBase_t
     }
 } EndpointRemote_t;
 
-typedef struct ENDPOINT_TUNNEL
+typedef struct TUNNEL
 {
     EndpointRemote_t south;
     EndpointRemote_t north;
@@ -114,7 +114,7 @@ typedef struct ENDPOINT_TUNNEL
         addrHead = nullptr;
         curAddr = nullptr;
     }
-} EndpointTunnel_t;
+} Tunnel_t;
 
 } // namespace endpoint
 } // namespace mapper
