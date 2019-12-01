@@ -28,18 +28,18 @@ public:
                                             const char *targetHost,
                                             const char *targetPort);
     static void releaseService(EndpointService_t *pService);
-    static bool createTunnel(const EndpointService_t *pes, EndpointTunnel_t *pet);
+    static bool createTunnel(const EndpointService_t *pes, Tunnel_t *pt);
 
 
     static std::string toStr(EndpointBase_t *pEndpoint);
     static std::string toStr(EndpointService_t *pEndpoint);
     static std::string toStr(EndpointRemote_t *pEndpoint);
-    static std::string toStr(EndpointTunnel_t *pEndpoint);
+    static std::string toStr(Tunnel_t *pEndpoint);
 
 protected:
     static bool getIntfAddr(const char *intf, sockaddr_in &sa);
-    static bool getAddrInfo(const EndpointService_t *pes, EndpointTunnel_t *pet);
-    static bool connectToTarget(const EndpointService_t *pes, EndpointTunnel_t *pet);
+    static bool getAddrInfo(const EndpointService_t *pes, Tunnel_t *pt);
+    static bool connectToTarget(const EndpointService_t *pes, Tunnel_t *pt);
 };
 
 } // namespace endpoint

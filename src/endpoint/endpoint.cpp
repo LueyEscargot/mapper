@@ -23,19 +23,12 @@ EndpointService_t *Endpoint::createService(string forward)
     smatch m;
     if (regex_match(forward, m, REG_FORWARD_SETTING_STRING))
     {
-        // section
-        assert(m.size() == 6);
-
-        // protocol
-        string protocol = m[1];
-        // interface
-        string interface = m[2];
-        // service port
-        string servicePort = m[3];
-        // target host
-        string targetHost = m[4];
-        // target port
-        string targetPort = m[5];
+        assert(m.size() == 6);     // section
+        string protocol = m[1];    // protocol
+        string interface = m[2];   // interface
+        string servicePort = m[3]; // service port
+        string targetHost = m[4];  // target host
+        string targetPort = m[5];  // target port
 
         return createService(protocol.c_str(), interface.c_str(), servicePort.c_str(), targetHost.c_str(), targetPort.c_str());
     }
@@ -142,25 +135,34 @@ void Endpoint::releaseService(EndpointService_t *pService)
     }
 }
 
-bool Endpoint::createTunnel(const EndpointService_t *pes, EndpointTunnel_t *pet)
+bool Endpoint::createTunnel(const EndpointService_t *pes, Tunnel_t *pt)
 {
-    assert(pes && pet);
+    assert(pes && pt);
 
-    // get addr info
-    if (!getAddrInfo(pes, pet) || pet->addrHead == nullptr)
+    if (pes->protocol == Protocol_t::TCP)
     {
-        spdlog::error("[Endpoint::createTunnel] get address of target[{}] fail", pes->targetHost);
+        // get addr info
+        if (!getAddrInfo(pes, pt) || pt->addrHead == nullptr)
+        {
+            spdlog::error("[Endpoint::createTunnel] get address of target[{}] fail", pes->targetHost);
+            return false;
+        }
+
+        // create socket and connect to target host
+        if (!connectToTarget(pes, pt))
+        {
+            spdlog::error("[Endpoint::createTunnel] connect to target[{}] fail", pes->targetHost);
+            return false;
+        }
+
+        pt->status = TunnelState_t::CONNECT;
+    }
+    else
+    {
+        // TODO: implement this function.
+        spdlog::error("[Endpoint::createTunnel] UDP service not implimented yet.");
         return false;
     }
-
-    // create socket and connect to target host
-    if (!connectToTarget(pes, pet) || pet->addrHead == nullptr)
-    {
-        spdlog::error("[Endpoint::createTunnel] connect to target[{}] fail", pes->targetHost);
-        return false;
-    }
-
-    pet->status = TunnelState_t::CONNECT;
 }
 
 string Endpoint::toStr(EndpointBase_t *pEndpoint)
@@ -218,7 +220,7 @@ string Endpoint::toStr(EndpointRemote_t *pEndpoint)
     return ss.str();
 }
 
-string Endpoint::toStr(EndpointTunnel_t *pTunnel)
+string Endpoint::toStr(Tunnel_t *pTunnel)
 {
     stringstream ss;
 
@@ -288,7 +290,7 @@ bool Endpoint::getIntfAddr(const char *intf, sockaddr_in &sa)
     return result;
 }
 
-bool Endpoint::getAddrInfo(const EndpointService_t *pes, EndpointTunnel_t *pet)
+bool Endpoint::getAddrInfo(const EndpointService_t *pes, Tunnel_t *pt)
 {
     addrinfo hints;
 
@@ -302,7 +304,7 @@ bool Endpoint::getAddrInfo(const EndpointService_t *pes, EndpointTunnel_t *pet)
     hints.ai_addr = nullptr;
     hints.ai_next = nullptr;
 
-    int nRet = getaddrinfo(pes->targetHost, pes->targetPort, &hints, &pet->addrHead);
+    int nRet = getaddrinfo(pes->targetHost, pes->targetPort, &hints, &pt->addrHead);
     if (nRet != 0)
     {
         spdlog::error("[Endpoint::getAddrInfo] getaddrinfo fail: {}", gai_strerror(nRet));
@@ -310,11 +312,11 @@ bool Endpoint::getAddrInfo(const EndpointService_t *pes, EndpointTunnel_t *pet)
     }
 }
 
-bool Endpoint::connectToTarget(const EndpointService_t *pes, EndpointTunnel_t *pet)
+bool Endpoint::connectToTarget(const EndpointService_t *pes, Tunnel_t *pt)
 {
-    if ((pet->north.soc = socket(pet->curAddr->ai_family,
-                                 pet->curAddr->ai_socktype,
-                                 pet->curAddr->ai_protocol)) < 0)
+    if ((pt->north.soc = socket(pt->curAddr->ai_family,
+                                pt->curAddr->ai_socktype,
+                                pt->curAddr->ai_protocol)) < 0)
     {
         spdlog::error("[Endpoint::connectToTarget] socket creation error{}: {}",
                       errno, strerror(errno));
@@ -322,28 +324,28 @@ bool Endpoint::connectToTarget(const EndpointService_t *pes, EndpointTunnel_t *p
     }
 
     // set socket to non-blocking mode
-    if (fcntl(pet->north.soc, F_SETFL, O_NONBLOCK) < 0)
+    if (fcntl(pt->north.soc, F_SETFL, O_NONBLOCK) < 0)
     {
         spdlog::error("[Endpoint::connectToTarget] set socket to non-blocking mode fail. {}: {}",
                       errno, strerror(errno));
-        close(pet->north.soc);
-        pet->north.soc = 0;
+        close(pt->north.soc);
+        pt->north.soc = 0;
         return false;
     }
 
     char ip[INET_ADDRSTRLEN];
 
-    for (pet->curAddr = pet->addrHead; pet->curAddr; pet->curAddr = pet->curAddr->ai_next)
+    for (pt->curAddr = pt->addrHead; pt->curAddr; pt->curAddr = pt->curAddr->ai_next)
     {
-        inet_ntop(AF_INET, &pet->curAddr->ai_addr, ip, INET_ADDRSTRLEN);
+        inet_ntop(AF_INET, &pt->curAddr->ai_addr, ip, INET_ADDRSTRLEN);
         spdlog::debug("[Endpoint::connectToTarget] connect to {} ({}:{})",
                       pes->targetHost, ip, pes->targetPort);
 
         // connect to host
-        if (connect(pet->north.soc, pet->curAddr->ai_addr, pet->curAddr->ai_addrlen) < 0 &&
+        if (connect(pt->north.soc, pt->curAddr->ai_addr, pt->curAddr->ai_addrlen) < 0 &&
             errno != EALREADY && errno != EINPROGRESS)
         {
-            if (pet->curAddr->ai_next)
+            if (pt->curAddr->ai_next)
             {
                 spdlog::error("[Endpoint::connectToTarget] connect fail: {}, {}, try again",
                               errno, strerror(errno));
@@ -352,8 +354,8 @@ bool Endpoint::connectToTarget(const EndpointService_t *pes, EndpointTunnel_t *p
             {
                 spdlog::error("[Endpoint::connectToTarget] connect fail: {}, {}",
                               errno, strerror(errno));
-                close(pet->north.soc);
-                pet->north.soc = 0;
+                close(pt->north.soc);
+                pt->north.soc = 0;
                 return false;
             }
         }
