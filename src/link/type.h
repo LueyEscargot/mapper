@@ -116,6 +116,32 @@ typedef struct TUNNEL
     }
 } Tunnel_t;
 
+typedef struct NAME_RESOLVE_BLOCK
+{
+    struct gaicb gaicb;
+    struct addrinfo hints;
+    char name[MAX_HOST_NAME_LENGTH];
+    char serivce[MAX_PORT_LENGTH];
+
+    void init()
+    {
+        gaicb = (struct gaicb){};
+        gaicb.ar_name = name;
+        gaicb.ar_request = &hints;
+        gaicb.ar_result = nullptr;
+        gaicb.ar_service = serivce;
+    }
+    void init(const char *host, const int port, int socktype, int protocol, int flags)
+    {
+        snprintf(name, MAX_HOST_NAME_LENGTH, "%s", host);
+        snprintf(serivce, MAX_PORT_LENGTH, "%d", port);
+        hints = (struct addrinfo){};
+        hints.ai_socktype = socktype;
+        hints.ai_protocol = protocol;
+        hints.ai_flags = flags;
+    }
+} NameResBlk_t;
+
 } // namespace link
 } // namespace mapper
 
