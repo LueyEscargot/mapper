@@ -30,12 +30,12 @@ public:
     bool init(const uint32_t maxDnsReqs);
     void close();
 
-    NameResBlk_t *allocBlk(const char *host, const int port, int socktype, int protocol, int flags);
+    NameResolveBlk_t *allocBlk(const char *host, const int port, int socktype, int protocol, int flags);
     void releaseBlk(void *pNameResBlk);
 
 protected:
-    NameResBlk_t *mNameResBlkArray;
-    std::list<NameResBlk_t *> mFreeList;
+    NameResolveBlk_t *mpNameResolveBlks;
+    std::list<NameResolveBlk_t *> mFreeList;
 };
 
 } // namespace link

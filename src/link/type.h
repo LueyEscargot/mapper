@@ -11,7 +11,7 @@ namespace link
 
 static const uint32_t MAX_INTERFACE_NAME_LENGTH = 64;
 static const uint32_t MAX_HOST_NAME_LENGTH = 256;
-static const uint32_t MAX_PORT_LENGTH = 6;
+static const uint32_t MAX_PORT_STR_LENGTH = 6;
 
 typedef enum TYPE
 {
@@ -52,16 +52,16 @@ typedef struct ENDPOINT_SERVICE : public EndpointBase_t
 {
     Protocol_t protocol;
     char interface[MAX_INTERFACE_NAME_LENGTH];
-    char servicePort[MAX_PORT_LENGTH];
+    char service[MAX_PORT_STR_LENGTH];
     char targetHost[MAX_HOST_NAME_LENGTH];
-    char targetPort[MAX_PORT_LENGTH];
+    char targetService[MAX_PORT_STR_LENGTH];
 
     inline void init(int _soc,
                      Protocol_t _protocol,
                      const char *_interface,
-                     const char *_servicePort,
+                     const char *_service,
                      const char *_targetHost,
-                     const char *_targetPort)
+                     const char *_targetService)
     {
         // base
         EndpointBase_t::init(Type_t::SERVICE, _soc);
@@ -69,12 +69,12 @@ typedef struct ENDPOINT_SERVICE : public EndpointBase_t
         protocol = _protocol;
         // interface
         snprintf(interface, MAX_INTERFACE_NAME_LENGTH, "%s", _interface);
-        // servicePort
-        snprintf(servicePort, MAX_PORT_LENGTH, "%s", _servicePort);
+        // service
+        snprintf(service, MAX_PORT_STR_LENGTH, "%s", _service);
         // targetHost
         snprintf(targetHost, MAX_HOST_NAME_LENGTH, "%s", _targetHost);
-        // targetPort
-        snprintf(targetPort, MAX_PORT_LENGTH, "%s", _targetPort);
+        // targetService
+        snprintf(targetService, MAX_PORT_STR_LENGTH, "%s", _targetService);
     }
 } EndpointService_t;
 
@@ -121,7 +121,7 @@ typedef struct NAME_RESOLVE_BLOCK
     struct gaicb gaicb;
     struct addrinfo hints;
     char name[MAX_HOST_NAME_LENGTH];
-    char serivce[MAX_PORT_LENGTH];
+    char serivce[MAX_PORT_STR_LENGTH];
 
     void init()
     {
@@ -134,13 +134,13 @@ typedef struct NAME_RESOLVE_BLOCK
     void init(const char *host, const int port, int socktype, int protocol, int flags)
     {
         snprintf(name, MAX_HOST_NAME_LENGTH, "%s", host);
-        snprintf(serivce, MAX_PORT_LENGTH, "%d", port);
+        snprintf(serivce, MAX_PORT_STR_LENGTH, "%d", port);
         hints = (struct addrinfo){};
         hints.ai_socktype = socktype;
         hints.ai_protocol = protocol;
         hints.ai_flags = flags;
     }
-} NameResBlk_t;
+} NameResolveBlk_t;
 
 } // namespace link
 } // namespace mapper

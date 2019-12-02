@@ -26,11 +26,11 @@ EndpointService_t *Endpoint::createService(string forward)
         assert(m.size() == 6);     // section
         string protocol = m[1];    // protocol
         string interface = m[2];   // interface
-        string servicePort = m[3]; // service port
+        string service = m[3]; // service port
         string targetHost = m[4];  // target host
-        string targetPort = m[5];  // target port
+        string targetService = m[5];  // target port
 
-        return createService(protocol.c_str(), interface.c_str(), servicePort.c_str(), targetHost.c_str(), targetPort.c_str());
+        return createService(protocol.c_str(), interface.c_str(), service.c_str(), targetHost.c_str(), targetService.c_str());
     }
     else
     {
@@ -41,9 +41,9 @@ EndpointService_t *Endpoint::createService(string forward)
 
 EndpointService_t *Endpoint::createService(const char *strProtocol,
                                            const char *intf,
-                                           const char *servicePort,
+                                           const char *service,
                                            const char *targetHost,
-                                           const char *targetPort)
+                                           const char *targetService)
 {
     Protocol_t protocol = strcasecmp(strProtocol, "tcp") == 0 ? Protocol_t::TCP : Protocol_t::UDP;
 
@@ -82,7 +82,7 @@ EndpointService_t *Endpoint::createService(const char *strProtocol,
             }
 
             // bind
-            sa.sin_port = htons(atoi(servicePort));
+            sa.sin_port = htons(atoi(service));
             if (bind(soc, (struct sockaddr *)&sa, sizeof(sa)))
             {
                 spdlog::error("[Endpoint::createService] bind to intf[{}] fail: {} - {}",
@@ -104,7 +104,7 @@ EndpointService_t *Endpoint::createService(const char *strProtocol,
         if (EndpointService_t *pes = new EndpointService_t)
         {
             spdlog::debug("[Endpoint::createService] create endpoint for intf[{}]", intf);
-            pes->init(soc, protocol, intf, servicePort, targetHost, targetPort);
+            pes->init(soc, protocol, intf, service, targetHost, targetService);
             return pes;
         }
         else
@@ -155,7 +155,7 @@ bool Endpoint::createTunnel(const EndpointService_t *pes, Tunnel_t *pt)
             return false;
         }
 
-        pt->status = TunnelState_t::CONNECT;
+        pt->status = TunnelState_t::INITIALIZED;
     }
     else
     {
@@ -165,7 +165,7 @@ bool Endpoint::createTunnel(const EndpointService_t *pes, Tunnel_t *pt)
     }
 }
 
-string Endpoint::toStr(EndpointBase_t *pEndpoint)
+string Endpoint::toStr(const EndpointBase_t *pEndpoint)
 {
     stringstream ss;
 
@@ -187,12 +187,12 @@ string Endpoint::toStr(EndpointBase_t *pEndpoint)
     return ss.str();
 }
 
-string Endpoint::toStr(EndpointService_t *pEndpoint)
+string Endpoint::toStr(const EndpointService_t *pEndpoint)
 {
     stringstream ss;
 
     ss << "["
-       << toStr(static_cast<EndpointBase_t *>(pEndpoint)) << ","
+       << toStr(static_cast<const EndpointBase_t *>(pEndpoint)) << ","
        << (pEndpoint->protocol == Protocol_t::TCP
                ? "tcp"
                : (pEndpoint->protocol == Protocol_t::UDP
@@ -200,35 +200,35 @@ string Endpoint::toStr(EndpointService_t *pEndpoint)
                       : (assert(false), "N/A")))
        << ","
        << pEndpoint->interface << ","
-       << pEndpoint->servicePort << ","
+       << pEndpoint->service << ","
        << pEndpoint->targetHost << ","
-       << pEndpoint->targetPort
+       << pEndpoint->targetService
        << "]";
 
     return ss.str();
 }
 
-string Endpoint::toStr(EndpointRemote_t *pEndpoint)
+string Endpoint::toStr(const EndpointRemote_t *pEndpoint)
 {
     stringstream ss;
 
     ss << "["
-       << toStr(static_cast<EndpointBase_t *>(pEndpoint)) << ","
+       << toStr(static_cast<const EndpointBase_t *>(pEndpoint)) << ","
        << pEndpoint->tunnel
        << "]";
 
     return ss.str();
 }
 
-string Endpoint::toStr(Tunnel_t *pTunnel)
+string Endpoint::toStr(const Tunnel_t *pTunnel)
 {
     stringstream ss;
 
     ss << "[["
-       << toStr(static_cast<EndpointBase_t *>(&pTunnel->south)) << ","
+       << toStr(static_cast<const EndpointBase_t *>(&pTunnel->south)) << ","
        << pTunnel->south.tunnel
        << "],["
-       << toStr(static_cast<EndpointBase_t *>(&pTunnel->north)) << ","
+       << toStr(static_cast<const EndpointBase_t *>(&pTunnel->north)) << ","
        << pTunnel->north.tunnel
        << "],"
        << pTunnel->status << ","
@@ -304,7 +304,7 @@ bool Endpoint::getAddrInfo(const EndpointService_t *pes, Tunnel_t *pt)
     hints.ai_addr = nullptr;
     hints.ai_next = nullptr;
 
-    int nRet = getaddrinfo(pes->targetHost, pes->targetPort, &hints, &pt->addrHead);
+    int nRet = getaddrinfo(pes->targetHost, pes->targetService, &hints, &pt->addrHead);
     if (nRet != 0)
     {
         spdlog::error("[Endpoint::getAddrInfo] getaddrinfo fail: {}", gai_strerror(nRet));
@@ -339,7 +339,7 @@ bool Endpoint::connectToTarget(const EndpointService_t *pes, Tunnel_t *pt)
     {
         inet_ntop(AF_INET, &pt->curAddr->ai_addr, ip, INET_ADDRSTRLEN);
         spdlog::debug("[Endpoint::connectToTarget] connect to {} ({}:{})",
-                      pes->targetHost, ip, pes->targetPort);
+                      pes->targetHost, ip, pes->targetService);
 
         // connect to host
         if (connect(pt->north.soc, pt->curAddr->ai_addr, pt->curAddr->ai_addrlen) < 0 &&

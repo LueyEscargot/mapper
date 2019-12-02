@@ -9,7 +9,7 @@ namespace link
 {
 
 DnsReqMgr::DnsReqMgr()
-    : mNameResBlkArray(nullptr)
+    : mpNameResolveBlks(nullptr)
 {
 }
 
@@ -22,14 +22,14 @@ bool DnsReqMgr::init(const uint32_t maxDnsReqs)
 {
     spdlog::debug("[DnsReqMgr::init] init for {} blocks.");
 
-    if (mNameResBlkArray)
+    if (mpNameResolveBlks)
     {
         spdlog::error("[DnsReqMgr::init] instance initialized already.");
         return false;
     }
 
-    mNameResBlkArray = static_cast<NameResBlk_t *>(malloc(sizeof(NameResBlk_t) * maxDnsReqs));
-    if (!mNameResBlkArray)
+    mpNameResolveBlks = static_cast<NameResolveBlk_t *>(malloc(sizeof(NameResolveBlk_t) * maxDnsReqs));
+    if (!mpNameResolveBlks)
     {
         spdlog::error("[DnsReqMgr::init] create block array fail.");
         return false;
@@ -37,26 +37,26 @@ bool DnsReqMgr::init(const uint32_t maxDnsReqs)
 
     for (int i = 0; i < maxDnsReqs; ++i)
     {
-        mNameResBlkArray[i].init();
-        mFreeList.push_back(mNameResBlkArray + i);
+        mpNameResolveBlks[i].init();
+        mFreeList.push_back(mpNameResolveBlks + i);
     }
 }
 
 void DnsReqMgr::close()
 {
-    if (mNameResBlkArray)
+    if (mpNameResolveBlks)
     {
         mFreeList.clear();
-        free(mNameResBlkArray);
-        mNameResBlkArray = nullptr;
+        free(mpNameResolveBlks);
+        mpNameResolveBlks = nullptr;
     }
 }
 
-NameResBlk_t *DnsReqMgr::allocBlk(const char *host, const int port, int socktype, int protocol, int flags)
+NameResolveBlk_t *DnsReqMgr::allocBlk(const char *host, const int port, int socktype, int protocol, int flags)
 {
     if (!mFreeList.empty())
     {
-        NameResBlk_t *pBlk = mFreeList.front();
+        NameResolveBlk_t *pBlk = mFreeList.front();
         pBlk->init(host, port, socktype, protocol, flags);
         mFreeList.pop_front();
         return pBlk;
@@ -71,7 +71,7 @@ void DnsReqMgr::releaseBlk(void *pNameResBlk)
 {
     if (pNameResBlk)
     {
-        mFreeList.push_front(static_cast<NameResBlk_t *>(pNameResBlk));
+        mFreeList.push_front(static_cast<NameResolveBlk_t *>(pNameResBlk));
     }
 }
 
