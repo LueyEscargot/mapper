@@ -15,7 +15,7 @@
 #include <set>
 #include <spdlog/spdlog.h>
 #include "session.h"
-#include "endpoint/endpoint.h"
+#include "link/endpoint.h"
 
 using namespace std;
 
@@ -221,7 +221,7 @@ bool NetMgr::initEnv()
         spdlog::debug("[NetMgr::initEnv] process forward: {}", forward->toStr());
 
         // create service endpoint
-        endpoint::EndpointService_t *pService = endpoint::Endpoint::createService(forward->toStr());
+        link::EndpointService_t *pService = link::Endpoint::createService(forward->toStr());
         if (pService == nullptr)
         {
             spdlog::error("[NetMgr::initEnv] create service endpoint fail");
@@ -248,7 +248,7 @@ bool NetMgr::initEnv()
         {
             spdlog::error("[NetMgr::initEnv] add service endpoint[{}] into epoll fail. Error {}: {}",
                           pService->soc, errno, strerror(errno));
-            endpoint::Endpoint::releaseService(pService);
+            link::Endpoint::releaseService(pService);
             return false;
         }
 

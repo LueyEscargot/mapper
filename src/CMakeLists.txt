@@ -49,9 +49,14 @@ add_subdirectory(buffer)
 add_subdirectory(config)
 
 #------------------------------------------------------------------------------
-# build in sub-directory: endpoint
+# build in sub-directory: link
 #------------------------------------------------------------------------------
-add_subdirectory(endpoint)
+add_subdirectory(link)
+
+#------------------------------------------------------------------------------
+# build in sub-directory: session
+#------------------------------------------------------------------------------
+add_subdirectory(session)
 
 #------------------------------------------------------------------------------
 # copy config file
@@ -72,13 +77,15 @@ target_link_libraries(mapper PUBLIC
     Threads::Threads
     Lib_Buffer
     Lib_Config
-    Lib_Endpoint
+    Lib_Link
+    Lib_Session
     )
 target_include_directories(mapper PUBLIC
     "${PROJECT_BINARY_DIR}"
     "${PROJECT_SOURCE_DIR}/buffer"
     "${PROJECT_SOURCE_DIR}/config"
-    "${PROJECT_SOURCE_DIR}/endpoint"
+    "${PROJECT_SOURCE_DIR}/link"
+    "${PROJECT_SOURCE_DIR}/session"
     )
 set_target_properties(mapper
     PROPERTIES
