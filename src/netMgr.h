@@ -20,12 +20,12 @@
 #include <set>
 #include <thread>
 #include <vector>
-// #include "define.h"
 #include "endpoint.h"
 #include "sessionMgr.h"
 #include "timeoutContainer.h"
 #include "config/config.h"
 #include "config/forward.h"
+#include "link/dnsReqMgr.h"
 
 namespace mapper
 {
@@ -82,10 +82,12 @@ protected:
     std::vector<mapper::MapData_t> mMapDatas;   // TODO: remove this
     std::vector<std::shared_ptr<mapper::config::Forward>> mForwards;
 
+    config::Config * mpCfg;
     int mPreConnEpollfd;
     int mEpollfd;
     int mSignalfd;
     SessionMgr mSessionMgr;
+    link::DnsReqMgr mDnsReqMgr;
     std::vector<std::shared_ptr<Endpoint>> mSvrEndpoints;
     std::vector<std::thread> mThreads;
     bool mStopFlag;

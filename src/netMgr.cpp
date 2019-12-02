@@ -26,7 +26,8 @@ const int NetMgr::INTERVAL_EPOLL_RETRY = 100;
 const int NetMgr::INTERVAL_CONNECT_RETRY = 7;
 
 NetMgr::NetMgr()
-    : mPreConnEpollfd(0),
+    : mpCfg(nullptr),
+      mPreConnEpollfd(0),
       mEpollfd(0),
       mSignalfd(0),
       mStopFlag(true),
@@ -44,9 +45,11 @@ bool NetMgr::start(config::Config &cfg)
 {
     spdlog::debug("[NetMgr::start] start.");
 
-    mForwards = move(cfg.getMapData());
-    mConnectTimeout = cfg.getAsUint32("connectionTimeout", "global", CONNECT_TIMEOUT);
-    mSessionTimeout = cfg.getAsUint32("sessionTimeout", "global", SESSION_TIMEOUT);
+    mpCfg = &cfg;
+
+    mForwards = move(mpCfg->getMapData());
+    mConnectTimeout = mpCfg->getAsUint32("connectionTimeout", "global", CONNECT_TIMEOUT);
+    mSessionTimeout = mpCfg->getAsUint32("sessionTimeout", "global", SESSION_TIMEOUT);
 
     // start thread
     {
@@ -57,8 +60,8 @@ bool NetMgr::start(config::Config &cfg)
             return false;
         }
 
-        if (!mSessionMgr.init(cfg.getBufferSize(BUFFER_SIZE),
-                              cfg.getSessions(DEFAULT_SESSIONS)))
+        if (!mSessionMgr.init(mpCfg->getBufferSize(BUFFER_SIZE),
+                              mpCfg->getSessions(DEFAULT_SESSIONS)))
         {
             spdlog::error("[NetMgr::start] init session manager fail");
             return false;
@@ -208,9 +211,10 @@ bool NetMgr::initEnv()
         sigaddset(&sigs, SIGRTMIN);
         sigprocmask(SIG_BLOCK, &sigs, NULL);
 
-        if (mSignalfd = signalfd(-1, &sigs, SFD_NONBLOCK | SFD_CLOEXEC)) {
-        spdlog::error("[NetMgr::initEnv] create event file descriptor fail: {} - {}",
-                      errno, strerror(errno));
+        if (mSignalfd = signalfd(-1, &sigs, SFD_NONBLOCK | SFD_CLOEXEC))
+        {
+            spdlog::error("[NetMgr::initEnv] create event file descriptor fail: {} - {}",
+                          errno, strerror(errno));
             return false;
         }
     }
@@ -255,6 +259,13 @@ bool NetMgr::initEnv()
         spdlog::info("[NetMgr::initEnv] forward[{}] -- soc[{}] -- {}", index++, pService->soc, forward->toStr());
     }
 
+    // init DNS request manager
+    if (!mDnsReqMgr.init(mpCfg->getLinkMaxDnsReqs()))
+    {
+        spdlog::error("[NetMgr::initEnv] init DNS request manager fail");
+        return false;
+    }
+
     return true;
 }
 
@@ -282,6 +293,10 @@ void NetMgr::closeEnv()
     f(mSignalfd);
     f(mPreConnEpollfd);
     f(mEpollfd);
+
+    // close DNS request manager
+    spdlog::debug("[NetMgr::closeEnv] close DNS request manager");
+    mDnsReqMgr.close();
 }
 
 void NetMgr::onSoc(time_t curTime, epoll_event &event)

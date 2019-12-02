@@ -145,4 +145,4 @@ typedef struct NAME_RESOLVE_BLOCK
 } // namespace link
 } // namespace mapper
 
-#endif // _H__
+#endif // __MAPPER_LINK_TYPE_H__
