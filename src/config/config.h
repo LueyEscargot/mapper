@@ -37,6 +37,8 @@ protected:
     static std::regex REG_CONFIG;
     static std::regex REG_VALID_UNSIGNED_NUMBER;
 
+    static const int DEFAULT_LINK_MAX_DNS_REQUESTS = 1024;
+
     using CONFIG = std::map<std::string, std::map<std::string, std::string>>; // secion - key - value
 
     struct ClassForwardCompare
@@ -70,7 +72,6 @@ public:
     inline void setSessions(uint32_t sessions) { setSessions(std::to_string(sessions)); }
     inline uint32_t getBufferSize(uint32_t defaultValue = 0)
     {
-        return getAsUint32("bufferSize", "global", defaultValue);
     }
     template <class T>
     inline void setBufferSize(T bufferSize) { mConfig["bufferSize"]["global"] = bufferSize; }
@@ -96,6 +97,9 @@ public:
     }
     std::vector<std::shared_ptr<Forward>> getForwards(std::string section = "*");
     inline std::vector<std::shared_ptr<Forward>> getMapData(std::string section = "*") { return getForwards(section); }
+
+    // properties of link section
+    inline int getLinkMaxDnsReqs() { return getAsUint32("maxDnsReqs", "link", DEFAULT_LINK_MAX_DNS_REQUESTS); }
 
     std::string mConfigFile;
 
