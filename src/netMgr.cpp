@@ -3,9 +3,11 @@
 #include <assert.h>
 #include <errno.h>
 #include <execinfo.h>
+#include <signal.h>
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <sys/epoll.h>
+#include <sys/signalfd.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <chrono>
@@ -13,6 +15,7 @@
 #include <set>
 #include <spdlog/spdlog.h>
 #include "session.h"
+#include "endpoint/endpoint.h"
 
 using namespace std;
 
@@ -23,7 +26,9 @@ const int NetMgr::INTERVAL_EPOLL_RETRY = 100;
 const int NetMgr::INTERVAL_CONNECT_RETRY = 7;
 
 NetMgr::NetMgr()
-    : mEpollfd(0),
+    : mPreConnEpollfd(0),
+      mEpollfd(0),
+      mSignalfd(0),
       mStopFlag(true),
       mConnectTimeout(0),
       mSessionTimeout(0)
@@ -35,11 +40,11 @@ NetMgr::~NetMgr()
     stop();
 }
 
-bool NetMgr::start(Config &cfg)
+bool NetMgr::start(config::Config &cfg)
 {
     spdlog::debug("[NetMgr::start] start.");
 
-    mMapDatas = cfg.getMapData();
+    mForwards = move(cfg.getMapData());
     mConnectTimeout = cfg.getAsUint32("connectionTimeout", "global", CONNECT_TIMEOUT);
     mSessionTimeout = cfg.getAsUint32("sessionTimeout", "global", SESSION_TIMEOUT);
 
@@ -99,6 +104,7 @@ void NetMgr::threadFunc()
         {
             spdlog::error("[NetMgr::threadFunc] init fail. wait {} seconds",
                           INTERVAL_CONNECT_RETRY);
+            closeEnv();
             this_thread::sleep_for(chrono::seconds(INTERVAL_CONNECT_RETRY));
             continue;
         }
@@ -122,7 +128,7 @@ void NetMgr::threadFunc()
                     }
                     else
                     {
-                        spdlog::error("[NetMgr::threadFunc] epoll fail. Error{}: {}",
+                        spdlog::error("[NetMgr::threadFunc] epoll fail. {} - {}",
                                       errno, strerror(errno));
                         break;
                     }
@@ -180,97 +186,76 @@ void NetMgr::threadFunc()
 
 bool NetMgr::initEnv()
 {
-    if ([&]() -> bool {
-            // create epoll
-            spdlog::debug("[NetMgr::initEnv] create epoll");
-            if ((mEpollfd = epoll_create1(0)) < 0)
-            {
-                spdlog::error("[NetMgr::initEnv] Failed to create epoll. Error{}: {}",
-                              errno, strerror(errno));
-                return false;
-            }
-
-            int index = 0;
-            for (auto mapData : mMapDatas)
-            {
-                spdlog::debug("[NetMgr::initEnv] process map data entry: {}", mapData.toStr());
-
-                // create service socket
-                int soc = socket(AF_INET, SOCK_STREAM, 0);
-                if (soc <= 0)
-                {
-                    spdlog::error("[NetMgr::initEnv] Fail to create service socket. Error{}: {}",
-                                  errno, strerror(errno));
-                    return false;
-                }
-
-                // set reuse
-                int opt = 1;
-                if (setsockopt(soc, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt)))
-                {
-                    spdlog::error("[NetMgr::initEnv] Fail to reuse server socket. Error{}: {}",
-                                  errno, strerror(errno));
-                    return false;
-                }
-
-                // bind
-                struct sockaddr_in addr;
-                memset(&addr, 0, sizeof(addr));
-                addr.sin_family = AF_INET;
-                addr.sin_addr.s_addr = INADDR_ANY;
-                addr.sin_port = htons(mapData.port);
-                if (bind(soc, (struct sockaddr *)&addr, sizeof(addr)))
-                {
-                    spdlog::error("[NetMgr::initEnv] bind to 0.0.0.0:{} fail: {} - {}",
-                                  mapData.port, errno, strerror(errno));
-                    return false;
-                }
-
-                // listen
-                if (listen(soc, SOMAXCONN) == -1)
-                {
-                    spdlog::error("[NetMgr::initEnv] Listen at 0.0.0.0:{} fail: {} - {}",
-                                  mapData.port, errno, strerror(errno));
-                    return false;
-                }
-
-                // save service endpoint
-                Endpoint *pEndpoint = new Endpoint(Endpoint::Type_t::SERVICE, soc, serviceIndexToPtr(index));
-                if (pEndpoint == nullptr)
-                {
-                    spdlog::error("[NetMgr::initEnv] create endpoint object fail: {} - {}",
-                                  errno, strerror(errno));
-                    return false;
-                }
-                mSvrEndpoints.emplace_back(pEndpoint);
-
-                // add service endpoint into epoll driver
-                struct epoll_event event;
-                event.events = EPOLLIN | EPOLLOUT | EPOLLRDHUP;
-                event.data.ptr = pEndpoint;
-                assert(pEndpoint->check());
-                if (epoll_ctl(mEpollfd, EPOLL_CTL_ADD, soc, &event))
-                {
-                    spdlog::error("[NetMgr::initEnv] add service endpoint into epoll fail. Error{}: {}",
-                                  errno, strerror(errno));
-                    return false;
-                }
-
-                ++index;
-                spdlog::info("[NetMgr::initEnv] map[{}]: socket[{}] - 0.0.0.0:{} --> {}:{}",
-                             index, soc, mapData.port, mapData.host, mapData.hostPort);
-            }
-
-            return true;
-        }())
+    // create epoll
+    spdlog::debug("[NetMgr::initEnv] create epolls");
+    if ((mPreConnEpollfd = epoll_create1(0)) < 0)
     {
-        return true;
-    }
-    else
-    {
-        closeEnv();
+        spdlog::error("[NetMgr::initEnv] Failed to create pre-conn epoll. {} - {}",
+                      errno, strerror(errno));
         return false;
     }
+    if ((mEpollfd = epoll_create1(0)) < 0)
+    {
+        spdlog::error("[NetMgr::initEnv] Failed to create epoll. {} - {}",
+                      errno, strerror(errno));
+        return false;
+    }
+    // create event file descriptor
+    {
+        sigset_t sigs;
+
+        sigemptyset(&sigs);
+        sigaddset(&sigs, SIGRTMIN);
+        sigprocmask(SIG_BLOCK, &sigs, NULL);
+
+        if (mSignalfd = signalfd(-1, &sigs, SFD_NONBLOCK | SFD_CLOEXEC)) {
+        spdlog::error("[NetMgr::initEnv] create event file descriptor fail: {} - {}",
+                      errno, strerror(errno));
+            return false;
+        }
+    }
+
+    int index = 0;
+    for (auto forward : mForwards)
+    {
+        spdlog::debug("[NetMgr::initEnv] process forward: {}", forward->toStr());
+
+        // create service endpoint
+        endpoint::EndpointService_t *pService = endpoint::Endpoint::createService(forward->toStr());
+        if (pService == nullptr)
+        {
+            spdlog::error("[NetMgr::initEnv] create service endpoint fail");
+            return false;
+        }
+
+        // TODO: remove related variables & save endpoint object for release reason.
+        //
+        // // save service endpoint
+        // Endpoint *pEndpoint = new Endpoint(Endpoint::Type_t::SERVICE, soc, serviceIndexToPtr(index));
+        // if (pEndpoint == nullptr)
+        // {
+        //     spdlog::error("[NetMgr::initEnv] create endpoint object fail: {} - {}",
+        //                   errno, strerror(errno));
+        //     return false;
+        // }
+        // mSvrEndpoints.emplace_back(pEndpoint);
+
+        // add service endpoint into epoll driver
+        struct epoll_event event;
+        event.events = EPOLLIN | EPOLLRDHUP;
+        event.data.ptr = pService;
+        if (epoll_ctl(mPreConnEpollfd, EPOLL_CTL_ADD, pService->soc, &event))
+        {
+            spdlog::error("[NetMgr::initEnv] add service endpoint[{}] into epoll fail. Error {}: {}",
+                          pService->soc, errno, strerror(errno));
+            endpoint::Endpoint::releaseService(pService);
+            return false;
+        }
+
+        spdlog::info("[NetMgr::initEnv] forward[{}] -- soc[{}] -- {}", index++, pService->soc, forward->toStr());
+    }
+
+    return true;
 }
 
 void NetMgr::closeEnv()
@@ -284,14 +269,19 @@ void NetMgr::closeEnv()
     }
     mSvrEndpoints.clear();
 
-    // close epoll file descriptor
-    spdlog::debug("[NetMgr::closeEnv] close epoll file descriptor");
-    if (close(mEpollfd))
-    {
-        spdlog::error("[NetMgr::closeEnv] Fail to close epoll. Error{}: {}",
-                      errno, strerror(errno));
-    }
-    mEpollfd = 0;
+    // close epoll file descriptors
+    auto f = [](int &fd) {
+        if (close(fd))
+        {
+            spdlog::error("[NetMgr::closeEnv] Fail to close file descriptor[{}]. {} - {}",
+                          fd, errno, strerror(errno));
+        }
+        fd = 0;
+    };
+    spdlog::debug("[NetMgr::closeEnv] close file descriptors");
+    f(mSignalfd);
+    f(mPreConnEpollfd);
+    f(mEpollfd);
 }
 
 void NetMgr::onSoc(time_t curTime, epoll_event &event)
@@ -607,7 +597,7 @@ void NetMgr::onClose(Session *pSession)
         // send last data to client
         if (!resetEpollMode(&pSession->mNorthEndpoint, false, true))
         {
-            spdlog::error("[NetMgr::onClose] Failed to modify north sock[{}] in epoll for last data. Error{}: {}",
+            spdlog::error("[NetMgr::onClose] Failed to modify north sock[{}] in epoll for last data. {} - {}",
                           pSession->mNorthEndpoint.soc, errno, strerror(errno));
             pSession->mNorthEndpoint.valid = false;
             onClose(pSession);
@@ -621,7 +611,7 @@ void NetMgr::onClose(Session *pSession)
         // send last data to client
         if (!resetEpollMode(&pSession->mSouthEndpoint, false, true))
         {
-            spdlog::error("[NetMgr::onClose] Failed to modify south sock[{}] in epoll for last data. Error{}: {}",
+            spdlog::error("[NetMgr::onClose] Failed to modify south sock[{}] in epoll for last data. {} - {}",
                           pSession->mSouthEndpoint.soc, errno, strerror(errno));
             pSession->mSouthEndpoint.valid = false;
             onClose(pSession);
@@ -636,14 +626,14 @@ void NetMgr::removeAndCloseSoc(int sock)
     // remove from epoll driver
     if (epoll_ctl(mEpollfd, EPOLL_CTL_DEL, sock, nullptr))
     {
-        spdlog::error("[NetMgr::removeAndCloseSoc] remove sock[{}] from epoll fail. Error{}: {}",
+        spdlog::error("[NetMgr::removeAndCloseSoc] remove sock[{}] from epoll fail. {} - {}",
                       sock, errno, strerror(errno));
     }
 
     // close socket
     if (close(sock))
     {
-        spdlog::error("[NetMgr::removeAndCloseSoc] Close sock[{}] fail. Error{}: {}",
+        spdlog::error("[NetMgr::removeAndCloseSoc] Close sock[{}] fail. {} - {}",
                       sock, errno, strerror(errno));
     }
 }
@@ -675,7 +665,7 @@ bool NetMgr::resetEpollMode(Endpoint *pEndpoint, bool read, bool write)
     event.events = EPOLLET | EPOLLRDHUP | (read ? EPOLLIN : 0) | (write ? EPOLLOUT : 0);
     if (epoll_ctl(mEpollfd, EPOLL_CTL_MOD, pEndpoint->soc, &event))
     {
-        spdlog::error("[NetMgr::resetEpollMode] Reset events[{}] for soc[{}] fail. Error{}: {}",
+        spdlog::error("[NetMgr::resetEpollMode] Reset events[{}] for soc[{}] fail. {} - {}",
                       event.events, pEndpoint->soc, errno, strerror(errno));
         return false;
     }

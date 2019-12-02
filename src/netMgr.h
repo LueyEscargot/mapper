@@ -16,13 +16,16 @@
 #include <string.h>
 #include <time.h>
 #include <list>
+#include <memory>
+#include <set>
 #include <thread>
 #include <vector>
-#include "config.h"
-#include "define.h"
+// #include "define.h"
 #include "endpoint.h"
 #include "sessionMgr.h"
 #include "timeoutContainer.h"
+#include "config/config.h"
+#include "config/forward.h"
 
 namespace mapper
 {
@@ -44,7 +47,7 @@ public:
     NetMgr();
     virtual ~NetMgr();
 
-    bool start(Config &cfg);
+    bool start(config::Config &cfg);
     void stop();
 
     inline void join()
@@ -76,9 +79,12 @@ protected:
     void onSessionStatus(Session *pSession);
     void timeoutCheck(time_t curTime);
 
-    std::vector<mapper::MapData_t> mMapDatas;
+    std::vector<mapper::MapData_t> mMapDatas;   // TODO: remove this
+    std::vector<std::shared_ptr<mapper::config::Forward>> mForwards;
 
+    int mPreConnEpollfd;
     int mEpollfd;
+    int mSignalfd;
     SessionMgr mSessionMgr;
     std::vector<std::shared_ptr<Endpoint>> mSvrEndpoints;
     std::vector<std::thread> mThreads;
