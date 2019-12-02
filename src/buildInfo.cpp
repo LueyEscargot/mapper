@@ -19,10 +19,10 @@
 #include <chrono>
 #include <fstream>
 #include <iostream>
-#include "config.h"
+#include "config/config.h"
 
 using namespace std;
-using namespace mapper;
+using namespace mapper::config;
 
 static const string FIELD_NAME_BUILD_INFO_SINCE_TIME = R"(    const char *SINCE = ")";
 static const string FIELD_NAME_BUILD_INFO_LAST_TIME = R"(    const char *LAST = ")";

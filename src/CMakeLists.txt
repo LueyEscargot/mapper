@@ -111,7 +111,9 @@ set_source_files_properties (project.h.in
 #------------------------------------------------------------------------------
 add_executable(buildInfo
     buildInfo.cpp
-    config.cpp
+    )
+target_link_libraries(buildInfo PUBLIC
+    Lib_Config
     )
 
 #------------------------------------------------------------------------------
