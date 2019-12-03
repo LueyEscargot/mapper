@@ -83,33 +83,6 @@ void TunnelMgr::freeTunnel(Tunnel_t *pt)
     mFreeList.push_front(pt);
 }
 
-bool TunnelMgr::init(const EndpointService_t *pes, int clientSoc, Tunnel_t *pt)
-{
-    // create to north socket
-    int soc = 0;
-    if ((soc = socket(pt->curAddr->ai_family,
-                      pt->curAddr->ai_socktype,
-                      pt->curAddr->ai_protocol)) < 0)
-    {
-        spdlog::error("[Tunnel::init] create socket fail: {} - {}",
-                      errno, strerror(errno));
-        return false;
-    }
-
-    // set socket to non-blocking mode
-    if (fcntl(soc, F_SETFL, O_NONBLOCK) < 0)
-    {
-        spdlog::error("[Tunnel::init] set socket to non-blocking mode fail. {}: {}",
-                      errno, strerror(errno));
-        ::close(soc);
-        return false;
-    }
-
-    // init new allocated tunnel object
-    pt->initAsConnect(soc, clientSoc);
-    return true;
-}
-
 bool TunnelMgr::connectToTarget(Tunnel_t *pt)
 {
     assert(pt->status == TunnelState_t::INITIALIZED);
@@ -160,6 +133,33 @@ bool TunnelMgr::connectToTarget(Tunnel_t *pt)
     {
         return true;
     }
+}
+
+bool TunnelMgr::init(const EndpointService_t *pes, int clientSoc, Tunnel_t *pt)
+{
+    // create to north socket
+    int soc = 0;
+    if ((soc = socket(pt->curAddr->ai_family,
+                      pt->curAddr->ai_socktype,
+                      pt->curAddr->ai_protocol)) < 0)
+    {
+        spdlog::error("[Tunnel::init] create socket fail: {} - {}",
+                      errno, strerror(errno));
+        return false;
+    }
+
+    // set socket to non-blocking mode
+    if (fcntl(soc, F_SETFL, O_NONBLOCK) < 0)
+    {
+        spdlog::error("[Tunnel::init] set socket to non-blocking mode fail. {}: {}",
+                      errno, strerror(errno));
+        ::close(soc);
+        return false;
+    }
+
+    // init new allocated tunnel object
+    pt->initAsConnect(soc, clientSoc);
+    return true;
 }
 
 } // namespace link

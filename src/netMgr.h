@@ -25,7 +25,8 @@
 #include "timeoutContainer.h"
 #include "config/config.h"
 #include "config/forward.h"
-#include "link/dnsReqMgr.h"
+#include "link/type.h"
+#include "link/tunnelMgr.h"
 
 namespace mapper
 {
@@ -81,14 +82,13 @@ protected:
 
     std::vector<mapper::MapData_t> mMapDatas;   // TODO: remove this
     std::vector<std::shared_ptr<mapper::config::Forward>> mForwards;
+    std::vector<link::EndpointService_t *> mServices;
 
     config::Config * mpCfg;
     int mPreConnEpollfd;
     int mEpollfd;
-    int mSignalfd;
     SessionMgr mSessionMgr;
-    link::DnsReqMgr mDnsReqMgr;
-    std::vector<std::shared_ptr<Endpoint>> mSvrEndpoints;
+    link::TunnelMgr mTunnelMgr;
     std::vector<std::thread> mThreads;
     bool mStopFlag;
     std::list<Session *> mPostProcessList;

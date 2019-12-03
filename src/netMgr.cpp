@@ -3,11 +3,9 @@
 #include <assert.h>
 #include <errno.h>
 #include <execinfo.h>
-#include <signal.h>
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <sys/epoll.h>
-#include <sys/signalfd.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <chrono>
@@ -29,7 +27,6 @@ NetMgr::NetMgr()
     : mpCfg(nullptr),
       mPreConnEpollfd(0),
       mEpollfd(0),
-      mSignalfd(0),
       mStopFlag(true),
       mConnectTimeout(0),
       mSessionTimeout(0)
@@ -203,46 +200,22 @@ bool NetMgr::initEnv()
                       errno, strerror(errno));
         return false;
     }
-    // create event file descriptor
-    {
-        sigset_t sigs;
-
-        sigemptyset(&sigs);
-        sigaddset(&sigs, SIGRTMIN);
-        sigprocmask(SIG_BLOCK, &sigs, NULL);
-
-        if (mSignalfd = signalfd(-1, &sigs, SFD_NONBLOCK | SFD_CLOEXEC))
-        {
-            spdlog::error("[NetMgr::initEnv] create event file descriptor fail: {} - {}",
-                          errno, strerror(errno));
-            return false;
-        }
-    }
 
     int index = 0;
     for (auto forward : mForwards)
     {
         spdlog::debug("[NetMgr::initEnv] process forward: {}", forward->toStr());
 
-        // create service endpoint
-        link::EndpointService_t *pService = link::Endpoint::createService(forward->toStr());
+        link::EndpointService_t *pService = link::Endpoint::createService(forward->protocol.c_str(),
+                                                                          forward->interface.c_str(),
+                                                                          forward->service.c_str(),
+                                                                          forward->targetHost.c_str(),
+                                                                          forward->targetService.c_str());
         if (pService == nullptr)
         {
             spdlog::error("[NetMgr::initEnv] create service endpoint fail");
             return false;
         }
-
-        // TODO: remove related variables & save endpoint object for release reason.
-        //
-        // // save service endpoint
-        // Endpoint *pEndpoint = new Endpoint(Endpoint::Type_t::SERVICE, soc, serviceIndexToPtr(index));
-        // if (pEndpoint == nullptr)
-        // {
-        //     spdlog::error("[NetMgr::initEnv] create endpoint object fail: {} - {}",
-        //                   errno, strerror(errno));
-        //     return false;
-        // }
-        // mSvrEndpoints.emplace_back(pEndpoint);
 
         // add service endpoint into epoll driver
         struct epoll_event event;
@@ -256,13 +229,15 @@ bool NetMgr::initEnv()
             return false;
         }
 
+        mServices.push_back(pService);
+
         spdlog::info("[NetMgr::initEnv] forward[{}] -- soc[{}] -- {}", index++, pService->soc, forward->toStr());
     }
 
-    // init DNS request manager
-    if (!mDnsReqMgr.init(mpCfg->getLinkMaxDnsReqs()))
+    // init tunnel manager
+    if (mTunnelMgr.init(mpCfg->getLinkTunnels()))
     {
-        spdlog::error("[NetMgr::initEnv] init DNS request manager fail");
+        spdlog::error("[NetMgr::initEnv] init tunnel manager fail");
         return false;
     }
 
@@ -273,12 +248,12 @@ void NetMgr::closeEnv()
 {
     // close service endpoint
     spdlog::debug("[NetMgr::closeEnv] close service endpoint");
-    for (auto pEndpoint : mSvrEndpoints)
+    for (auto pService : mServices)
     {
-        assert(pEndpoint->check());
-        removeAndCloseSoc(pEndpoint->soc);
+        removeAndCloseSoc(pService->soc);
+        link::Endpoint::releaseService(pService);
     }
-    mSvrEndpoints.clear();
+    mServices.clear();
 
     // close epoll file descriptors
     auto f = [](int &fd) {
@@ -290,13 +265,12 @@ void NetMgr::closeEnv()
         fd = 0;
     };
     spdlog::debug("[NetMgr::closeEnv] close file descriptors");
-    f(mSignalfd);
     f(mPreConnEpollfd);
     f(mEpollfd);
 
-    // close DNS request manager
-    spdlog::debug("[NetMgr::closeEnv] close DNS request manager");
-    mDnsReqMgr.close();
+    // close tunnel manager
+    spdlog::debug("[NetMgr::closeEnv] close tunnel manager");
+    mTunnelMgr.close();
 }
 
 void NetMgr::onSoc(time_t curTime, epoll_event &event)
@@ -402,8 +376,6 @@ void NetMgr::onService(time_t curTime, uint32_t events, Endpoint *pEndpoint)
 
 void NetMgr::acceptClient(time_t curTime, Endpoint *pEndpoint)
 {
-    uint32_t index = ptrToServiceIndex(pEndpoint->tag);
-
     // accept client
     struct sockaddr_in address;
     int addrlen = sizeof(address);
@@ -415,58 +387,26 @@ void NetMgr::acceptClient(time_t curTime, Endpoint *pEndpoint)
         return;
     }
 
-    char ip[INET_ADDRSTRLEN];
-    inet_ntop(AF_INET, &address.sin_addr, ip, INET_ADDRSTRLEN);
-
-    int northSoc;
-    // set socket to non-blocking mode
-    if (fcntl(southSoc, F_SETFL, O_NONBLOCK) < 0)
+    // alloc tunnel
+    auto pTunnel = mTunnelMgr.allocTunnel(reinterpret_cast<link::EndpointService_t *>(pEndpoint));
+    if (pTunnel == nullptr)
     {
-        spdlog::error("[NetMgr::acceptClient] set client socket to non-blocking mode fail. {}: {}",
-                      errno, strerror(errno));
+        spdlog::error("[NetMgr::acceptClient] alloc tunnel fail");
         close(southSoc);
         return;
     }
-
-    northSoc = createNorthSoc(&mMapDatas[index]);
-    if (northSoc == -1)
-    {
-        spdlog::error("[NetMgr::acceptClient] create to host socket fail");
+    // connect to target
+    if (!link::TunnelMgr::connectToTarget(pTunnel)) {
+        spdlog::error("[NetMgr::acceptClient] connect to target fail");
         close(southSoc);
+        mTunnelMgr.freeTunnel(pTunnel);
         return;
     }
 
-    // alloc session object
-    Session *pSession = mSessionMgr.alloc();
-    if (!pSession)
-    {
-        spdlog::error("[NetMgr::acceptClient] alloc session object fail.");
-        close(southSoc);
-        close(northSoc);
-        return;
-    }
+    // TODO: add socs into epoll driver
 
-    // init session object
-    using namespace std::placeholders;
-    if (pSession->init(northSoc, southSoc,
-                       std::bind(&NetMgr::joinEpoll, this, _1, _2, _3),
-                       std::bind(&NetMgr::resetEpollMode, this, _1, _2, _3),
-                       std::bind(&NetMgr::onSessionStatus, this, _1)))
-    {
-        spdlog::debug("[NetMgr::acceptClient] Accept client[{}:{}] {}:{} --> {}",
-                      southSoc,
-                      northSoc,
-                      ip,
-                      ntohs(address.sin_port),
-                      mMapDatas[index].toStr());
-    }
-    else
-    {
-        spdlog::error("[NetMgr::acceptClient] init session object fail.");
-        close(southSoc);
-        close(northSoc);
-        return;
-    }
+    // char ip[INET_ADDRSTRLEN];
+    // inet_ntop(AF_INET, &address.sin_addr, ip, INET_ADDRSTRLEN);
 }
 
 int NetMgr::createNorthSoc(MapData_t *pMapData)
