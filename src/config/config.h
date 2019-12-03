@@ -37,7 +37,7 @@ protected:
     static std::regex REG_CONFIG;
     static std::regex REG_VALID_UNSIGNED_NUMBER;
 
-    static const int DEFAULT_LINK_MAX_DNS_REQUESTS = 1024;
+    static const int DEFAULT_LINK_TUNNELS = 1048576;
 
     using CONFIG = std::map<std::string, std::map<std::string, std::string>>; // secion - key - value
 
@@ -45,7 +45,7 @@ protected:
     {
         inline bool operator()(const std::shared_ptr<Forward> &l, const std::shared_ptr<Forward> &r) const
         {
-            return l->servicePort < r->servicePort;
+            return l->service < r->service;
         }
     };
     using FORWARDS = std::map<std::string, std::set<std::shared_ptr<Forward>, ClassForwardCompare>>; // section - forward settings
@@ -99,8 +99,8 @@ public:
     std::vector<std::shared_ptr<Forward>> getForwards(std::string section = "*");
     inline std::vector<std::shared_ptr<Forward>> getMapData(std::string section = "*") { return getForwards(section); }
 
-    // properties of link section
-    inline int getLinkMaxDnsReqs() { return getAsUint32("maxDnsReqs", "link", DEFAULT_LINK_MAX_DNS_REQUESTS); }
+    // properties of link-tunnels
+    inline int getLinkTunnels() { return getAsUint32("tunnels", "link", DEFAULT_LINK_TUNNELS); }
 
     std::string mConfigFile;
 
