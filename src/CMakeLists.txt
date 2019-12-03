@@ -2,7 +2,7 @@ cmake_minimum_required (VERSION 3.5)
 
 enable_testing()
 
-project(Mapper LANGUAGES CXX VERSION 1.0.0)
+project(Mapper LANGUAGES CXX VERSION 2.0.0)
 
 #------------------------------------------------------------------------------
 # Setup compile environment
