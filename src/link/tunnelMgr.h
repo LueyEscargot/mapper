@@ -23,27 +23,12 @@ public:
     bool init(uint32_t maxTunnels);
     void close();
 
-    Tunnel_t *allocTunnel(Protocol_t protocol,
-                          const char *intf,
-                          const char *service,
-                          const char *targetHost,
-                          const char *targetService);
-    inline Tunnel_t *allocTunnel(const EndpointService_t *pes, Tunnel_t *pet)
-    {
-        return TunnelMgr::allocTunnel(pes->protocol,
-                                      pes->interface,
-                                      pes->service,
-                                      pes->targetHost,
-                                      pes->targetService);
-    }
-
-    static void freeTunnel(Tunnel_t *pTunnel);
-
-    static std::string toStr(const Tunnel_t *pTunnel);
+    Tunnel_t *allocTunnel(EndpointService_t *pes);
+    void freeTunnel(Tunnel_t *pt);
 
 protected:
-    static bool getAddrInfo(const EndpointService_t *pes, Tunnel_t *pet);
-    static bool connectToTarget(const EndpointService_t *pes, Tunnel_t *pet);
+    static bool init(const EndpointService_t *pes, int clientSoc, Tunnel_t *pet);
+    static bool connectToTarget(Tunnel_t *pet);
 
     Tunnel_t *mpTunnels;
     std::list<Tunnel_t *> mFreeList;

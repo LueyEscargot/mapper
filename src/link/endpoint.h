@@ -28,8 +28,6 @@ public:
                                             const char *targetHost,
                                             const char *targetService);
     static void releaseService(EndpointService_t *pService);
-    static bool createTunnel(const EndpointService_t *pes, Tunnel_t *pt);
-
 
     static std::string toStr(const EndpointBase_t *pEndpoint);
     static std::string toStr(const EndpointService_t *pEndpoint);
@@ -38,8 +36,8 @@ public:
 
 protected:
     static bool getIntfAddr(const char *intf, sockaddr_in &sa);
-    static bool getAddrInfo(const EndpointService_t *pes, Tunnel_t *pt);
-    static bool connectToTarget(const EndpointService_t *pes, Tunnel_t *pt);
+    static bool getAddrInfo(EndpointService_t *pes);
+    static int createTcpServiceSoc(sockaddr_in &sa);
 };
 
 } // namespace link

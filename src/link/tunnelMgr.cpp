@@ -54,131 +54,111 @@ void TunnelMgr::close()
 {
 }
 
-Tunnel_t *TunnelMgr::allocTunnel(Protocol_t protocol,
-                                 const char *intf,
-                                 const char *service,
-                                 const char *targetHost,
-                                 const char *targetService)
+Tunnel_t *TunnelMgr::allocTunnel(EndpointService_t *pes)
 {
     if (mFreeList.empty())
     {
         return nullptr;
     }
 
-    Tunnel_t *pTunnel = mFreeList.front();
+    Tunnel_t *pt = mFreeList.front();
     mFreeList.pop_front();
 
-    // // get addr info
-    // if (!getAddrInfo(pes, pet) || pet->addrHead == nullptr)
-    // {
-    //     spdlog::error("[Tunnel::allocTunnel] get address of target[{}] fail", pes->targetHost);
-    //     return false;
-    // }
+    pt->init(pes->targetHostAddrs);
 
-    // // create socket and connect to target host
-    // if (!connectToTarget(pes, pet) || pet->addrHead == nullptr)
-    // {
-    //     spdlog::error("[Tunnel::allocTunnel] connect to target[{}] fail", pes->targetHost);
-    //     return false;
-    // }
-
-    pTunnel->status = TunnelState_t::INITIALIZED;
-
-    return pTunnel;
+    return pt;
 }
 
-void TunnelMgr::freeTunnel(Tunnel_t *pTunnel)
+void TunnelMgr::freeTunnel(Tunnel_t *pt)
 {
-    // TODO: implement this function.
     spdlog::error("[TunnelMgr::freeTunnel] not implimented yet.");
-}
-
-string TunnelMgr::toStr(const Tunnel_t *pTunnel)
-{
-    stringstream ss;
-
-    ss << "["
-       << Endpoint::toStr(&pTunnel->south) << ","
-       << Endpoint::toStr(&pTunnel->north) << ","
-       << pTunnel->tag
-       << "]";
-
-    return ss.str();
-}
-
-bool TunnelMgr::getAddrInfo(const EndpointService_t *pes, Tunnel_t *pet)
-{
-    addrinfo hints;
-
-    // init hints
-    memset(&hints, 0, sizeof(struct addrinfo));
-    hints.ai_family = AF_INET;
-    hints.ai_socktype = SOCK_STREAM;
-    hints.ai_flags = 0;
-    hints.ai_protocol = IPPROTO_TCP;
-    hints.ai_canonname = nullptr;
-    hints.ai_addr = nullptr;
-    hints.ai_next = nullptr;
-
-    int nRet = getaddrinfo(pes->targetHost, pes->targetService, &hints, &pet->addrHead);
-    if (nRet != 0)
+    if (pt->status != TunnelState_t::BROKEN)
     {
-        spdlog::error("[Tunnel::getAddrInfo] getaddrinfo fail: {}", gai_strerror(nRet));
-        return false;
+        spdlog::warn("[Tunnel::freeTunnel] invalid status: {}", pt->status);
     }
+
+    // close tunnel
+    pt->close();
+
+    mFreeList.push_front(pt);
 }
 
-bool TunnelMgr::connectToTarget(const EndpointService_t *pes, Tunnel_t *pet)
+bool TunnelMgr::init(const EndpointService_t *pes, int clientSoc, Tunnel_t *pt)
 {
-    if ((pet->north.soc = socket(pet->curAddr->ai_family,
-                                 pet->curAddr->ai_socktype,
-                                 pet->curAddr->ai_protocol)) < 0)
+    // create to north socket
+    int soc = 0;
+    if ((soc = socket(pt->curAddr->ai_family,
+                      pt->curAddr->ai_socktype,
+                      pt->curAddr->ai_protocol)) < 0)
     {
-        spdlog::error("[Tunnel::connectToTarget] socket creation error{}: {}",
+        spdlog::error("[Tunnel::init] create socket fail: {} - {}",
                       errno, strerror(errno));
         return false;
     }
 
     // set socket to non-blocking mode
-    if (fcntl(pet->north.soc, F_SETFL, O_NONBLOCK) < 0)
+    if (fcntl(soc, F_SETFL, O_NONBLOCK) < 0)
     {
-        spdlog::error("[Tunnel::connectToTarget] set socket to non-blocking mode fail. {}: {}",
+        spdlog::error("[Tunnel::init] set socket to non-blocking mode fail. {}: {}",
                       errno, strerror(errno));
-        ::close(pet->north.soc);
-        pet->north.soc = 0;
+        ::close(soc);
         return false;
     }
 
-    char ip[INET_ADDRSTRLEN];
+    // init new allocated tunnel object
+    pt->initAsConnect(soc, clientSoc);
+    return true;
+}
 
-    for (pet->curAddr = pet->addrHead; pet->curAddr; pet->curAddr = pet->curAddr->ai_next)
-    {
-        inet_ntop(AF_INET, &pet->curAddr->ai_addr, ip, INET_ADDRSTRLEN);
-        spdlog::debug("[Tunnel::connectToTarget] connect to {} ({}:{})",
-                      pes->targetHost, ip, pes->targetService);
+bool TunnelMgr::connectToTarget(Tunnel_t *pt)
+{
+    assert(pt->status == TunnelState_t::INITIALIZED);
 
-        // connect to host
-        if (connect(pet->north.soc, pet->curAddr->ai_addr, pet->curAddr->ai_addrlen) < 0 &&
-            errno != EALREADY && errno != EINPROGRESS)
-        {
-            if (pet->curAddr->ai_next)
+    if ([&]() -> bool {
+            if (pt->curAddr == nullptr)
             {
-                spdlog::error("[Tunnel::connectToTarget] connect fail: {}, {}, try again",
-                              errno, strerror(errno));
-            }
-            else
-            {
-                spdlog::error("[Tunnel::connectToTarget] connect fail: {}, {}",
-                              errno, strerror(errno));
-                ::close(pet->north.soc);
-                pet->north.soc = 0;
+                spdlog::debug("[Tunnel::connectToTarget] no more retry address");
                 return false;
             }
-        }
-        else
-        {
-            return true;
-        }
+
+            for (char ip[INET_ADDRSTRLEN]; pt->curAddr; pt->curAddr = pt->curAddr->ai_next)
+            {
+                inet_ntop(AF_INET, &pt->curAddr->ai_addr, ip, INET_ADDRSTRLEN);
+                spdlog::debug("[Tunnel::connectToTarget] soc[{}] connect to {}", ip);
+
+                // connect to host
+                if (connect(pt->north.soc, pt->curAddr->ai_addr, pt->curAddr->ai_addrlen) < 0 &&
+                    errno != EALREADY && errno != EINPROGRESS)
+                {
+                    if (pt->curAddr->ai_next)
+                    {
+                        spdlog::error("[Tunnel::connectToTarget] connect fail: {}, {}, try again",
+                                      errno, strerror(errno));
+                    }
+                    else
+                    {
+                        spdlog::error("[Tunnel::connectToTarget] connect fail: {}, {}",
+                                      errno, strerror(errno));
+                        ::close(pt->north.soc);
+                        return false;
+                    }
+                }
+                else
+                {
+                    return true;
+                }
+            }
+
+            spdlog::debug("[Tunnel::connectToTarget] north sock[{}] connect fail.", pt->north.soc);
+            return false;
+        }())
+    {
+        pt->status == TunnelState_t::BROKEN;
+        return false;
+    }
+    else
+    {
+        return true;
     }
 }
 

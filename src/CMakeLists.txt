@@ -54,11 +54,6 @@ add_subdirectory(config)
 add_subdirectory(link)
 
 #------------------------------------------------------------------------------
-# build in sub-directory: session
-#------------------------------------------------------------------------------
-add_subdirectory(session)
-
-#------------------------------------------------------------------------------
 # copy config file
 #------------------------------------------------------------------------------
 configure_file(
@@ -78,14 +73,12 @@ target_link_libraries(mapper PUBLIC
     Lib_Buffer
     Lib_Config
     Lib_Link
-    Lib_Session
     )
 target_include_directories(mapper PUBLIC
     "${PROJECT_BINARY_DIR}"
     "${PROJECT_SOURCE_DIR}/buffer"
     "${PROJECT_SOURCE_DIR}/config"
     "${PROJECT_SOURCE_DIR}/link"
-    "${PROJECT_SOURCE_DIR}/session"
     )
 set_target_properties(mapper
     PROPERTIES

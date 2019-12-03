@@ -3,6 +3,7 @@
 
 #include <netdb.h>
 #include <string.h>
+#include <unistd.h>
 
 namespace mapper
 {
@@ -31,7 +32,8 @@ typedef enum TUNNEL_STATE
     INITIALIZED = 1,
     CONNECT = 1 << 1,
     ESTABLISHED = 1 << 2,
-    BROKEN = 1 << 3
+    BROKEN = 1 << 3,
+    CLOSED = 1 << 4
 } TunnelState_t;
 
 typedef struct ENDPOINT_BASE
@@ -46,6 +48,13 @@ typedef struct ENDPOINT_BASE
     Type_t type;
     int soc;
     bool valid;
+
+    inline void close()
+    {
+        ::close(soc);
+        soc = 0;
+        valid = false;
+    }
 } EndpointBase_t;
 
 typedef struct ENDPOINT_SERVICE : public EndpointBase_t
@@ -55,6 +64,7 @@ typedef struct ENDPOINT_SERVICE : public EndpointBase_t
     char service[MAX_PORT_STR_LENGTH];
     char targetHost[MAX_HOST_NAME_LENGTH];
     char targetService[MAX_PORT_STR_LENGTH];
+    addrinfo *targetHostAddrs;
 
     inline void init(int _soc,
                      Protocol_t _protocol,
@@ -75,6 +85,8 @@ typedef struct ENDPOINT_SERVICE : public EndpointBase_t
         snprintf(targetHost, MAX_HOST_NAME_LENGTH, "%s", _targetHost);
         // targetService
         snprintf(targetService, MAX_PORT_STR_LENGTH, "%s", _targetService);
+        // Addresses list of targetHost
+        targetHostAddrs = nullptr;
     }
 } EndpointService_t;
 
@@ -82,12 +94,16 @@ typedef struct ENDPOINT_REMOTE : public EndpointBase_t
 {
     void *tunnel;
 
-    void init(Type_t type, int _soc, void *_tunnel)
+    inline void init(Type_t type, int _soc, void *_tunnel)
     {
         // base
         EndpointBase_t::init(type, soc);
         // tunnel
         tunnel = _tunnel;
+    }
+    inline void close()
+    {
+        EndpointBase_t::close();
     }
 } EndpointRemote_t;
 
@@ -98,21 +114,29 @@ typedef struct TUNNEL
     TunnelState_t status;
     void *tag;
 
-    addrinfo *addrHead;
     addrinfo *curAddr;
 
-    void init(int southSoc, int northSoc)
+    inline void init(addrinfo *addrInfoList)
+    {
+        status = TunnelState_t::INITIALIZED;
+        tag = nullptr;
+        curAddr = addrInfoList;
+    }
+    inline void initAsConnect(int southSoc, int northSoc)
     {
         // south
         south.init(Type_t::SOUTH, southSoc, this);
         // north
         north.init(Type_t::SOUTH, northSoc, this);
 
-        status = TunnelState_t::INITIALIZED;
-        tag = nullptr;
+        status = TunnelState_t::CONNECT;
+    }
+    inline void close()
+    {
+        south.close();
+        north.close();
 
-        addrHead = nullptr;
-        curAddr = nullptr;
+        status = TunnelState_t::CLOSED;
     }
 } Tunnel_t;
 
@@ -123,7 +147,7 @@ typedef struct NAME_RESOLVE_BLOCK
     char name[MAX_HOST_NAME_LENGTH];
     char serivce[MAX_PORT_STR_LENGTH];
 
-    void init()
+    inline void init()
     {
         gaicb = (struct gaicb){};
         gaicb.ar_name = name;
@@ -131,7 +155,7 @@ typedef struct NAME_RESOLVE_BLOCK
         gaicb.ar_result = nullptr;
         gaicb.ar_service = serivce;
     }
-    void init(const char *host, const int port, int socktype, int protocol, int flags)
+    inline void init(const char *host, const int port, int socktype, int protocol, int flags)
     {
         snprintf(name, MAX_HOST_NAME_LENGTH, "%s", host);
         snprintf(serivce, MAX_PORT_STR_LENGTH, "%d", port);

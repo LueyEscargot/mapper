@@ -23,12 +23,12 @@ EndpointService_t *Endpoint::createService(string forward)
     smatch m;
     if (regex_match(forward, m, REG_FORWARD_SETTING_STRING))
     {
-        assert(m.size() == 6);     // section
-        string protocol = m[1];    // protocol
-        string interface = m[2];   // interface
-        string service = m[3]; // service port
-        string targetHost = m[4];  // target host
-        string targetService = m[5];  // target port
+        assert(m.size() == 6);       // section
+        string protocol = m[1];      // protocol
+        string interface = m[2];     // interface
+        string service = m[3];       // service port
+        string targetHost = m[4];    // target host
+        string targetService = m[5]; // target port
 
         return createService(protocol.c_str(), interface.c_str(), service.c_str(), targetHost.c_str(), targetService.c_str());
     }
@@ -54,114 +54,52 @@ EndpointService_t *Endpoint::createService(const char *strProtocol,
         spdlog::error("[Endpoint::createService] get local address of specified interface[{}] fail", intf);
         return nullptr;
     }
+    sa.sin_port = htons(atoi(service));
 
     // create non-block server socket
-    int soc = socket(AF_INET,
-                     protocol == Protocol_t::TCP ? SOCK_STREAM : SOCK_DGRAM,
-                     0);
+    int soc = createTcpServiceSoc(sa);
     if (soc < 0)
     {
-        spdlog::error("[Endpoint::createService] create socket fail: {} - {}", errno, strerror(errno));
+        spdlog::error("[Endpoint::createService] create service soc[{}:{}] fail: {} - {}",
+                      intf, service, errno, strerror(errno));
         return nullptr;
     }
-    if ([&]() -> bool {
-            // set to non-block
-            int flags = fcntl(soc, F_GETFL);
-            if (flags == -1 || fcntl(soc, F_SETFL, flags | O_NONBLOCK) == -1)
-            {
-                spdlog::error("[Endpoint::createService] set to non-block fail: {} - {}", errno, strerror(errno));
-                return false;
-            }
 
-            // set reuse
-            int opt = 1;
-            if (setsockopt(soc, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt)))
-            {
-                spdlog::error("[Endpoint::createService] set reuse fail: {} - {}", errno, strerror(errno));
-                return false;
-            }
-
-            // bind
-            sa.sin_port = htons(atoi(service));
-            if (bind(soc, (struct sockaddr *)&sa, sizeof(sa)))
-            {
-                spdlog::error("[Endpoint::createService] bind to intf[{}] fail: {} - {}",
-                              intf, errno, strerror(errno));
-                return false;
-            }
-
-            // listen
-            if (protocol == Protocol_t::TCP && listen(soc, SOMAXCONN) == -1)
-            {
-                spdlog::error("[Endpoint::createService] Listen at intf[{}] fail: {} - {}",
-                              intf, errno, strerror(errno));
-                return false;
-            }
-
-            return true;
-        }())
+    // create service endpoint
+    EndpointService_t *pes = new EndpointService_t;
+    if (pes == nullptr)
     {
-        if (EndpointService_t *pes = new EndpointService_t)
-        {
-            spdlog::debug("[Endpoint::createService] create endpoint for intf[{}]", intf);
-            pes->init(soc, protocol, intf, service, targetHost, targetService);
-            return pes;
-        }
-        else
-        {
-            spdlog::error("[Endpoint::createService] create service endpoint for interface[{}] fail", intf);
-            close(soc);
-            return nullptr;
-        }
-    }
-    else
-    {
+        spdlog::error("[Endpoint::createService] create service endpoint for interface[{}] fail", intf);
         close(soc);
         return nullptr;
     }
+    else
+    {
+        spdlog::debug("[Endpoint::createService] create endpoint for intf[{}]", intf);
+        pes->init(soc, protocol, intf, service, targetHost, targetService);
+    }
+
+    // get target addr
+    if (!getAddrInfo(pes))
+    {
+        spdlog::error("[Endpoint::createService] get addr of host[{}] fail", pes->targetHost);
+        close(soc);
+        delete pes;
+        return nullptr;
+    }
+
+    return pes;
 }
 
 void Endpoint::releaseService(EndpointService_t *pService)
 {
     if (pService)
     {
-        if (!dynamic_cast<EndpointService_t *>(pService))
-        {
-            spdlog::critical("[Endpoint::releaseService] pointer[{}] is NOT EndpointService_t pointer!", static_cast<void *>(pService));
-            assert(false);
-        }
+        // free addr info
+        assert(pService->targetHostAddrs);
+        freeaddrinfo(pService->targetHostAddrs);
 
         delete pService;
-    }
-}
-
-bool Endpoint::createTunnel(const EndpointService_t *pes, Tunnel_t *pt)
-{
-    assert(pes && pt);
-
-    if (pes->protocol == Protocol_t::TCP)
-    {
-        // get addr info
-        if (!getAddrInfo(pes, pt) || pt->addrHead == nullptr)
-        {
-            spdlog::error("[Endpoint::createTunnel] get address of target[{}] fail", pes->targetHost);
-            return false;
-        }
-
-        // create socket and connect to target host
-        if (!connectToTarget(pes, pt))
-        {
-            spdlog::error("[Endpoint::createTunnel] connect to target[{}] fail", pes->targetHost);
-            return false;
-        }
-
-        pt->status = TunnelState_t::INITIALIZED;
-    }
-    else
-    {
-        // TODO: implement this function.
-        spdlog::error("[Endpoint::createTunnel] UDP service not implimented yet.");
-        return false;
     }
 }
 
@@ -290,7 +228,7 @@ bool Endpoint::getIntfAddr(const char *intf, sockaddr_in &sa)
     return result;
 }
 
-bool Endpoint::getAddrInfo(const EndpointService_t *pes, Tunnel_t *pt)
+bool Endpoint::getAddrInfo(EndpointService_t *pes)
 {
     addrinfo hints;
 
@@ -304,7 +242,7 @@ bool Endpoint::getAddrInfo(const EndpointService_t *pes, Tunnel_t *pt)
     hints.ai_addr = nullptr;
     hints.ai_next = nullptr;
 
-    int nRet = getaddrinfo(pes->targetHost, pes->targetService, &hints, &pt->addrHead);
+    int nRet = getaddrinfo(pes->targetHost, pes->targetService, &hints, &pes->targetHostAddrs);
     if (nRet != 0)
     {
         spdlog::error("[Endpoint::getAddrInfo] getaddrinfo fail: {}", gai_strerror(nRet));
@@ -312,58 +250,41 @@ bool Endpoint::getAddrInfo(const EndpointService_t *pes, Tunnel_t *pt)
     }
 }
 
-bool Endpoint::connectToTarget(const EndpointService_t *pes, Tunnel_t *pt)
+int Endpoint::createTcpServiceSoc(sockaddr_in &sa)
 {
-    if ((pt->north.soc = socket(pt->curAddr->ai_family,
-                                pt->curAddr->ai_socktype,
-                                pt->curAddr->ai_protocol)) < 0)
-    {
-        spdlog::error("[Endpoint::connectToTarget] socket creation error{}: {}",
-                      errno, strerror(errno));
-        return false;
-    }
-
-    // set socket to non-blocking mode
-    if (fcntl(pt->north.soc, F_SETFL, O_NONBLOCK) < 0)
-    {
-        spdlog::error("[Endpoint::connectToTarget] set socket to non-blocking mode fail. {}: {}",
-                      errno, strerror(errno));
-        close(pt->north.soc);
-        pt->north.soc = 0;
-        return false;
-    }
-
-    char ip[INET_ADDRSTRLEN];
-
-    for (pt->curAddr = pt->addrHead; pt->curAddr; pt->curAddr = pt->curAddr->ai_next)
-    {
-        inet_ntop(AF_INET, &pt->curAddr->ai_addr, ip, INET_ADDRSTRLEN);
-        spdlog::debug("[Endpoint::connectToTarget] connect to {} ({}:{})",
-                      pes->targetHost, ip, pes->targetService);
-
-        // connect to host
-        if (connect(pt->north.soc, pt->curAddr->ai_addr, pt->curAddr->ai_addrlen) < 0 &&
-            errno != EALREADY && errno != EINPROGRESS)
+    auto logErr = [](const char *title, bool b) -> bool {
+        if (b)
         {
-            if (pt->curAddr->ai_next)
-            {
-                spdlog::error("[Endpoint::connectToTarget] connect fail: {}, {}, try again",
-                              errno, strerror(errno));
-            }
-            else
-            {
-                spdlog::error("[Endpoint::connectToTarget] connect fail: {}, {}",
-                              errno, strerror(errno));
-                close(pt->north.soc);
-                pt->north.soc = 0;
-                return false;
-            }
+            spdlog::error("[Endpoint::createService] {}: {} - {}", title, errno, strerror(errno));
+            return b;
         }
-        else
+    };
+
+    int soc = 0;
+    int flags = 0;
+    int opt = 1;
+
+    if (
+        // create socket
+        logErr("create socket fail", soc = socket(AF_INET, SOCK_STREAM, 0) < 0) ||
+        // set to non-block
+        logErr("fcntl fail", flags = fcntl(soc, F_GETFL) == -1) ||
+        logErr("set to non-block fail", fcntl(soc, F_SETFL, flags | O_NONBLOCK) == -1) ||
+        // set reuse
+        logErr("set reuse fail", setsockopt(soc, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt))) ||
+        // bind
+        logErr("bind fail", bind(soc, (struct sockaddr *)&sa, sizeof(sa))) ||
+        // listen
+        logErr("listen fail", listen(soc, SOMAXCONN) == -1))
+    {
+        if (soc > 0)
         {
-            return true;
+            close(soc);
         }
+        return -1;
     }
+
+    return soc;
 }
 
 } // namespace link

@@ -72,6 +72,7 @@ public:
     inline void setSessions(uint32_t sessions) { setSessions(std::to_string(sessions)); }
     inline uint32_t getBufferSize(uint32_t defaultValue = 0)
     {
+        return getAsUint32("bufferSize", "global", defaultValue);
     }
     template <class T>
     inline void setBufferSize(T bufferSize) { mConfig["bufferSize"]["global"] = bufferSize; }
