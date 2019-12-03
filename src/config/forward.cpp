@@ -12,57 +12,64 @@ namespace mapper
 namespace config
 {
 
+const regex Forward::REG_FORWARD_SETTING = regex(R"(^\s*)"
+                                                 R"((((tcp|udp):)?([A-Za-z0-9._-]*):)?)" // protocol & interface
+                                                 R"((\d{1,5})\s*:)"                      // service port
+                                                 R"(\s*([A-Za-z0-9._-]+)\s*:)"           // target host
+                                                 R"(\s*(\d{1,5}))"                       // target port
+                                                 R"(\s*$)");
+
 Forward::Forward(const std::string &protocol,
                  const std::string &interface,
-                 const uint32_t servicePort,
+                 const std::string service,
                  const std::string &targetHost,
-                 const uint32_t targetPort)
+                 const std::string targetService)
 {
     init(protocol,
          interface,
-         servicePort,
+         service,
          targetHost,
-         targetPort);
+         targetService);
 }
 
 Forward::Forward(const Forward &src)
 {
     init(src.protocol,
          src.interface,
-         src.servicePort,
+         src.service,
          src.targetHost,
-         src.targetPort);
+         src.targetService);
 }
 
 Forward::Forward(const Forward *src)
 {
     init(src->protocol,
          src->interface,
-         src->servicePort,
+         src->service,
          src->targetHost,
-         src->targetPort);
+         src->targetService);
 }
 
 Forward &Forward::operator=(const Forward &src)
 {
     init(src.protocol,
          src.interface,
-         src.servicePort,
+         src.service,
          src.targetHost,
-         src.targetPort);
+         src.targetService);
 }
 
 void Forward::init(const std::string &protocol,
                    const std::string &interface,
-                   const uint32_t servicePort,
+                   const std::string service,
                    const std::string &targetHost,
-                   const uint32_t targetPort)
+                   const std::string targetService)
 {
     this->protocol = protocol;
     this->interface = interface;
-    this->servicePort = servicePort;
+    this->service = service;
     this->targetHost = targetHost;
-    this->targetPort = targetPort;
+    this->targetService = targetService;
 
     spdlog::trace("[Forward::init] {}", toStr());
 }
@@ -97,12 +104,6 @@ bool Forward::parse(string &setting)
 {
     try
     {
-        auto REG_FORWARD_SETTING = regex(R"(^\s*)"
-                                         R"((((tcp|udp):)?([A-Za-z0-9._-]*):)?)" // protocol & interface
-                                         R"((\d{1,5})\s*:)"                      // service port
-                                         R"(\s*([A-Za-z0-9._-]+)\s*:)"           // target host
-                                         R"(\s*(\d{1,5}))"                       // target port
-                                         R"(\s*$)");
         smatch match;
 
         if (regex_match(setting, match, REG_FORWARD_SETTING))
@@ -116,14 +117,14 @@ bool Forward::parse(string &setting)
             assert(match.size() == 8);
             string strProtocol = match[3];
             string strInterface = match[4];
-            string strSport = match[5];
+            string strService = match[5];
             string strIp = match[6];
-            string strDport = match[7];
+            string strPort = match[7];
 
             strProtocol = strProtocol.empty() ? "tcp" : strProtocol;    // default protocl: tcp
             strInterface = strInterface.empty() ? "any" : strInterface; // default interface: any
-            int sport = atoi(strSport.c_str());
-            int dport = atoi(strDport.c_str());
+            int sport = atoi(strService.c_str());
+            int dport = atoi(strPort.c_str());
 
             if (sport <= 0 || 0x10000 <= sport)
             {
@@ -137,7 +138,7 @@ bool Forward::parse(string &setting)
             }
             else
             {
-                init(strProtocol, strInterface, sport, strIp, dport);
+                init(strProtocol, strInterface, strService, strIp, strPort);
                 return true;
             }
         }
@@ -160,9 +161,9 @@ string Forward::toStr()
     ss << "["
        << protocol << ":"
        << interface << ":"
-       << servicePort << ":"
+       << service << ":"
        << targetHost << ":"
-       << targetPort << "]";
+       << targetService << "]";
 
     return ss.str();
 }

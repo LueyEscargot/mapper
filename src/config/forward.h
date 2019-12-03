@@ -13,6 +13,7 @@
 #define __MAPPER_CONFIG_FORWARD_H__
 
 #include <memory>
+#include <regex>
 #include <string>
 
 namespace mapper
@@ -22,22 +23,25 @@ namespace config
 
 class Forward
 {
+protected:
+    static const std::regex REG_FORWARD_SETTING;
+
 public:
     Forward() {}
     Forward(const std::string &protocol,
             const std::string &interface,
-            const uint32_t servicePort,
+            const std::string service,
             const std::string &targetHost,
-            const uint32_t targetPort);
+            const std::string targetService);
     Forward(const Forward &src);
     Forward(const Forward *src);
     Forward &operator=(const Forward &src);
 
     void init(const std::string &protocol,
               const std::string &interface,
-              const uint32_t servicePort,
+              const std::string service,
               const std::string &targetHost,
-              const uint32_t targetPort);
+              const std::string targetService);
 
     static std::shared_ptr<Forward> create(std::string setting);
     static void release(std::shared_ptr<Forward> pForward);
@@ -47,9 +51,9 @@ public:
 
     std::string protocol;
     std::string interface;
-    uint32_t servicePort;
+    std::string service;
     std::string targetHost;
-    uint32_t targetPort;
+    std::string targetService;
 };
 
 } // namespace config
