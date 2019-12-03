@@ -2,7 +2,6 @@
 #define __MAPPER_LINK_ENDPOINT_H__
 
 #include <netinet/in.h> // for sockaddr_in
-#include <regex>
 #include <string>
 #include "type.h"
 
@@ -14,14 +13,11 @@ namespace link
 class Endpoint
 {
 protected:
-    static std::regex REG_FORWARD_SETTING_STRING;
-
     Endpoint(){};
     Endpoint(const Endpoint &){};
     Endpoint &operator=(const Endpoint &) { return *this; }
 
 public:
-    static EndpointService_t *createService(std::string forward);
     static EndpointService_t *createService(const char *protocol,
                                             const char *intf,
                                             const char *service,

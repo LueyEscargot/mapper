@@ -16,29 +16,6 @@ namespace mapper
 namespace link
 {
 
-regex Endpoint::REG_FORWARD_SETTING_STRING = regex(R"(^\s*\[(\w+):(\w+):(\d+):([a-zA-Z0-9-_.]+):(\d+)]\s*$)");
-
-EndpointService_t *Endpoint::createService(string forward)
-{
-    smatch m;
-    if (regex_match(forward, m, REG_FORWARD_SETTING_STRING))
-    {
-        assert(m.size() == 6);       // section
-        string protocol = m[1];      // protocol
-        string interface = m[2];     // interface
-        string service = m[3];       // service port
-        string targetHost = m[4];    // target host
-        string targetService = m[5]; // target port
-
-        return createService(protocol.c_str(), interface.c_str(), service.c_str(), targetHost.c_str(), targetService.c_str());
-    }
-    else
-    {
-        spdlog::error("[Endpoint::createService] invalid forward setting format: {}", forward);
-        return nullptr;
-    }
-}
-
 EndpointService_t *Endpoint::createService(const char *strProtocol,
                                            const char *intf,
                                            const char *service,
