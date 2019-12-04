@@ -9,6 +9,8 @@ using namespace std;
 
 namespace mapper
 {
+namespace buffer
+{
 
 GenericBuffer::GenericBuffer(uint32_t _capacity)
     : Buffer(_capacity) {}
@@ -85,4 +87,5 @@ bool GenericBuffer::defrag()
     return true;
 }
 
+} // namespace buffer
 } // namespace mapper

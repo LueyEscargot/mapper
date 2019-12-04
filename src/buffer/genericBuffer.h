@@ -9,14 +9,16 @@
  * 
  */
 
-#ifndef __MAPPER_GENERICBUFFER_H__
-#define __MAPPER_GENERICBUFFER_H__
+#ifndef __MAPPER_BUFFER_GENERICBUFFER_H__
+#define __MAPPER_BUFFER_GENERICBUFFER_H__
 
 #include <stdint.h>
 #include <string.h>
 #include "buffer.h"
 
 namespace mapper
+{
+namespace buffer
 {
 
 class GenericBuffer : public Buffer
@@ -42,6 +44,7 @@ public:
     inline bool defrag() override;
 };
 
+} // namespace buffer
 } // namespace mapper
 
-#endif // __MAPPER_GENERICBUFFER_H__
+#endif // __MAPPER_BUFFER_GENERICBUFFER_H__

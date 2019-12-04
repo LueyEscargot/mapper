@@ -39,8 +39,8 @@ Session::Session(uint32_t bufSize)
       mSouthEndpoint(Endpoint::Type_t::SOUTH, 0, this),
       mStatus(INITIALIZED)
 {
-    mpToNorthBuffer = Buffer::alloc(bufSize);
-    mpToSouthBuffer = Buffer::alloc(bufSize);
+    mpToNorthBuffer = buffer::Buffer::alloc(bufSize);
+    mpToSouthBuffer = buffer::Buffer::alloc(bufSize);
     if (!mpToNorthBuffer || !mpToSouthBuffer)
     {
         throw("[Session::Session] create buffer fail");
@@ -53,8 +53,8 @@ Session::~Session()
                   (void *)this,
                   mSouthEndpoint.soc, (void *)&mSouthEndpoint,
                   mNorthEndpoint.soc, (void *)&mNorthEndpoint);
-    Buffer::release(mpToNorthBuffer);
-    Buffer::release(mpToSouthBuffer);
+    buffer::Buffer::release(mpToNorthBuffer);
+    buffer::Buffer::release(mpToSouthBuffer);
     mpToNorthBuffer = nullptr;
     mpToSouthBuffer = nullptr;
 }

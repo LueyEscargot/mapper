@@ -52,8 +52,8 @@ public:
     Endpoint mNorthEndpoint;
     Endpoint mSouthEndpoint;
 
-    Buffer *mpToNorthBuffer;
-    Buffer *mpToSouthBuffer;
+    buffer::Buffer *mpToNorthBuffer;
+    buffer::Buffer *mpToSouthBuffer;
 
 protected:
     State_t mStatus;
