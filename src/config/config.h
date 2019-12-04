@@ -37,11 +37,11 @@ protected:
     static std::regex REG_CONFIG;
     static std::regex REG_VALID_UNSIGNED_NUMBER;
 
-    static const int DEFAULT_LINK_TUNNELS = 1048576;
+    static const int DEFAULT_LINK_TUNNELS = 1 << 16;
     static const int DEFAULT_LINK_NORTHBUF = 1;
     static const int DEFAULT_LINK_SOUTHBUF = 1;
 
-    static const int BUF_SIZE_UNIT = 1 << 20;
+    static const int BUF_SIZE_UNIT = 1 << 10;
 
     using CONFIG = std::map<std::string, std::map<std::string, std::string>>; // secion - key - value
 
@@ -74,13 +74,6 @@ public:
     template <class T>
     inline void setSessions(T sessions) { mConfig["sessions"]["global"] = sessions; }
     inline void setSessions(uint32_t sessions) { setSessions(std::to_string(sessions)); }
-    inline uint32_t getBufferSize(uint32_t defaultValue = 0)
-    {
-        return getAsUint32("bufferSize", "global", defaultValue);
-    }
-    template <class T>
-    inline void setBufferSize(T bufferSize) { mConfig["bufferSize"]["global"] = bufferSize; }
-    inline void setBufferSize(uint32_t bufferSize) { setBufferSize(std::to_string(bufferSize)); }
     inline uint32_t getConnectTimeoutInterval(uint32_t defaultValue = 0)
     {
         return getAsUint32("connectTimeout", "global", defaultValue);
