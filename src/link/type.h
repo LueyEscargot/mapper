@@ -4,6 +4,7 @@
 #include <netdb.h>
 #include <string.h>
 #include <unistd.h>
+#include "../buffer/buffer.h"
 
 namespace mapper
 {
@@ -29,6 +30,7 @@ typedef enum PROTOCOL
 
 typedef enum TUNNEL_STATE
 {
+    ALLOCATED = 0,
     INITIALIZED = 1,
     CONNECT = 1 << 1,
     ESTABLISHED = 1 << 2,
@@ -94,12 +96,15 @@ typedef struct ENDPOINT_REMOTE : public EndpointBase_t
 {
     void *tunnel;
 
-    inline void init(Type_t type, int _soc, void *_tunnel)
+    inline void init(void *_tunnel)
     {
-        // base
-        EndpointBase_t::init(type, soc);
         // tunnel
         tunnel = _tunnel;
+    }
+    inline void init(Type_t type, int _soc)
+    {
+        // base
+        EndpointBase_t::init(type, _soc);
     }
     inline void close()
     {
@@ -113,21 +118,37 @@ typedef struct TUNNEL
     EndpointRemote_t north;
     TunnelState_t status;
     void *tag;
-
     addrinfo *curAddr;
 
+    buffer::Buffer *toNorthBUffer;
+    buffer::Buffer *toSouthBUffer;
+
+    inline void init(const uint32_t southBufSize, const uint32_t northBufSize)
+    {
+        south.init(this);
+        north.init(this);
+        status = TunnelState_t::ALLOCATED;
+        tag = nullptr;
+        curAddr = nullptr;
+
+        toNorthBUffer = buffer::Buffer::alloc(northBufSize);
+        toSouthBUffer = buffer::Buffer::alloc(southBufSize);
+    }
     inline void init(addrinfo *addrInfoList)
     {
         status = TunnelState_t::INITIALIZED;
-        tag = nullptr;
         curAddr = addrInfoList;
     }
-    inline void initAsConnect(int southSoc, int northSoc)
+    inline void setStatus(TunnelState_t _status)
+    {
+        status = _status;
+    }
+    inline void setAsConnect(int southSoc, int northSoc)
     {
         // south
-        south.init(Type_t::SOUTH, southSoc, this);
+        south.init(Type_t::SOUTH, southSoc);
         // north
-        north.init(Type_t::SOUTH, northSoc, this);
+        north.init(Type_t::SOUTH, northSoc);
 
         status = TunnelState_t::CONNECT;
     }
@@ -135,6 +156,11 @@ typedef struct TUNNEL
     {
         south.close();
         north.close();
+
+        buffer::Buffer::release(toNorthBUffer);
+        buffer::Buffer::release(toSouthBUffer);
+        toNorthBUffer = nullptr;
+        toSouthBUffer = nullptr;
 
         status = TunnelState_t::CLOSED;
     }

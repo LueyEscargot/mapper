@@ -158,7 +158,7 @@ bool TunnelMgr::init(const EndpointService_t *pes, int clientSoc, Tunnel_t *pt)
     }
 
     // init new allocated tunnel object
-    pt->initAsConnect(soc, clientSoc);
+    pt->setAsConnect(clientSoc, soc);
     return true;
 }
 
