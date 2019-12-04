@@ -43,6 +43,10 @@ typedef struct ENDPOINT_BASE
     inline void init(Type_t _type, int _soc)
     {
         type = _type;
+        init(_soc);
+    }
+    inline void init(int _soc)
+    {
         soc = _soc;
         valid = true;
     }
@@ -53,8 +57,8 @@ typedef struct ENDPOINT_BASE
 
     inline void close()
     {
-        ::close(soc);
-        soc = 0;
+        if (soc > 0)
+            ::close(soc);
         valid = false;
     }
 } EndpointBase_t;
@@ -96,15 +100,17 @@ typedef struct ENDPOINT_REMOTE : public EndpointBase_t
 {
     void *tunnel;
 
-    inline void init(void *_tunnel)
+    inline void init(Type_t type, void *_tunnel)
     {
+        // base
+        EndpointBase_t::init(type, 0);
         // tunnel
         tunnel = _tunnel;
     }
-    inline void init(Type_t type, int _soc)
+    inline void init(int _soc)
     {
         // base
-        EndpointBase_t::init(type, _soc);
+        EndpointBase_t::init(_soc);
     }
     inline void close()
     {
@@ -125,19 +131,18 @@ typedef struct TUNNEL
 
     inline void init(const uint32_t southBufSize, const uint32_t northBufSize)
     {
-        south.init(this);
-        north.init(this);
-        status = TunnelState_t::ALLOCATED;
+        south.init(Type_t::SOUTH, this);
+        north.init(Type_t::NORTH, this);
         tag = nullptr;
         curAddr = nullptr;
-
         toNorthBUffer = buffer::Buffer::alloc(northBufSize);
         toSouthBUffer = buffer::Buffer::alloc(southBufSize);
+        setStatus(ALLOCATED);
     }
     inline void init(addrinfo *addrInfoList)
     {
-        status = TunnelState_t::INITIALIZED;
         curAddr = addrInfoList;
+        setStatus(INITIALIZED);
     }
     inline void setStatus(TunnelState_t _status)
     {
@@ -145,12 +150,9 @@ typedef struct TUNNEL
     }
     inline void setAsConnect(int southSoc, int northSoc)
     {
-        // south
-        south.init(Type_t::SOUTH, southSoc);
-        // north
-        north.init(Type_t::SOUTH, northSoc);
-
-        status = TunnelState_t::CONNECT;
+        south.init(southSoc);
+        north.init(northSoc);
+        setStatus(CONNECT);
     }
     inline void close()
     {

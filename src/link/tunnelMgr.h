@@ -4,6 +4,7 @@
 #include <list>
 #include <string>
 #include "type.h"
+#include "../config/config.h"
 
 namespace mapper
 {
@@ -20,18 +21,19 @@ public:
     TunnelMgr();
     ~TunnelMgr();
 
-    bool init(uint32_t maxTunnels);
+    bool init(config::Config *pCfg);
     void close();
 
     Tunnel_t *allocTunnel(EndpointService_t *pes);
     void freeTunnel(Tunnel_t *pt);
 
-    static bool connectToTarget(Tunnel_t *pet);
+    static bool connect(Tunnel_t *pet);
+    static bool onSoc(uint64_t curTime, EndpointRemote_t *per, uint32_t events);
+    static bool init(Tunnel_t *pet, int southSoc);
 
 protected:
-    static bool init(const EndpointService_t *pes, int clientSoc, Tunnel_t *pet);
-
     Tunnel_t *mpTunnels;
+    uint32_t mTunnelCounts;
     std::list<Tunnel_t *> mFreeList;
 };
 

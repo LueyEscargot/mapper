@@ -18,7 +18,8 @@ namespace link
 {
 
 TunnelMgr::TunnelMgr()
-    : mpTunnels(nullptr)
+    : mpTunnels(nullptr),
+      mTunnelCounts(0)
 {
 }
 
@@ -27,9 +28,9 @@ TunnelMgr::~TunnelMgr()
     close();
 }
 
-bool TunnelMgr::init(uint32_t maxTunnels)
+bool TunnelMgr::init(config::Config *pCfg)
 {
-    spdlog::debug("[TunnelMgr::init] init for {} blocks.");
+    assert(pCfg);
 
     if (mpTunnels)
     {
@@ -37,21 +38,39 @@ bool TunnelMgr::init(uint32_t maxTunnels)
         return false;
     }
 
-    mpTunnels = static_cast<Tunnel_t *>(malloc(sizeof(Tunnel_t) * maxTunnels));
+    mTunnelCounts = pCfg->getLinkTunnels();
+    spdlog::debug("[TunnelMgr::init] init for {} blocks.", mTunnelCounts);
+
+    mpTunnels = static_cast<Tunnel_t *>(malloc(sizeof(Tunnel_t) * mTunnelCounts));
     if (!mpTunnels)
     {
         spdlog::error("[TunnelMgr::init] create block array fail.");
         return false;
     }
 
-    for (int i = 0; i < maxTunnels; ++i)
+    for (int i = 0; i < mTunnelCounts; ++i)
     {
+        mpTunnels[i].init(pCfg->getLinkSouthBuf(), pCfg->getLinkNorthBuf());
         mFreeList.push_back(mpTunnels + i);
     }
 }
 
 void TunnelMgr::close()
 {
+    spdlog::debug("[TunnelMgr::close] release tunnel array and send/recv buffer in each tunnel.");
+    if (mpTunnels)
+    {
+        // release send/recv buffers
+        for (int i = 0; i < mTunnelCounts; ++i)
+        {
+            mpTunnels[i].close();
+        }
+
+        // release tunnel array
+        free(mpTunnels);
+        mpTunnels = nullptr;
+        mTunnelCounts = 0;
+    }
 }
 
 Tunnel_t *TunnelMgr::allocTunnel(EndpointService_t *pes)
@@ -83,36 +102,37 @@ void TunnelMgr::freeTunnel(Tunnel_t *pt)
     mFreeList.push_front(pt);
 }
 
-bool TunnelMgr::connectToTarget(Tunnel_t *pt)
+bool TunnelMgr::connect(Tunnel_t *pt)
 {
-    assert(pt->status == TunnelState_t::INITIALIZED);
+    assert(pt->status == TunnelState_t::CONNECT);
 
     if ([&]() -> bool {
             if (pt->curAddr == nullptr)
             {
-                spdlog::debug("[Tunnel::connectToTarget] no more retry address");
+                spdlog::debug("[Tunnel::connect] no more retry address");
                 return false;
             }
 
             for (char ip[INET_ADDRSTRLEN]; pt->curAddr; pt->curAddr = pt->curAddr->ai_next)
             {
-                inet_ntop(AF_INET, &pt->curAddr->ai_addr, ip, INET_ADDRSTRLEN);
-                spdlog::debug("[Tunnel::connectToTarget] soc[{}] connect to {}", ip);
+                inet_ntop(AF_INET, &(pt->curAddr->ai_addr), ip, INET_ADDRSTRLEN);
+                spdlog::debug("[Tunnel::connect] soc[{}] connect to {}", pt->north.soc, ip);
 
                 // connect to host
-                if (connect(pt->north.soc, pt->curAddr->ai_addr, pt->curAddr->ai_addrlen) < 0 &&
+                if (::connect(pt->north.soc, pt->curAddr->ai_addr, pt->curAddr->ai_addrlen) < 0 &&
                     errno != EALREADY && errno != EINPROGRESS)
                 {
                     if (pt->curAddr->ai_next)
                     {
-                        spdlog::error("[Tunnel::connectToTarget] connect fail: {}, {}, try again",
+                        spdlog::error("[Tunnel::connect] connect fail: {}, {}, try again",
                                       errno, strerror(errno));
                     }
                     else
                     {
-                        spdlog::error("[Tunnel::connectToTarget] connect fail: {}, {}",
+                        spdlog::error("[Tunnel::connect] connect fail: {}, {}",
                                       errno, strerror(errno));
                         ::close(pt->north.soc);
+                        pt->north.valid = false;
                         return false;
                     }
                 }
@@ -122,26 +142,32 @@ bool TunnelMgr::connectToTarget(Tunnel_t *pt)
                 }
             }
 
-            spdlog::debug("[Tunnel::connectToTarget] north sock[{}] connect fail.", pt->north.soc);
+            spdlog::debug("[Tunnel::connect] north sock[{}] connect fail.", pt->north.soc);
             return false;
         }())
+    {
+        return true;
+    }
+    else
     {
         pt->status == TunnelState_t::BROKEN;
         return false;
     }
-    else
-    {
-        return true;
-    }
 }
 
-bool TunnelMgr::init(const EndpointService_t *pes, int clientSoc, Tunnel_t *pt)
+bool TunnelMgr::onSoc(uint64_t curTime, EndpointRemote_t *per, uint32_t events)
+{
+    spdlog::critical("[Tunnel::onSoc] NOT Implemented yet.");
+    return false;
+}
+
+bool TunnelMgr::init(Tunnel_t *pet, int southSoc)
 {
     // create to north socket
-    int soc = 0;
-    if ((soc = socket(pt->curAddr->ai_family,
-                      pt->curAddr->ai_socktype,
-                      pt->curAddr->ai_protocol)) < 0)
+    int northSoc;
+    if ((northSoc = socket(pet->curAddr->ai_family,
+                           pet->curAddr->ai_socktype,
+                           pet->curAddr->ai_protocol)) < 0)
     {
         spdlog::error("[Tunnel::init] create socket fail: {} - {}",
                       errno, strerror(errno));
@@ -149,16 +175,16 @@ bool TunnelMgr::init(const EndpointService_t *pes, int clientSoc, Tunnel_t *pt)
     }
 
     // set socket to non-blocking mode
-    if (fcntl(soc, F_SETFL, O_NONBLOCK) < 0)
+    if (fcntl(northSoc, F_SETFL, O_NONBLOCK) < 0)
     {
         spdlog::error("[Tunnel::init] set socket to non-blocking mode fail. {}: {}",
                       errno, strerror(errno));
-        ::close(soc);
+        ::close(northSoc);
         return false;
     }
 
     // init new allocated tunnel object
-    pt->setAsConnect(clientSoc, soc);
+    pet->setAsConnect(southSoc, northSoc);
     return true;
 }
 

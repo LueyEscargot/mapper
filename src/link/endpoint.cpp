@@ -225,6 +225,8 @@ bool Endpoint::getAddrInfo(EndpointService_t *pes)
         spdlog::error("[Endpoint::getAddrInfo] getaddrinfo fail: {}", gai_strerror(nRet));
         return false;
     }
+
+    return true;
 }
 
 int Endpoint::createTcpServiceSoc(sockaddr_in &sa)
@@ -243,9 +245,9 @@ int Endpoint::createTcpServiceSoc(sockaddr_in &sa)
 
     if (
         // create socket
-        logErr("create socket fail", soc = socket(AF_INET, SOCK_STREAM, 0) < 0) ||
+        logErr("create socket fail", (soc = socket(AF_INET, SOCK_STREAM, 0)) <= 0) ||
         // set to non-block
-        logErr("fcntl fail", flags = fcntl(soc, F_GETFL) == -1) ||
+        logErr("fcntl fail", (flags = fcntl(soc, F_GETFL)) == -1) ||
         logErr("set to non-block fail", fcntl(soc, F_SETFL, flags | O_NONBLOCK) == -1) ||
         // set reuse
         logErr("set reuse fail", setsockopt(soc, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt))) ||
