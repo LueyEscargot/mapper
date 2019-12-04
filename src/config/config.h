@@ -38,6 +38,10 @@ protected:
     static std::regex REG_VALID_UNSIGNED_NUMBER;
 
     static const int DEFAULT_LINK_TUNNELS = 1048576;
+    static const int DEFAULT_LINK_NORTHBUF = 1;
+    static const int DEFAULT_LINK_SOUTHBUF = 1;
+
+    static const int BUF_SIZE_UNIT = 1 << 20;
 
     using CONFIG = std::map<std::string, std::map<std::string, std::string>>; // secion - key - value
 
@@ -101,6 +105,8 @@ public:
 
     // properties of link-tunnels
     inline int getLinkTunnels() { return getAsUint32("tunnels", "link", DEFAULT_LINK_TUNNELS); }
+    inline int getLinkNorthBuf() { return BUF_SIZE_UNIT * getAsUint32("northBuf", "link", DEFAULT_LINK_NORTHBUF); }
+    inline int getLinkSouthBuf() { return BUF_SIZE_UNIT * getAsUint32("southBuf", "link", DEFAULT_LINK_SOUTHBUF); }
 
     std::string mConfigFile;
 
