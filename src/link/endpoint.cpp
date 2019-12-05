@@ -37,8 +37,8 @@ EndpointService_t *Endpoint::createService(const char *strProtocol,
     int soc = createTcpServiceSoc(sa);
     if (soc < 0)
     {
-        spdlog::error("[Endpoint::createService] create service soc[{}:{}] fail: {} - {}",
-                      intf, service, errno, strerror(errno));
+        spdlog::error("[Endpoint::createService] create service[{}:{}--({})-->{}:{}] fail.",
+                      intf, service, strProtocol, targetHost, targetService);
         return nullptr;
     }
 

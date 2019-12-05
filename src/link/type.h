@@ -129,20 +129,24 @@ typedef struct TUNNEL
     buffer::Buffer *toNorthBUffer;
     buffer::Buffer *toSouthBUffer;
 
-    inline void init(const uint32_t southBufSize, const uint32_t northBufSize)
+    inline void init(buffer::Buffer *_toNorthBUffer, buffer::Buffer *_toSouthBUffer)
     {
         south.init(Type_t::SOUTH, this);
         north.init(Type_t::NORTH, this);
         tag = nullptr;
         curAddr = nullptr;
-        toNorthBUffer = buffer::Buffer::alloc(northBufSize);
-        toSouthBUffer = buffer::Buffer::alloc(southBufSize);
-        setStatus(ALLOCATED);
+        toNorthBUffer = _toNorthBUffer;
+        toSouthBUffer = _toSouthBUffer;
+
+        setStatus(TunnelState_t::ALLOCATED);
     }
     inline void init(addrinfo *addrInfoList)
     {
         curAddr = addrInfoList;
-        setStatus(INITIALIZED);
+        toNorthBUffer->init();
+        toSouthBUffer->init();
+
+        setStatus(TunnelState_t::INITIALIZED);
     }
     inline void setStatus(TunnelState_t _status)
     {
@@ -152,6 +156,7 @@ typedef struct TUNNEL
     {
         south.init(southSoc);
         north.init(northSoc);
+
         setStatus(CONNECT);
     }
     inline void close()
@@ -159,40 +164,9 @@ typedef struct TUNNEL
         south.close();
         north.close();
 
-        buffer::Buffer::release(toNorthBUffer);
-        buffer::Buffer::release(toSouthBUffer);
-        toNorthBUffer = nullptr;
-        toSouthBUffer = nullptr;
-
-        status = TunnelState_t::CLOSED;
+        setStatus(TunnelState_t::CLOSED);
     }
 } Tunnel_t;
-
-typedef struct NAME_RESOLVE_BLOCK
-{
-    struct gaicb gaicb;
-    struct addrinfo hints;
-    char name[MAX_HOST_NAME_LENGTH];
-    char serivce[MAX_PORT_STR_LENGTH];
-
-    inline void init()
-    {
-        gaicb = (struct gaicb){};
-        gaicb.ar_name = name;
-        gaicb.ar_request = &hints;
-        gaicb.ar_result = nullptr;
-        gaicb.ar_service = serivce;
-    }
-    inline void init(const char *host, const int port, int socktype, int protocol, int flags)
-    {
-        snprintf(name, MAX_HOST_NAME_LENGTH, "%s", host);
-        snprintf(serivce, MAX_PORT_STR_LENGTH, "%d", port);
-        hints = (struct addrinfo){};
-        hints.ai_socktype = socktype;
-        hints.ai_protocol = protocol;
-        hints.ai_flags = flags;
-    }
-} NameResolveBlk_t;
 
 } // namespace link
 } // namespace mapper

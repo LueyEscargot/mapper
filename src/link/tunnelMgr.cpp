@@ -9,6 +9,7 @@
 #include <sstream>
 #include <spdlog/spdlog.h>
 #include "endpoint.h"
+#include "../buffer/buffer.h"
 
 using namespace std;
 
@@ -50,8 +51,22 @@ bool TunnelMgr::init(config::Config *pCfg)
 
     for (int i = 0; i < mTunnelCounts; ++i)
     {
-        mpTunnels[i].init(pCfg->getLinkSouthBuf(), pCfg->getLinkNorthBuf());
-        mFreeList.push_back(mpTunnels + i);
+        uint32_t northBufSize = pCfg->getLinkSouthBuf();
+        uint32_t southBufSize = pCfg->getLinkNorthBuf();
+        buffer::Buffer *northBUffer = buffer::Buffer::alloc(northBufSize);
+        buffer::Buffer *southBUffer = buffer::Buffer::alloc(southBufSize);
+        if (northBUffer && southBUffer)
+        {
+            mpTunnels[i].init(northBUffer, southBUffer);
+            mFreeList.push_back(mpTunnels + i);
+        }
+        else
+        {
+            spdlog::error("[TunnelMgr::init] alloc tunnel buffer fail.");
+            buffer::Buffer::release(northBUffer);
+            buffer::Buffer::release(southBUffer);
+            return false;
+        }
     }
 }
 
@@ -63,7 +78,10 @@ void TunnelMgr::close()
         // release send/recv buffers
         for (int i = 0; i < mTunnelCounts; ++i)
         {
-            mpTunnels[i].close();
+            buffer::Buffer::release(mpTunnels[i].toNorthBUffer);
+            buffer::Buffer::release(mpTunnels[i].toSouthBUffer);
+            mpTunnels[i].toNorthBUffer = nullptr;
+            mpTunnels[i].toSouthBUffer = nullptr;
         }
 
         // release tunnel array
@@ -90,7 +108,6 @@ Tunnel_t *TunnelMgr::allocTunnel(EndpointService_t *pes)
 
 void TunnelMgr::freeTunnel(Tunnel_t *pt)
 {
-    spdlog::error("[TunnelMgr::freeTunnel] not implimented yet.");
     if (pt->status != TunnelState_t::BROKEN)
     {
         spdlog::warn("[Tunnel::freeTunnel] invalid status: {}", pt->status);
