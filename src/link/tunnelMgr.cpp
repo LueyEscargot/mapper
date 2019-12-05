@@ -132,8 +132,11 @@ bool TunnelMgr::connect(Tunnel_t *pt)
 
             for (char ip[INET_ADDRSTRLEN]; pt->curAddr; pt->curAddr = pt->curAddr->ai_next)
             {
-                inet_ntop(AF_INET, &(pt->curAddr->ai_addr), ip, INET_ADDRSTRLEN);
-                spdlog::debug("[Tunnel::connect] soc[{}] connect to {}", pt->north.soc, ip);
+                sockaddr_in *sai = reinterpret_cast<sockaddr_in *>(pt->curAddr->ai_addr);
+                inet_ntop(AF_INET, &sai->sin_addr, ip, pt->curAddr->ai_addrlen);
+
+                spdlog::debug("[Tunnel::connect] soc[{}] connect to {}:{}",
+                              pt->north.soc, ip, ntohs(sai->sin_port));
 
                 // connect to host
                 if (::connect(pt->north.soc, pt->curAddr->ai_addr, pt->curAddr->ai_addrlen) < 0 &&
@@ -146,8 +149,7 @@ bool TunnelMgr::connect(Tunnel_t *pt)
                     }
                     else
                     {
-                        spdlog::error("[Tunnel::connect] connect fail: {}, {}",
-                                      errno, strerror(errno));
+                        spdlog::error("[Tunnel::connect] connect fail: {}, {}", errno, strerror(errno));
                         ::close(pt->north.soc);
                         pt->north.valid = false;
                         return false;

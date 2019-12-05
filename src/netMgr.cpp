@@ -380,8 +380,11 @@ void NetMgr::acceptClient(time_t curTime, link::EndpointService_t *pes)
 
     char ip[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, &address.sin_addr, ip, INET_ADDRSTRLEN);
-    spdlog::debug("[NetMgr::acceptClient] accept client[{}]({}:{}) --> {}:{}",
-                  pTunnel->south.soc, ip, address.sin_port, pes->targetHost, pes->targetService);
+    spdlog::debug("[NetMgr::acceptClient] accept client[{}-{}]({}:{})--{}-->{}:{}",
+                  pTunnel->south.soc, pTunnel->north.soc,
+                  ip, ntohs(address.sin_port),
+                  pes->protocol == link::Protocol_t::TCP ? "tcp" : "udp",
+                  pes->targetHost, pes->targetService);
 }
 
 bool NetMgr::epollAddTunnel(link::Tunnel_t *pt)
