@@ -24,12 +24,8 @@ public:
     bool init(config::Config *pCfg);
     void close();
 
-    Tunnel_t *allocTunnel(EndpointService_t *pes);
+    Tunnel_t *allocTunnel();
     void freeTunnel(Tunnel_t *pt);
-
-    static bool connect(Tunnel_t *pet);
-    static bool onSoc(uint64_t curTime, EndpointRemote_t *per, uint32_t events);
-    static bool init(Tunnel_t *pet, int southSoc);
 
 protected:
     Tunnel_t *mpTunnels;

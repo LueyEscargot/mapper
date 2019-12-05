@@ -30,12 +30,13 @@ typedef enum PROTOCOL
 
 typedef enum TUNNEL_STATE
 {
-    ALLOCATED = 0,
-    INITIALIZED = 1,
-    CONNECT = 1 << 1,
-    ESTABLISHED = 1 << 2,
-    BROKEN = 1 << 3,
-    CLOSED = 1 << 4
+    CREATED = 0,
+    ALLOCATED = 1,
+    INITIALIZED = 1 << 1,
+    CONNECT = 1 << 2,
+    ESTABLISHED = 1 << 3,
+    BROKEN = 1 << 4,
+    CLOSED = 1 << 5,
 } TunnelState_t;
 
 typedef struct ENDPOINT_BASE
@@ -43,9 +44,9 @@ typedef struct ENDPOINT_BASE
     inline void init(Type_t _type, int _soc)
     {
         type = _type;
-        init(_soc);
+        setSoc(_soc);
     }
-    inline void init(int _soc)
+    inline void setSoc(int _soc)
     {
         soc = _soc;
         valid = true;
@@ -79,20 +80,13 @@ typedef struct ENDPOINT_SERVICE : public EndpointBase_t
                      const char *_targetHost,
                      const char *_targetService)
     {
-        // base
-        EndpointBase_t::init(Type_t::SERVICE, _soc);
-        // protocol
-        protocol = _protocol;
-        // interface
-        snprintf(interface, MAX_INTERFACE_NAME_LENGTH, "%s", _interface);
-        // service
-        snprintf(service, MAX_PORT_STR_LENGTH, "%s", _service);
-        // targetHost
-        snprintf(targetHost, MAX_HOST_NAME_LENGTH, "%s", _targetHost);
-        // targetService
-        snprintf(targetService, MAX_PORT_STR_LENGTH, "%s", _targetService);
-        // Addresses list of targetHost
-        targetHostAddrs = nullptr;
+        EndpointBase_t::init(Type_t::SERVICE, _soc);                        // base
+        protocol = _protocol;                                               // protocol
+        snprintf(interface, MAX_INTERFACE_NAME_LENGTH, "%s", _interface);   // interface
+        snprintf(service, MAX_PORT_STR_LENGTH, "%s", _service);             // service
+        snprintf(targetHost, MAX_HOST_NAME_LENGTH, "%s", _targetHost);      // targetHost
+        snprintf(targetService, MAX_PORT_STR_LENGTH, "%s", _targetService); // targetService
+        targetHostAddrs = nullptr;                                          // Addresses list of targetHost
     }
 } EndpointService_t;
 
@@ -107,10 +101,10 @@ typedef struct ENDPOINT_REMOTE : public EndpointBase_t
         // tunnel
         tunnel = _tunnel;
     }
-    inline void init(int _soc)
+    inline void setSoc(int _soc)
     {
         // base
-        EndpointBase_t::init(_soc);
+        EndpointBase_t::setSoc(_soc);
     }
     inline void close()
     {
@@ -129,7 +123,7 @@ typedef struct TUNNEL
     buffer::Buffer *toNorthBUffer;
     buffer::Buffer *toSouthBUffer;
 
-    inline void init(buffer::Buffer *_toNorthBUffer, buffer::Buffer *_toSouthBUffer)
+    inline void create(buffer::Buffer *_toNorthBUffer, buffer::Buffer *_toSouthBUffer)
     {
         south.init(Type_t::SOUTH, this);
         north.init(Type_t::NORTH, this);
@@ -138,10 +132,12 @@ typedef struct TUNNEL
         toNorthBUffer = _toNorthBUffer;
         toSouthBUffer = _toSouthBUffer;
 
-        setStatus(TunnelState_t::ALLOCATED);
+        setStatus(TunnelState_t::CREATED);
     }
-    inline void init(addrinfo *addrInfoList)
+    inline void init(int southSoc, int northSoc, addrinfo *addrInfoList)
     {
+        south.setSoc(southSoc);
+        north.setSoc(northSoc);
         curAddr = addrInfoList;
         toNorthBUffer->init();
         toSouthBUffer->init();
@@ -151,13 +147,6 @@ typedef struct TUNNEL
     inline void setStatus(TunnelState_t _status)
     {
         status = _status;
-    }
-    inline void setAsConnect(int southSoc, int northSoc)
-    {
-        south.init(southSoc);
-        north.init(northSoc);
-
-        setStatus(CONNECT);
     }
     inline void close()
     {

@@ -14,6 +14,7 @@
 #include <spdlog/spdlog.h>
 #include "session.h"
 #include "link/endpoint.h"
+#include "link/tunnel.h"
 
 using namespace std;
 
@@ -221,7 +222,7 @@ bool NetMgr::initEnv()
     }
 
     // init tunnel manager
-    if (mTunnelMgr.init(mpCfg))
+    if (!mTunnelMgr.init(mpCfg))
     {
         spdlog::error("[NetMgr::initEnv] init tunnel manager fail");
         return false;
@@ -310,7 +311,7 @@ void NetMgr::onSoc(time_t curTime, epoll_event &event)
         link::EndpointRemote_t *per = static_cast<link::EndpointRemote_t *>(pEndpoint);
 
         // spdlog::trace("[NetMgr::onSoc] Session: {}", link::Endpoint::toStr(per));
-        if (!link::TunnelMgr::onSoc(curTime, per, event.events))
+        if (!link::Tunnel::onSoc(curTime, per, event.events))
         {
             spdlog::error("[NetMgr::onSoc] endpoint[{}] process fail", per->soc);
             link::Tunnel_t *pt = static_cast<link::Tunnel_t *>(per->tunnel);
@@ -349,30 +350,36 @@ void NetMgr::acceptClient(time_t curTime, link::EndpointService_t *pes)
     }
 
     // alloc tunnel
-    auto pTunnel = mTunnelMgr.allocTunnel(pes);
-    if (pTunnel == nullptr)
+    auto pt = mTunnelMgr.allocTunnel();
+    if (pt == nullptr)
     {
         spdlog::error("[NetMgr::acceptClient] alloc tunnel fail");
         close(southSoc);
         return;
     }
-    link::TunnelMgr::init(pTunnel, southSoc);
+    if (!link::Tunnel::init(pt, pes, southSoc))
+    {
+        spdlog::error("[NetMgr::acceptClient] init tunnel fail");
+        close(southSoc);
+        mTunnelMgr.freeTunnel(pt);
+        return;
+    }
 
     // connect to target
-    if (!link::TunnelMgr::connect(pTunnel))
+    if (!link::Tunnel::connect(pt))
     {
         spdlog::error("[NetMgr::acceptClient] connect to target fail");
         close(southSoc);
-        mTunnelMgr.freeTunnel(pTunnel);
+        mTunnelMgr.freeTunnel(pt);
         return;
     }
 
     // add tunnel into epoll driver
-    if (!epollAddTunnel(pTunnel))
+    if (!epollAddTunnel(pt))
     {
         spdlog::error("[NetMgr::acceptClient] add tunnel into epoll driver fail");
-        pTunnel->close();
-        mTunnelMgr.freeTunnel(pTunnel);
+        pt->close();
+        mTunnelMgr.freeTunnel(pt);
         return;
     }
 
@@ -381,7 +388,7 @@ void NetMgr::acceptClient(time_t curTime, link::EndpointService_t *pes)
     char ip[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, &address.sin_addr, ip, INET_ADDRSTRLEN);
     spdlog::debug("[NetMgr::acceptClient] accept client[{}-{}]({}:{})--{}-->{}:{}",
-                  pTunnel->south.soc, pTunnel->north.soc,
+                  pt->south.soc, pt->north.soc,
                   ip, ntohs(address.sin_port),
                   pes->protocol == link::Protocol_t::TCP ? "tcp" : "udp",
                   pes->targetHost, pes->targetService);
@@ -480,7 +487,7 @@ void NetMgr::postProcess(time_t curTime)
                 if (pt->north.valid)
                 {
                     // 只有当南向链路完好时才尝试进行北向重连操作
-                    if (link::TunnelMgr::connect(pt))
+                    if (link::Tunnel::connect(pt))
                     {
                         // TODO: refresh timeout timer
                     }
