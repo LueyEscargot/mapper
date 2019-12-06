@@ -9,6 +9,7 @@
 #include <sstream>
 #include <spdlog/spdlog.h>
 #include "endpoint.h"
+#include "tunnel.h"
 #include "../buffer/buffer.h"
 
 using namespace std;
@@ -103,8 +104,7 @@ Tunnel_t *TunnelMgr::allocTunnel()
     Tunnel_t *pt = mFreeList.front();
     mFreeList.pop_front();
 
-    assert(pt->status == TunnelState_t::CREATED);
-    pt->setStatus(TunnelState_t::ALLOCATED);
+    Tunnel::setStatus(pt, TunnelState_t::ALLOCATED);
 
     return pt;
 }
@@ -113,13 +113,13 @@ void TunnelMgr::freeTunnel(Tunnel_t *pt)
 {
     if (pt->status != TunnelState_t::BROKEN)
     {
-        spdlog::warn("[Tunnel::freeTunnel] invalid status: {}", pt->status);
+        spdlog::critical("[Tunnel::freeTunnel] invalid status: {}", pt->status);
+        assert(false);
     }
 
     // close tunnel
     pt->close();
-
-    pt->setStatus(TunnelState_t::CREATED);
+    Tunnel::setStatus(pt, TunnelState_t::CLOSED);
 
     mFreeList.push_front(pt);
 }

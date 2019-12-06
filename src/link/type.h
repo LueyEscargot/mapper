@@ -30,13 +30,13 @@ typedef enum PROTOCOL
 
 typedef enum TUNNEL_STATE
 {
-    CREATED = 0,
-    ALLOCATED = 1,
-    INITIALIZED = 1 << 1,
-    CONNECT = 1 << 2,
-    ESTABLISHED = 1 << 3,
-    BROKEN = 1 << 4,
-    CLOSED = 1 << 5,
+    CLOSED = 0,
+    ALLOCATED,
+    INITIALIZED,
+    CONNECT,
+    ESTABLISHED,
+    BROKEN,
+    TUNNEL_STATE_COUNT
 } TunnelState_t;
 
 typedef struct ENDPOINT_BASE
@@ -127,33 +127,27 @@ typedef struct TUNNEL
     {
         south.init(Type_t::SOUTH, this);
         north.init(Type_t::NORTH, this);
+        status = TunnelState_t::CLOSED; // set initial status
         tag = nullptr;
         curAddr = nullptr;
         toNorthBUffer = _toNorthBUffer;
         toSouthBUffer = _toSouthBUffer;
-
-        setStatus(TunnelState_t::CREATED);
     }
-    inline void init(int southSoc, int northSoc, addrinfo *addrInfoList)
+    inline void init(int southSoc, int northSoc)
     {
         south.setSoc(southSoc);
         north.setSoc(northSoc);
-        curAddr = addrInfoList;
         toNorthBUffer->init();
         toSouthBUffer->init();
-
-        setStatus(TunnelState_t::INITIALIZED);
     }
-    inline void setStatus(TunnelState_t _status)
+    inline void setAddrInfo(addrinfo *ai)
     {
-        status = _status;
+        curAddr = ai;
     }
     inline void close()
     {
         south.close();
         north.close();
-
-        setStatus(TunnelState_t::CLOSED);
     }
 } Tunnel_t;
 

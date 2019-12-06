@@ -10,31 +10,91 @@ namespace mapper
 namespace link
 {
 
+/**
+ * tunnel state machine:
+ * 
+ *       CLOSED -----> ALLOCATED -----> INITIALIZED -----> CONNECT -----> ESTABLISHED
+ *         A                                 |                |               |
+ *         |                                 |                |               |
+ *         |                                 *--------------->|<--------------*
+ *         |                                                  |
+ *         |                                                  V
+ *         *---------------------------------------------- BROKEN
+ */
+const bool Tunnel::StateMaine[TUNNEL_STATE_COUNT][TUNNEL_STATE_COUNT] = {
+    // CLOSED | ALLOCATED | INITIALIZED | CONNECT | ESTABLISHED | BROKEN
+    {true, true, false, false, false, false},  // CLOSED
+    {false, true, true, false, false, false},  // ALLOCATED
+    {false, false, true, true, false, true},   // INITIALIZED
+    {false, false, false, true, true, true},   // CONNECT
+    {false, false, false, false, true, true},  // ESTABLISHED
+    {true, false, false, false, false, true},  //  BROKEN
+};
+
 bool Tunnel::init(Tunnel_t *pt, EndpointService_t *pes, int southSoc)
 {
     assert(pt->status == TunnelState_t::ALLOCATED);
 
+    pt->setAddrInfo(pes->targetHostAddrs);
+
     // create to north socket
-    int northSoc = socket(pt->curAddr->ai_family, pt->curAddr->ai_socktype, pt->curAddr->ai_protocol);
+    int northSoc;
+    while (pt->curAddr)
+    {
+        // create to north socket
+        northSoc = socket(pt->curAddr->ai_family, pt->curAddr->ai_socktype, pt->curAddr->ai_protocol);
+        if (northSoc <= 0)
+        {
+            spdlog::error("[Tunnel::init] create socket fail{}.: {} - {}",
+                          pt->curAddr->ai_next ? " try again" : "", errno, strerror(errno));
+            pt->curAddr = pt->curAddr->ai_next;
+            continue;
+        }
+
+        // set socket to non-blocking mode
+        if (fcntl(northSoc, F_SETFL, O_NONBLOCK) < 0)
+        {
+            spdlog::error("[Tunnel::init] set socket to non-blocking mode fail{}. {}: {}",
+                          pt->curAddr->ai_next ? " try again" : "", errno, strerror(errno));
+            ::close(northSoc);
+            northSoc = 0;
+            pt->curAddr = pt->curAddr->ai_next;
+            continue;
+        }
+
+        break;
+    }
     if (northSoc <= 0)
     {
-        spdlog::error("[Tunnel::init] create socket fail: {} - {}", errno, strerror(errno));
-        return false;
-    }
-
-    // set socket to non-blocking mode
-    if (fcntl(northSoc, F_SETFL, O_NONBLOCK) < 0)
-    {
-        spdlog::error("[Tunnel::init] set socket to non-blocking mode fail. {}: {}", errno, strerror(errno));
-        ::close(northSoc);
+        spdlog::error("[Tunnel::init] create to north socket fail");
         return false;
     }
 
     // set north soc and south soc for tunnel
-    pt->init(southSoc, northSoc, pes->targetHostAddrs);
-    assert(pt->status == TunnelState_t::INITIALIZED);
+    pt->init(southSoc, northSoc);
+    Tunnel::setStatus(pt, TunnelState_t::INITIALIZED);
 
     return true;
+}
+
+void Tunnel::setStatus(Tunnel_t *pt, TunnelState_t stat)
+{
+    if (!StateMaine[pt->status][stat])
+    {
+        for (int x = 0; x < TUNNEL_STATE_COUNT; ++x)
+        {
+            for (int y = 0; y < TUNNEL_STATE_COUNT; ++y)
+            {
+                printf("\t%s", StateMaine[x][y] ? "true" : "false");
+            }
+            printf("\n");
+        }
+
+        spdlog::critical("[Tunnel::setSTatus] invalid status convert: {} --> {}.", pt->status, stat);
+        assert(false);
+    }
+
+    pt->status = stat;
 }
 
 bool Tunnel::connect(Tunnel_t *pt)
@@ -42,7 +102,7 @@ bool Tunnel::connect(Tunnel_t *pt)
     switch (pt->status)
     {
     case TunnelState_t::INITIALIZED:
-        pt->setStatus(TunnelState_t::CONNECT);
+        setStatus(pt, TunnelState_t::CONNECT);
         break;
     case TunnelState_t::CONNECT:
         break;
@@ -105,6 +165,12 @@ bool Tunnel::connect(Tunnel_t *pt)
 bool Tunnel::onSoc(uint64_t curTime, EndpointRemote_t *per, uint32_t events)
 {
     spdlog::critical("[Tunnel::onSoc] NOT Implemented yet.");
+
+    Tunnel_t *pt = static_cast<Tunnel_t *>(per->tunnel);
+
+    // set status as broken
+    setStatus(pt, TunnelState_t::BROKEN);
+
     return false;
 }
 

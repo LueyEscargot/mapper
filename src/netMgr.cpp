@@ -503,7 +503,7 @@ void NetMgr::postProcess(time_t curTime)
                 else
                 {
                     // set tunnel status to broken
-                    pt->setStatus(link::TunnelState_t::BROKEN);
+                    link::Tunnel::setStatus(pt, link::TunnelState_t::BROKEN);
                     // close tunnel
                     onClose(pt);
                 }
@@ -512,7 +512,7 @@ void NetMgr::postProcess(time_t curTime)
                 // TODO: switch timeout timer
 
                 // set tunnel status to broken
-                pt->setStatus(link::TunnelState_t::BROKEN);
+                link::Tunnel::setStatus(pt, link::TunnelState_t::BROKEN);
                 // close tunnel
                 onClose(pt);
                 break;

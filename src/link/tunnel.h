@@ -21,12 +21,15 @@ namespace link
 class Tunnel
 {
 protected:
+    static const bool StateMaine[TUNNEL_STATE_COUNT][TUNNEL_STATE_COUNT];
+
     Tunnel() = default;
     Tunnel(const Tunnel &) = default;
     Tunnel &operator=(const Tunnel &) { return *this; }
 
 public:
     static bool init(Tunnel_t *pt, EndpointService_t *pes, int southSoc);
+    static void setStatus(Tunnel_t *pt, TunnelState_t stat);
     static bool connect(Tunnel_t *pt);
     static bool onSoc(uint64_t curTime, EndpointRemote_t *per, uint32_t events);
 };
