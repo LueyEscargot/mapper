@@ -231,12 +231,13 @@ bool Endpoint::getAddrInfo(EndpointService_t *pes)
 
 int Endpoint::createTcpServiceSoc(sockaddr_in &sa)
 {
-    auto logErr = [](const char *title, bool b) -> bool {
+    auto checkLog = [](const char *title, bool b) -> bool {
         if (b)
         {
             spdlog::error("[Endpoint::createService] {}: {} - {}", title, errno, strerror(errno));
-            return b;
+            return false;
         }
+        return true;
     };
 
     int soc = 0;
@@ -245,16 +246,20 @@ int Endpoint::createTcpServiceSoc(sockaddr_in &sa)
 
     if (
         // create socket
-        logErr("create socket fail", (soc = socket(AF_INET, SOCK_STREAM, 0)) <= 0) ||
+        checkLog("create socket fail", (soc = socket(AF_INET, SOCK_STREAM, 0)) <= 0) &&
         // set to non-block
-        logErr("fcntl fail", (flags = fcntl(soc, F_GETFL)) == -1) ||
-        logErr("set to non-block fail", fcntl(soc, F_SETFL, flags | O_NONBLOCK) == -1) ||
+        checkLog("fcntl fail", (flags = fcntl(soc, F_GETFL)) == -1) &&
+        checkLog("set to non-block fail", fcntl(soc, F_SETFL, flags | O_NONBLOCK) == -1) &&
         // set reuse
-        logErr("set reuse fail", setsockopt(soc, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt))) ||
+        checkLog("set reuse fail", setsockopt(soc, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt))) &&
         // bind
-        logErr("bind fail", bind(soc, (struct sockaddr *)&sa, sizeof(sa))) ||
+        checkLog("bind fail", bind(soc, (struct sockaddr *)&sa, sizeof(sa))) &&
         // listen
-        logErr("listen fail", listen(soc, SOMAXCONN) == -1))
+        checkLog("listen fail", listen(soc, SOMAXCONN << 1) == -1))
+    {
+        return soc;
+    }
+    else
     {
         if (soc > 0)
         {
@@ -262,8 +267,6 @@ int Endpoint::createTcpServiceSoc(sockaddr_in &sa)
         }
         return -1;
     }
-
-    return soc;
 }
 
 } // namespace link
