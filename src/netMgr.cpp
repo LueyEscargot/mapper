@@ -254,6 +254,8 @@ void NetMgr::closeEnv()
     spdlog::debug("[NetMgr::closeEnv] close file descriptors");
     f(mPreConnEpollfd);
     f(mEpollfd);
+    mPreConnEpollfd = 0;
+    mEpollfd = 0;
 
     // close tunnel manager
     spdlog::debug("[NetMgr::closeEnv] close tunnel manager");
@@ -285,7 +287,7 @@ void NetMgr::onSoc(time_t curTime, epoll_event &event)
         pEndpoint->valid = false;
         if (pEndpoint->type & (Endpoint::Type_t::NORTH | Endpoint::Type_t::SOUTH))
         {
-            spdlog::trace("[NetMgr::onSoc] endpoint[{}] broken", pEndpoint->soc);
+            spdlog::trace("[NetMgr::onSoc] endpoint[{}] broken: {}", link::Endpoint::toStr(pEndpoint), ss.str());
             link::EndpointRemote_t *per = static_cast<link::EndpointRemote_t *>(pEndpoint);
             link::Tunnel_t *pt = static_cast<link::Tunnel_t *>(per->tunnel);
             mPostProcessList.insert(pt);
@@ -311,7 +313,17 @@ void NetMgr::onSoc(time_t curTime, epoll_event &event)
         link::EndpointRemote_t *per = static_cast<link::EndpointRemote_t *>(pEndpoint);
 
         // spdlog::trace("[NetMgr::onSoc] Session: {}", link::Endpoint::toStr(per));
-        if (!link::Tunnel::onSoc(curTime, per, event.events))
+
+        using namespace std::placeholders;
+        if (!link::Tunnel::onSoc(curTime,
+                                 per,
+                                 event.events,
+                                 [&](link::EndpointBase_t *pe,
+                                     bool read,
+                                     bool write,
+                                     bool edgeTriger) -> bool {
+                                     return epollResetEndpointMode(pe, read, write, edgeTriger);
+                                 }))
         {
             spdlog::error("[NetMgr::onSoc] endpoint[{}] process fail", per->soc);
             link::Tunnel_t *pt = static_cast<link::Tunnel_t *>(per->tunnel);
@@ -346,6 +358,13 @@ void NetMgr::acceptClient(time_t curTime, link::EndpointService_t *pes)
     if (southSoc == -1)
     {
         spdlog::error("[NetMgr::acceptClient] accept fail: {} - {}", errno, strerror(errno));
+        return;
+    }
+    // set client socket to non-block mode
+    if (fcntl(southSoc, F_SETFL, O_NONBLOCK) < 0)
+    {
+        spdlog::error("[NetMgr::acceptClient] set socket to non-blocking mode fail. {}: {}", errno, strerror(errno));
+        ::close(southSoc);
         return;
     }
 
@@ -414,21 +433,24 @@ void NetMgr::epollRemoveTunnel(link::Tunnel_t *pt)
 
 bool NetMgr::epollAddEndpoint(link::EndpointBase_t *pe, bool read, bool write, bool edgeTriger)
 {
-    // spdlog::trace("[NetMgr::epollAddEndpoint] endpoint[{}], read[{}], write[{}]",
+    // spdlog::debug("[NetMgr::epollAddEndpoint] endpoint[{}], read[{}], write[{}]",
     //               link::Endpoint::toStr(pe), read, write);
 
     struct epoll_event event;
     event.data.ptr = pe;
-    event.events = EPOLLRDHUP |                 // for peer close
-                   (edgeTriger ? EPOLLET : 0) | // use edge triger
-                   (read ? EPOLLIN : 0) |       // enable read
-                   (write ? EPOLLOUT : 0);      // enable write
+    event.events = EPOLLRDHUP |                // for peer close
+                   (read ? EPOLLIN : 0) |      // enable read
+                   (write ? EPOLLOUT : 0) |    // enable write
+                   (edgeTriger ? EPOLLET : 0); // use edge triger or level triger
     if (epoll_ctl(mEpollfd, EPOLL_CTL_ADD, pe->soc, &event))
     {
         spdlog::error("[NetMgr::epollAddEndpoint] events[{}]-soc[{}] join fail. Error {}: {}",
                       event.events, pe->soc, errno, strerror(errno));
         return false;
     }
+
+    // spdlog::debug("[NetMgr::epollAddEndpoint] endpoint[{}], event.events[0x{:X}]",
+    //               link::Endpoint::toStr(pe), event.events);
 
     return true;
 }
@@ -456,14 +478,17 @@ void NetMgr::epollRemoveEndpoint(link::EndpointBase_t *pe)
     }
 }
 
-bool NetMgr::epollResetEndpointMode(link::EndpointBase_t *pe, bool read, bool write)
+bool NetMgr::epollResetEndpointMode(link::EndpointBase_t *pe, bool read, bool write, bool edgeTriger)
 {
-    // spdlog::trace("[NetMgr::epollResetEndpointMode] endpoint[{}], read[{}], write[{}]",
-    //               link::Endpoint::toStr(pe), read, write);
+    // spdlog::debug("[NetMgr::epollResetEndpointMode] endpoint[{}], read: {}, write: {}, edgeTriger: {}",
+    //               link::Endpoint::toStr(pe), read, write, edgeTriger);
 
     struct epoll_event event;
     event.data.ptr = pe;
-    event.events = EPOLLET | EPOLLRDHUP | (read ? EPOLLIN : 0) | (write ? EPOLLOUT : 0);
+    event.events = EPOLLRDHUP |                // for peer close
+                   (read ? EPOLLIN : 0) |      // enable read
+                   (write ? EPOLLOUT : 0) |    // enable write
+                   (edgeTriger ? EPOLLET : 0); // use edge triger or level triger
     if (epoll_ctl(mEpollfd, EPOLL_CTL_MOD, pe->soc, &event))
     {
         spdlog::error("[NetMgr::epollResetEndpointMode] events[{}]-soc[{}] reset fail. Error {}: {}",
@@ -484,7 +509,7 @@ void NetMgr::postProcess(time_t curTime)
             switch (pt->status)
             {
             case link::TunnelState_t::CONNECT:
-                if (pt->north.valid)
+                if (pt->south.valid)
                 {
                     // 只有当南向链路完好时才尝试进行北向重连操作
                     if (link::Tunnel::connect(pt))
@@ -497,6 +522,7 @@ void NetMgr::postProcess(time_t curTime)
                         // TODO: remove out of timeout timer
                         // spdlog::trace("[NetMgr::postProcess] tunnel({}) reconnect failed",
                         //               link::Endpoint::toStr(pt));
+                        link::Tunnel::setStatus(pt, link::TunnelState_t::BROKEN);
                         onClose(pt);
                     }
                 }
@@ -554,7 +580,7 @@ void NetMgr::onClose(link::Tunnel_t *pt)
     else if (!pt->toNorthBUffer->empty() && pt->north.valid)
     {
         // send last data to north
-        if (!epollResetEndpointMode(&pt->north, false, true))
+        if (!epollResetEndpointMode(&pt->north, false, true, true))
         {
             spdlog::error("[NetMgr::onClose] Failed to modify north sock[{}] in epoll for last data. {} - {}",
                           pt->north.soc, errno, strerror(errno));
@@ -567,7 +593,7 @@ void NetMgr::onClose(link::Tunnel_t *pt)
         assert(!pt->toSouthBUffer->empty() && pt->south.valid);
 
         // send last data to south
-        if (!epollResetEndpointMode(&pt->south, false, true))
+        if (!epollResetEndpointMode(&pt->south, false, true, true))
         {
             spdlog::error("[NetMgr::onClose] Failed to modify south sock[{}] in epoll for last data. {} - {}",
                           pt->south.soc, errno, strerror(errno));

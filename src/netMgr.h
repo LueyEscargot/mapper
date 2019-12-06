@@ -70,7 +70,7 @@ protected:
     void epollRemoveTunnel(link::Tunnel_t *pt);
     bool epollAddEndpoint(link::EndpointBase_t *pe, bool read, bool write, bool edgeTriger);
     void epollRemoveEndpoint(link::EndpointBase_t *pe);
-    bool epollResetEndpointMode(link::EndpointBase_t *pe, bool read, bool write);
+    bool epollResetEndpointMode(link::EndpointBase_t *pe, bool read, bool write, bool edgeTriger);
     void postProcess(time_t curTime);
     void onClose(link::Tunnel_t *pt);
 

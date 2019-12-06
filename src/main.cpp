@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <algorithm>
+#include <clocale>
 #include <exception>
 #include <vector>
 #include <sys/sysinfo.h>
@@ -34,6 +35,8 @@ mapper::Mapper gMapper;
 
 int main(int argc, char *argv[])
 {
+    setlocale(LC_MESSAGES, "zh_CN.utf8");
+
     // show santax
     if (hasArg(argv, argv + argc, "-h"))
     {

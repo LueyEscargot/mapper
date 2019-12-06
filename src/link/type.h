@@ -59,7 +59,10 @@ typedef struct ENDPOINT_BASE
     inline void close()
     {
         if (soc > 0)
+        {
             ::close(soc);
+            soc = 0;
+        }
         valid = false;
     }
 } EndpointBase_t;
@@ -114,6 +117,7 @@ typedef struct ENDPOINT_REMOTE : public EndpointBase_t
 
 typedef struct TUNNEL
 {
+    Protocol_t protocol;
     EndpointRemote_t south;
     EndpointRemote_t north;
     TunnelState_t status;
@@ -133,8 +137,9 @@ typedef struct TUNNEL
         toNorthBUffer = _toNorthBUffer;
         toSouthBUffer = _toSouthBUffer;
     }
-    inline void init(int southSoc, int northSoc)
+    inline void init(Protocol_t _protocol, int southSoc, int northSoc)
     {
+        protocol = _protocol;
         south.setSoc(southSoc);
         north.setSoc(northSoc);
         toNorthBUffer->init();

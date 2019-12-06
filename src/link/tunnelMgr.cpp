@@ -85,6 +85,7 @@ void TunnelMgr::close()
             buffer::Buffer::release(mpTunnels[i].toSouthBUffer);
             mpTunnels[i].toNorthBUffer = nullptr;
             mpTunnels[i].toSouthBUffer = nullptr;
+            mpTunnels[i].close();
         }
 
         // release tunnel array
