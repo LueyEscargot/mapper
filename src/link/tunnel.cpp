@@ -188,19 +188,6 @@ bool Tunnel::onSoc(uint64_t curTime, EndpointRemote_t *per, uint32_t events, CB_
         // spdlog::debug("[Tunnel::onSoc] curTime[{}], endpoint[{}], event.events[0x{:x}]",
         //               curTime, Endpoint::toStr(per), events);
 
-        // recv
-        if (events & EPOLLIN)
-        {
-            if (per->type == Type_t::NORTH)
-            {
-                result = northSocRecv(pt, cbSetEpollMode);
-            }
-            else
-            {
-                result = southSocRecv(pt, cbSetEpollMode);
-            }
-        }
-
         // send
         if (events & EPOLLOUT)
         {
@@ -211,6 +198,19 @@ bool Tunnel::onSoc(uint64_t curTime, EndpointRemote_t *per, uint32_t events, CB_
             else
             {
                 result = southSocSend(pt, cbSetEpollMode);
+            }
+        }
+
+        // recv
+        if (events & EPOLLIN)
+        {
+            if (per->type == Type_t::NORTH)
+            {
+                result = northSocRecv(pt, cbSetEpollMode);
+            }
+            else
+            {
+                result = southSocRecv(pt, cbSetEpollMode);
             }
         }
 
@@ -362,12 +362,9 @@ bool Tunnel::northSocSend(Tunnel_t *pt, CB_SetEpollMode cbSetEpollMode)
     // // TODO: refresh action time
     // mpContainer->refresh(curTime, this);
 
-    int count = 0;
-
     uint64_t bufSize;
     while (bufSize = pt->toNorthBUffer->dataSize())
     {
-        ++count;
         // send data to north
         char *buf = pt->toNorthBUffer->getData();
         int nRet = send(pt->north.soc, buf, bufSize, 0);
@@ -379,7 +376,7 @@ bool Tunnel::northSocSend(Tunnel_t *pt, CB_SetEpollMode cbSetEpollMode)
                 break;
             }
 
-            spdlog::error("[Tunnel::northSocSend] soc[{}] send fail: {} - []",
+            spdlog::debug("[Tunnel::northSocSend] soc[{}] send fail: {} - [{}]",
                           pt->north.soc, errno, strerror(errno));
 
             pt->north.valid = false;
@@ -530,7 +527,7 @@ bool Tunnel::southSocSend(Tunnel_t *pt, CB_SetEpollMode cbSetEpollMode)
                 break;
             }
 
-            spdlog::error("[Tunnel::southSocSend] soc[{}] send fail: {} - []",
+            spdlog::debug("[Tunnel::southSocSend] soc[{}] send fail: {} - [{}]",
                           pt->south.soc, errno, strerror(errno));
             pt->south.valid = false;
 
