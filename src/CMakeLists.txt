@@ -2,7 +2,7 @@ cmake_minimum_required (VERSION 3.5)
 
 enable_testing()
 
-project(Mapper LANGUAGES CXX VERSION 1.0.0)
+project(Mapper LANGUAGES CXX VERSION 2.0.0)
 
 #------------------------------------------------------------------------------
 # Setup compile environment
@@ -44,6 +44,16 @@ endif()
 add_subdirectory(buffer)
 
 #------------------------------------------------------------------------------
+# build in sub-directory: config
+#------------------------------------------------------------------------------
+add_subdirectory(config)
+
+#------------------------------------------------------------------------------
+# build in sub-directory: link
+#------------------------------------------------------------------------------
+add_subdirectory(link)
+
+#------------------------------------------------------------------------------
 # copy config file
 #------------------------------------------------------------------------------
 configure_file(
@@ -61,10 +71,14 @@ add_executable(mapper ${SRC_FILES})
 target_link_libraries(mapper PUBLIC
     Threads::Threads
     Lib_Buffer
+    Lib_Config
+    Lib_Link
     )
 target_include_directories(mapper PUBLIC
     "${PROJECT_BINARY_DIR}"
-    "${PROJECT_SOURCE_DIR}/Buffer"
+    "${PROJECT_SOURCE_DIR}/buffer"
+    "${PROJECT_SOURCE_DIR}/config"
+    "${PROJECT_SOURCE_DIR}/link"
     )
 set_target_properties(mapper
     PROPERTIES
@@ -90,7 +104,9 @@ set_source_files_properties (project.h.in
 #------------------------------------------------------------------------------
 add_executable(buildInfo
     buildInfo.cpp
-    config.cpp
+    )
+target_link_libraries(buildInfo PUBLIC
+    Lib_Config
     )
 
 #------------------------------------------------------------------------------

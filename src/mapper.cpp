@@ -19,7 +19,7 @@ Mapper::~Mapper()
     release();
 }
 
-bool Mapper::run(Config &cfg)
+bool Mapper::run(config::Config &cfg)
 {
     spdlog::info("[Mapper::run]");
 

@@ -9,13 +9,15 @@
  * 
  */
 
-#ifndef __MAPPER_RINGBUFFER_H__
-#define __MAPPER_RINGBUFFER_H__
+#ifndef __MAPPER_BUFFER_RINGBUFFER_H__
+#define __MAPPER_BUFFER_RINGBUFFER_H__
 
 #include <stdint.h>
 #include "buffer.h"
 
 namespace mapper
+{
+namespace buffer
 {
 
 class RingBuffer : public Buffer
@@ -44,6 +46,7 @@ protected:
     static uint64_t alignToPageSize(uint64_t size);
 };
 
+} // namespace buffer
 } // namespace mapper
 
-#endif // __MAPPER_RINGBUFFER_H__
+#endif // __MAPPER_BUFFER_RINGBUFFER_H__

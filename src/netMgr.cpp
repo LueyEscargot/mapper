@@ -13,6 +13,8 @@
 #include <set>
 #include <spdlog/spdlog.h>
 #include "session.h"
+#include "link/endpoint.h"
+#include "link/tunnel.h"
 
 using namespace std;
 
@@ -23,7 +25,9 @@ const int NetMgr::INTERVAL_EPOLL_RETRY = 100;
 const int NetMgr::INTERVAL_CONNECT_RETRY = 7;
 
 NetMgr::NetMgr()
-    : mEpollfd(0),
+    : mpCfg(nullptr),
+      mPreConnEpollfd(0),
+      mEpollfd(0),
       mStopFlag(true),
       mConnectTimeout(0),
       mSessionTimeout(0)
@@ -35,13 +39,15 @@ NetMgr::~NetMgr()
     stop();
 }
 
-bool NetMgr::start(Config &cfg)
+bool NetMgr::start(config::Config &cfg)
 {
     spdlog::debug("[NetMgr::start] start.");
 
-    mMapDatas = cfg.getMapData();
-    mConnectTimeout = cfg.getAsUint32("connectionTimeout", "global", CONNECT_TIMEOUT);
-    mSessionTimeout = cfg.getAsUint32("sessionTimeout", "global", SESSION_TIMEOUT);
+    mpCfg = &cfg;
+
+    mForwards = move(mpCfg->getMapData());
+    mConnectTimeout = mpCfg->getAsUint32("connectionTimeout", "global", CONNECT_TIMEOUT);
+    mSessionTimeout = mpCfg->getAsUint32("sessionTimeout", "global", SESSION_TIMEOUT);
 
     // start thread
     {
@@ -49,13 +55,6 @@ bool NetMgr::start(Config &cfg)
         if (!mStopFlag)
         {
             spdlog::error("[NetMgr::start] stop thread first");
-            return false;
-        }
-
-        if (!mSessionMgr.init(cfg.getBufferSize(BUFFER_SIZE),
-                              cfg.getSessions(DEFAULT_SESSIONS)))
-        {
-            spdlog::error("[NetMgr::start] init session manager fail");
             return false;
         }
 
@@ -82,9 +81,6 @@ void NetMgr::stop()
             spdlog::debug("[NetMgr::stop] threads not running");
         }
     }
-
-    // release session manager
-    mSessionMgr.release();
 }
 
 void NetMgr::threadFunc()
@@ -99,6 +95,7 @@ void NetMgr::threadFunc()
         {
             spdlog::error("[NetMgr::threadFunc] init fail. wait {} seconds",
                           INTERVAL_CONNECT_RETRY);
+            closeEnv();
             this_thread::sleep_for(chrono::seconds(INTERVAL_CONNECT_RETRY));
             continue;
         }
@@ -122,7 +119,7 @@ void NetMgr::threadFunc()
                     }
                     else
                     {
-                        spdlog::error("[NetMgr::threadFunc] epoll fail. Error{}: {}",
+                        spdlog::error("[NetMgr::threadFunc] epoll fail. {} - {}",
                                       errno, strerror(errno));
                         break;
                     }
@@ -180,123 +177,94 @@ void NetMgr::threadFunc()
 
 bool NetMgr::initEnv()
 {
-    if ([&]() -> bool {
-            // create epoll
-            spdlog::debug("[NetMgr::initEnv] create epoll");
-            if ((mEpollfd = epoll_create1(0)) < 0)
-            {
-                spdlog::error("[NetMgr::initEnv] Failed to create epoll. Error{}: {}",
-                              errno, strerror(errno));
-                return false;
-            }
-
-            int index = 0;
-            for (auto mapData : mMapDatas)
-            {
-                spdlog::debug("[NetMgr::initEnv] process map data entry: {}", mapData.toStr());
-
-                // create service socket
-                int soc = socket(AF_INET, SOCK_STREAM, 0);
-                if (soc <= 0)
-                {
-                    spdlog::error("[NetMgr::initEnv] Fail to create service socket. Error{}: {}",
-                                  errno, strerror(errno));
-                    return false;
-                }
-
-                // set reuse
-                int opt = 1;
-                if (setsockopt(soc, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt)))
-                {
-                    spdlog::error("[NetMgr::initEnv] Fail to reuse server socket. Error{}: {}",
-                                  errno, strerror(errno));
-                    return false;
-                }
-
-                // bind
-                struct sockaddr_in addr;
-                memset(&addr, 0, sizeof(addr));
-                addr.sin_family = AF_INET;
-                addr.sin_addr.s_addr = INADDR_ANY;
-                addr.sin_port = htons(mapData.port);
-                if (bind(soc, (struct sockaddr *)&addr, sizeof(addr)))
-                {
-                    spdlog::error("[NetMgr::initEnv] bind to 0.0.0.0:{} fail: {} - {}",
-                                  mapData.port, errno, strerror(errno));
-                    return false;
-                }
-
-                // listen
-                if (listen(soc, SOMAXCONN) == -1)
-                {
-                    spdlog::error("[NetMgr::initEnv] Listen at 0.0.0.0:{} fail: {} - {}",
-                                  mapData.port, errno, strerror(errno));
-                    return false;
-                }
-
-                // save service endpoint
-                Endpoint *pEndpoint = new Endpoint(Endpoint::Type_t::SERVICE, soc, serviceIndexToPtr(index));
-                if (pEndpoint == nullptr)
-                {
-                    spdlog::error("[NetMgr::initEnv] create endpoint object fail: {} - {}",
-                                  errno, strerror(errno));
-                    return false;
-                }
-                mSvrEndpoints.emplace_back(pEndpoint);
-
-                // add service endpoint into epoll driver
-                struct epoll_event event;
-                event.events = EPOLLIN | EPOLLOUT | EPOLLRDHUP;
-                event.data.ptr = pEndpoint;
-                assert(pEndpoint->check());
-                if (epoll_ctl(mEpollfd, EPOLL_CTL_ADD, soc, &event))
-                {
-                    spdlog::error("[NetMgr::initEnv] add service endpoint into epoll fail. Error{}: {}",
-                                  errno, strerror(errno));
-                    return false;
-                }
-
-                ++index;
-                spdlog::info("[NetMgr::initEnv] map[{}]: socket[{}] - 0.0.0.0:{} --> {}:{}",
-                             index, soc, mapData.port, mapData.host, mapData.hostPort);
-            }
-
-            return true;
-        }())
+    // create epoll
+    spdlog::debug("[NetMgr::initEnv] create epolls");
+    if ((mPreConnEpollfd = epoll_create1(0)) < 0)
     {
-        return true;
-    }
-    else
-    {
-        closeEnv();
+        spdlog::error("[NetMgr::initEnv] Failed to create pre-conn epoll. {} - {}",
+                      errno, strerror(errno));
         return false;
     }
+    if ((mEpollfd = epoll_create1(0)) < 0)
+    {
+        spdlog::error("[NetMgr::initEnv] Failed to create epoll. {} - {}",
+                      errno, strerror(errno));
+        return false;
+    }
+
+    int index = 0;
+    for (auto forward : mForwards)
+    {
+        spdlog::debug("[NetMgr::initEnv] process forward: {}", forward->toStr());
+
+        link::EndpointService_t *pes = link::Endpoint::createService(forward->protocol.c_str(),
+                                                                     forward->interface.c_str(),
+                                                                     forward->service.c_str(),
+                                                                     forward->targetHost.c_str(),
+                                                                     forward->targetService.c_str());
+        if (pes == nullptr)
+        {
+            spdlog::error("[NetMgr::initEnv] create service endpoint fail");
+            return false;
+        }
+
+        // add service endpoint into epoll driver
+        if (!epollAddEndpoint(pes, true, false, false))
+        {
+            spdlog::error("[NetMgr::initEnv] add service endpoint[{}] into epoll fail.");
+            link::Endpoint::releaseService(pes);
+            return false;
+        }
+
+        mServices.push_back(pes);
+
+        spdlog::info("[NetMgr::initEnv] forward[{}] -- soc[{}] -- {}", index++, pes->soc, forward->toStr());
+    }
+
+    // init tunnel manager
+    if (!mTunnelMgr.init(mpCfg))
+    {
+        spdlog::error("[NetMgr::initEnv] init tunnel manager fail");
+        return false;
+    }
+
+    return true;
 }
 
 void NetMgr::closeEnv()
 {
     // close service endpoint
     spdlog::debug("[NetMgr::closeEnv] close service endpoint");
-    for (auto pEndpoint : mSvrEndpoints)
+    for (auto pes : mServices)
     {
-        assert(pEndpoint->check());
-        removeAndCloseSoc(pEndpoint->soc);
+        epollRemoveEndpoint(pes);
+        link::Endpoint::releaseService(pes);
     }
-    mSvrEndpoints.clear();
+    mServices.clear();
 
-    // close epoll file descriptor
-    spdlog::debug("[NetMgr::closeEnv] close epoll file descriptor");
-    if (close(mEpollfd))
-    {
-        spdlog::error("[NetMgr::closeEnv] Fail to close epoll. Error{}: {}",
-                      errno, strerror(errno));
-    }
+    // close epoll file descriptors
+    auto f = [](int &fd) {
+        if (close(fd))
+        {
+            spdlog::error("[NetMgr::closeEnv] Fail to close file descriptor[{}]. {} - {}",
+                          fd, errno, strerror(errno));
+        }
+        fd = 0;
+    };
+    spdlog::debug("[NetMgr::closeEnv] close file descriptors");
+    f(mPreConnEpollfd);
+    f(mEpollfd);
+    mPreConnEpollfd = 0;
     mEpollfd = 0;
+
+    // close tunnel manager
+    spdlog::debug("[NetMgr::closeEnv] close tunnel manager");
+    mTunnelMgr.close();
 }
 
 void NetMgr::onSoc(time_t curTime, epoll_event &event)
 {
-    Endpoint *pEndpoint = static_cast<Endpoint *>(event.data.ptr);
+    link::EndpointBase_t *pEndpoint = static_cast<link::EndpointBase_t *>(event.data.ptr);
     // spdlog::trace("[NetMgr::onSoc] {}", pEndpoint->toStr());
 
     if (event.events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR))
@@ -315,31 +283,20 @@ void NetMgr::onSoc(time_t curTime, epoll_event &event)
         {
             ss << "error;";
         }
-        spdlog::trace("[NetMgr::onSoc] endpoint[{}] broken: {}", pEndpoint->toStr(), ss.str());
 
         pEndpoint->valid = false;
         if (pEndpoint->type & (Endpoint::Type_t::NORTH | Endpoint::Type_t::SOUTH))
         {
-            pEndpoint->valid = false;
-            Session *pSession = static_cast<Session *>(pEndpoint->tag);
-            switch (pSession->getStatus())
-            {
-            case Session::State_t::CLOSE:
-                break;
-            case Session::State_t::CONNECTING:
-            case Session::State_t::ESTABLISHED:
-                pSession->setStatus(Session::State_t::CLOSE);
-                break;
-            default:
-                spdlog::critical("[NetMgr::onSoc] invalid session status: {}.",
-                                 pSession->getStatus());
-                assert(false);
-            }
-            mPostProcessList.push_back(static_cast<Session *>(pEndpoint->tag));
+            spdlog::trace("[NetMgr::onSoc] endpoint[{}] broken: {}", link::Endpoint::toStr(pEndpoint), ss.str());
+            link::EndpointRemote_t *per = static_cast<link::EndpointRemote_t *>(pEndpoint);
+            link::Tunnel_t *pt = static_cast<link::Tunnel_t *>(per->tunnel);
+            mPostProcessList.insert(pt);
         }
         else
         {
-            spdlog::error("[NetMgr::onSoc] service endpoint[{}] broken", pEndpoint->toStr());
+            spdlog::error("[NetMgr::onSoc] service endpoint[{}] broken",
+                          link::Endpoint::toStr(static_cast<link::EndpointService_t *>(pEndpoint)));
+            link::EndpointService_t *pes = static_cast<link::EndpointService_t *>(pEndpoint);
         }
 
         return;
@@ -348,358 +305,302 @@ void NetMgr::onSoc(time_t curTime, epoll_event &event)
     switch (pEndpoint->type)
     {
     case Endpoint::Type_t::SERVICE:
-        onService(curTime, event.events, pEndpoint);
+        onService(curTime, event.events, static_cast<link::EndpointService_t *>(pEndpoint));
         break;
     case Endpoint::Type_t::NORTH:
     case Endpoint::Type_t::SOUTH:
     {
-        Session *pSession = static_cast<Session *>(pEndpoint->tag);
-        // spdlog::trace("[NetMgr::onSoc] Session: {}", pSession->toStr());
+        link::EndpointRemote_t *per = static_cast<link::EndpointRemote_t *>(pEndpoint);
 
-        pSession->onSoc(curTime, pEndpoint, event.events);
+        // spdlog::trace("[NetMgr::onSoc] Session: {}", link::Endpoint::toStr(per));
+
+        using namespace std::placeholders;
+        if (!link::Tunnel::onSoc(curTime,
+                                 per,
+                                 event.events,
+                                 [&](link::EndpointBase_t *pe,
+                                     bool read,
+                                     bool write,
+                                     bool edgeTriger) -> bool {
+                                     return epollResetEndpointMode(pe, read, write, edgeTriger);
+                                 }))
+        {
+            spdlog::error("[NetMgr::onSoc] endpoint[{}] process fail", per->soc);
+            link::Tunnel_t *pt = static_cast<link::Tunnel_t *>(per->tunnel);
+            mPostProcessList.insert(pt);
+        }
     }
     break;
     default:
-        spdlog::critical("[NetMgr::onSoc] invalid endpoint type: {}, event.data.ptr: {}.",
-                         pEndpoint->type, event.data.ptr);
+        spdlog::critical("[NetMgr::onSoc] invalid endpoint:", link::Endpoint::toStr(pEndpoint));
         assert(false);
     }
 }
 
-void NetMgr::onService(time_t curTime, uint32_t events, Endpoint *pEndpoint)
+void NetMgr::onService(time_t curTime, uint32_t events, link::EndpointService_t *pEndpoint)
 {
+    // accept client for TCP service endpoint
     if (events & EPOLLIN)
     {
         acceptClient(curTime, pEndpoint);
     }
-    if (events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR))
-    {
-        stringstream ss;
-        if (events & EPOLLRDHUP)
-        {
-            // socket has been closed
-            ss << "closed by peer";
-        }
-        if (events & EPOLLHUP)
-        {
-            // socket has been closed
-            ss << "has been closed";
-        }
-        if (events & EPOLLERR)
-        {
-            // socket error
-            ss << "socket error";
-        }
 
-        spdlog::error("[NetMgr::onService] service endpoint[{}] fail: {}", pEndpoint->toStr(), ss.str());
-    }
+    // TODO: UDP service endpoint
 }
 
-void NetMgr::acceptClient(time_t curTime, Endpoint *pEndpoint)
+void NetMgr::acceptClient(time_t curTime, link::EndpointService_t *pes)
 {
-    uint32_t index = ptrToServiceIndex(pEndpoint->tag);
-
     // accept client
     struct sockaddr_in address;
     int addrlen = sizeof(address);
 
-    int southSoc = accept(pEndpoint->soc, (struct sockaddr *)&address, (socklen_t *)&addrlen);
+    int southSoc = accept(pes->soc, (struct sockaddr *)&address, (socklen_t *)&addrlen);
     if (southSoc == -1)
     {
         spdlog::error("[NetMgr::acceptClient] accept fail: {} - {}", errno, strerror(errno));
         return;
     }
+    // set client socket to non-block mode
+    if (fcntl(southSoc, F_SETFL, O_NONBLOCK) < 0)
+    {
+        spdlog::error("[NetMgr::acceptClient] set socket to non-blocking mode fail. {}: {}", errno, strerror(errno));
+        ::close(southSoc);
+        return;
+    }
+
+    // alloc tunnel
+    auto pt = mTunnelMgr.allocTunnel();
+    if (pt == nullptr)
+    {
+        spdlog::error("[NetMgr::acceptClient] alloc tunnel fail");
+        close(southSoc);
+        return;
+    }
+    if (!link::Tunnel::init(pt, pes, southSoc))
+    {
+        spdlog::error("[NetMgr::acceptClient] init tunnel fail");
+        close(southSoc);
+        mTunnelMgr.freeTunnel(pt);
+        return;
+    }
+
+    // connect to target
+    if (!link::Tunnel::connect(pt))
+    {
+        spdlog::error("[NetMgr::acceptClient] connect to target fail");
+        close(southSoc);
+        mTunnelMgr.freeTunnel(pt);
+        return;
+    }
+
+    // add tunnel into epoll driver
+    if (!epollAddTunnel(pt))
+    {
+        spdlog::error("[NetMgr::acceptClient] add tunnel into epoll driver fail");
+        pt->close();
+        mTunnelMgr.freeTunnel(pt);
+        return;
+    }
+
+    // TODO: add into timeout timer
 
     char ip[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, &address.sin_addr, ip, INET_ADDRSTRLEN);
+    spdlog::debug("[NetMgr::acceptClient] accept client[{}-{}]({}:{})--{}-->{}:{}",
+                  pt->south.soc, pt->north.soc,
+                  ip, ntohs(address.sin_port),
+                  pes->protocol == link::Protocol_t::TCP ? "tcp" : "udp",
+                  pes->targetHost, pes->targetService);
+}
 
-    int northSoc;
-    // set socket to non-blocking mode
-    if (fcntl(southSoc, F_SETFL, O_NONBLOCK) < 0)
+bool NetMgr::epollAddTunnel(link::Tunnel_t *pt)
+{
+    if (!epollAddEndpoint(&pt->south, false, false, true) ||
+        !epollAddEndpoint(&pt->north, false, true, true))
     {
-        spdlog::error("[NetMgr::acceptClient] set client socket to non-blocking mode fail. {}: {}",
-                      errno, strerror(errno));
-        close(southSoc);
-        return;
+        spdlog::error("[NetMgr::epollAddTunnel] add tunnel({}) fail", link::Endpoint::toStr(pt));
+        return false;
     }
 
-    northSoc = createNorthSoc(&mMapDatas[index]);
-    if (northSoc == -1)
+    return true;
+}
+
+void NetMgr::epollRemoveTunnel(link::Tunnel_t *pt)
+{
+    epollRemoveEndpoint(&pt->north);
+    epollRemoveEndpoint(&pt->south);
+}
+
+bool NetMgr::epollAddEndpoint(link::EndpointBase_t *pe, bool read, bool write, bool edgeTriger)
+{
+    // spdlog::debug("[NetMgr::epollAddEndpoint] endpoint[{}], read[{}], write[{}]",
+    //               link::Endpoint::toStr(pe), read, write);
+
+    struct epoll_event event;
+    event.data.ptr = pe;
+    event.events = EPOLLRDHUP |                // for peer close
+                   (read ? EPOLLIN : 0) |      // enable read
+                   (write ? EPOLLOUT : 0) |    // enable write
+                   (edgeTriger ? EPOLLET : 0); // use edge triger or level triger
+    if (epoll_ctl(mEpollfd, EPOLL_CTL_ADD, pe->soc, &event))
     {
-        spdlog::error("[NetMgr::acceptClient] create to host socket fail");
-        close(southSoc);
-        return;
+        spdlog::error("[NetMgr::epollAddEndpoint] events[{}]-soc[{}] join fail. Error {}: {}",
+                      event.events, pe->soc, errno, strerror(errno));
+        return false;
     }
 
-    // alloc session object
-    Session *pSession = mSessionMgr.alloc();
-    if (!pSession)
-    {
-        spdlog::error("[NetMgr::acceptClient] alloc session object fail.");
-        close(southSoc);
-        close(northSoc);
-        return;
-    }
+    // spdlog::debug("[NetMgr::epollAddEndpoint] endpoint[{}], event.events[0x{:X}]",
+    //               link::Endpoint::toStr(pe), event.events);
 
-    // init session object
-    using namespace std::placeholders;
-    if (pSession->init(northSoc, southSoc,
-                       std::bind(&NetMgr::joinEpoll, this, _1, _2, _3),
-                       std::bind(&NetMgr::resetEpollMode, this, _1, _2, _3),
-                       std::bind(&NetMgr::onSessionStatus, this, _1)))
+    return true;
+}
+
+void NetMgr::epollRemoveEndpoint(link::EndpointBase_t *pe)
+{
+    if (pe)
     {
-        spdlog::debug("[NetMgr::acceptClient] Accept client[{}:{}] {}:{} --> {}",
-                      southSoc,
-                      northSoc,
-                      ip,
-                      ntohs(address.sin_port),
-                      mMapDatas[index].toStr());
-    }
-    else
-    {
-        spdlog::error("[NetMgr::acceptClient] init session object fail.");
-        close(southSoc);
-        close(northSoc);
-        return;
+        // spdlog::trace("[NetMgr::epollRemoveEndpoint] remove endpoint[{}]",
+        //               link::Endpoint::toStr(pe));
+
+        // remove from epoll driver
+        if (epoll_ctl(mEpollfd, EPOLL_CTL_DEL, pe->soc, nullptr))
+        {
+            spdlog::error("[NetMgr::removeAndCloseSoc] remove endpoint[{}] from epoll fail. {} - {}",
+                          link::Endpoint::toStr(pe), errno, strerror(errno));
+        }
+        // close socket
+        if (close(pe->soc))
+        {
+            spdlog::error("[NetMgr::removeAndCloseSoc] Close endpoint[{}] fail. {} - {}",
+                          link::Endpoint::toStr(pe), errno, strerror(errno));
+        }
+        pe->soc = 0;
     }
 }
 
-int NetMgr::createNorthSoc(MapData_t *pMapData)
+bool NetMgr::epollResetEndpointMode(link::EndpointBase_t *pe, bool read, bool write, bool edgeTriger)
 {
-    int soc = 0;
-    struct sockaddr_in serv_addr;
-    if ((soc = socket(AF_INET, SOCK_STREAM, 0)) < 0)
+    // spdlog::debug("[NetMgr::epollResetEndpointMode] endpoint[{}], read: {}, write: {}, edgeTriger: {}",
+    //               link::Endpoint::toStr(pe), read, write, edgeTriger);
+
+    struct epoll_event event;
+    event.data.ptr = pe;
+    event.events = EPOLLRDHUP |                // for peer close
+                   (read ? EPOLLIN : 0) |      // enable read
+                   (write ? EPOLLOUT : 0) |    // enable write
+                   (edgeTriger ? EPOLLET : 0); // use edge triger or level triger
+    if (epoll_ctl(mEpollfd, EPOLL_CTL_MOD, pe->soc, &event))
     {
-        spdlog::error("[NetMgr::createNorthSoc] socket creation error{}: {}",
-                      errno, strerror(errno));
-        return -1;
+        spdlog::error("[NetMgr::epollResetEndpointMode] events[{}]-soc[{}] reset fail. Error {}: {}",
+                      event.events, pe->soc, errno, strerror(errno));
+        return false;
     }
 
-    // set socket to non-blocking mode
-    if (fcntl(soc, F_SETFL, O_NONBLOCK) < 0)
-    {
-        spdlog::error("[NetMgr::createNorthSoc] set socket to non-blocking mode fail. {}: {}",
-                      errno, strerror(errno));
-    }
-    else
-    {
-        serv_addr.sin_family = AF_INET;
-        serv_addr.sin_port = htons(pMapData->hostPort);
-
-        // Convert IPv4 and IPv6 addresses from text to binary form
-        if (inet_pton(AF_INET, pMapData->host, &serv_addr.sin_addr) <= 0)
-        {
-            spdlog::error("[NetMgr::createNorthSoc] Can't convert host address[{}]. {}: {}",
-                          errno, strerror(errno));
-        }
-        else
-        {
-
-            if (connect(soc, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0 &&
-                errno != EALREADY && errno != EINPROGRESS)
-            {
-                spdlog::error("[NetMgr::createNorthSoc] Connection Failed{}: {}",
-                              errno, strerror(errno));
-            }
-            else
-            {
-                return soc;
-            }
-        }
-    }
-
-    close(soc);
-    return -1;
+    return true;
 }
 
 void NetMgr::postProcess(time_t curTime)
 {
     if (!mPostProcessList.empty())
     {
-        // 去重
-        set<Session *> sessions;
-        for (auto *pSession : mPostProcessList)
-        {
-            if (sessions.find(pSession) == sessions.end())
-            {
-                // spdlog::trace("[NetMgr::postProcess] post-processed for {}",
-                //               pSession->toStr());
-                sessions.insert(pSession);
-            }
-            // else
-            // {
-            //     spdlog::trace("[NetMgr::postProcess] skip duplicated session {}-{}",
-            //                   pSession->mSouthEndpoint.soc,
-            //                   pSession->mNorthEndpoint.soc);
-            // }
-        }
-        mPostProcessList.clear();
-
         // 进行会话状态处理
-        for (Session *pSession : sessions)
+        for (auto pt : mPostProcessList)
         {
-            switch (pSession->getStatus())
+            switch (pt->status)
             {
-            case Session::State_t::CONNECTING:
-                if (pSession->valid())
+            case link::TunnelState_t::CONNECT:
+                if (pt->south.valid)
                 {
-                    // add into timeout timer
-                    mConnectTimeoutContainer.insert(curTime, pSession);
+                    // 只有当南向链路完好时才尝试进行北向重连操作
+                    if (link::Tunnel::connect(pt))
+                    {
+                        // TODO: refresh timeout timer
+                    }
+                    else
+                    {
+                        // reconnect failed
+                        // TODO: remove out of timeout timer
+                        // spdlog::trace("[NetMgr::postProcess] tunnel({}) reconnect failed",
+                        //               link::Endpoint::toStr(pt));
+                        link::Tunnel::setStatus(pt, link::TunnelState_t::BROKEN);
+                        onClose(pt);
+                    }
                 }
                 else
                 {
-                    pSession->setStatus(Session::State_t::CLOSE);
-                    onClose(pSession);
+                    // set tunnel status to broken
+                    link::Tunnel::setStatus(pt, link::TunnelState_t::BROKEN);
+                    // close tunnel
+                    onClose(pt);
                 }
                 break;
-            case Session::State_t::ESTABLISHED:
-                mConnectTimeoutContainer.remove(pSession);
-                if (pSession->valid())
-                {
-                    mSessionTimeoutContainer.insert(curTime, pSession);
-                }
-                else
-                {
-                    pSession->setStatus(Session::State_t::CLOSE);
-                    onClose(pSession);
-                }
+            case link::TunnelState_t::ESTABLISHED:
+                // TODO: switch timeout timer
+
+                // set tunnel status to broken
+                link::Tunnel::setStatus(pt, link::TunnelState_t::BROKEN);
+                // close tunnel
+                onClose(pt);
                 break;
-            case Session::State_t::CLOSE:
-            {
-                TimeoutContainer *pContainer = pSession->getContainer();
-                if (pContainer)
-                {
-                    pContainer->remove(pSession);
-                }
-                onClose(pSession);
-            }
-            break;
+            case link::TunnelState_t::BROKEN:
+                // close tunnel
+                // TODO: refresh timeout timer
+                onClose(pt);
+                break;
             default:
-                spdlog::critical("[NetMgr::postProcess] invalid status: {}", pSession->getStatus());
+                spdlog::critical("[NetMgr::postProcess] invalid tunnel status: {}", pt->status);
                 assert(false);
             }
         }
+        mPostProcessList.clear();
     }
 
     // timeout check
     timeoutCheck(curTime);
 }
 
-void NetMgr::onClose(Session *pSession)
+void NetMgr::onClose(link::Tunnel_t *pt)
 {
-    if ((pSession->mpToNorthBuffer->empty() ||
-         !pSession->mNorthEndpoint.valid) &&
-        (pSession->mpToSouthBuffer->empty() ||
-         !pSession->mSouthEndpoint.valid))
+    if (pt->status != link::TunnelState_t::BROKEN)
+    {
+        spdlog::critical("[NetMgr::onClose] invalid tunnel status: {}", pt->status);
+        assert(false);
+    }
+
+    if ((pt->toNorthBUffer->empty() || !pt->north.valid) &&
+        (pt->toSouthBUffer->empty() || !pt->south.valid))
     {
         // release session object
-        spdlog::debug("[NetMgr::onClose] close session[{}-{}]",
-                      pSession->mSouthEndpoint.soc, pSession->mNorthEndpoint.soc);
-        removeAndCloseSoc(pSession->mSouthEndpoint.soc);
-        removeAndCloseSoc(pSession->mNorthEndpoint.soc);
+        spdlog::debug("[NetMgr::onClose] close tunnel[{}-{}]", pt->south.soc, pt->north.soc);
+        epollRemoveTunnel(pt);
 
         // release session object
-        mSessionMgr.free(pSession);
+        mTunnelMgr.freeTunnel(pt);
     }
-    else if (!pSession->mpToNorthBuffer->empty() &&
-             pSession->mNorthEndpoint.valid)
+    else if (!pt->toNorthBUffer->empty() && pt->north.valid)
     {
-        // send last data to client
-        if (!resetEpollMode(&pSession->mNorthEndpoint, false, true))
+        // send last data to north
+        if (!epollResetEndpointMode(&pt->north, false, true, true))
         {
-            spdlog::error("[NetMgr::onClose] Failed to modify north sock[{}] in epoll for last data. Error{}: {}",
-                          pSession->mNorthEndpoint.soc, errno, strerror(errno));
-            pSession->mNorthEndpoint.valid = false;
-            onClose(pSession);
+            spdlog::error("[NetMgr::onClose] Failed to modify north sock[{}] in epoll for last data. {} - {}",
+                          pt->north.soc, errno, strerror(errno));
+            pt->north.valid = false;
+            onClose(pt);
         }
     }
     else
     {
-        assert(!pSession->mpToSouthBuffer->empty() &&
-               pSession->mSouthEndpoint.valid);
+        assert(!pt->toSouthBUffer->empty() && pt->south.valid);
 
-        // send last data to client
-        if (!resetEpollMode(&pSession->mSouthEndpoint, false, true))
+        // send last data to south
+        if (!epollResetEndpointMode(&pt->south, false, true, true))
         {
-            spdlog::error("[NetMgr::onClose] Failed to modify south sock[{}] in epoll for last data. Error{}: {}",
-                          pSession->mSouthEndpoint.soc, errno, strerror(errno));
-            pSession->mSouthEndpoint.valid = false;
-            onClose(pSession);
+            spdlog::error("[NetMgr::onClose] Failed to modify south sock[{}] in epoll for last data. {} - {}",
+                          pt->south.soc, errno, strerror(errno));
+            pt->south.valid = false;
+            onClose(pt);
         }
     }
-}
-
-void NetMgr::removeAndCloseSoc(int sock)
-{
-    // spdlog::trace("[NetMgr::removeAndCloseSoc] remove sock[{}]", sock);
-
-    // remove from epoll driver
-    if (epoll_ctl(mEpollfd, EPOLL_CTL_DEL, sock, nullptr))
-    {
-        spdlog::error("[NetMgr::removeAndCloseSoc] remove sock[{}] from epoll fail. Error{}: {}",
-                      sock, errno, strerror(errno));
-    }
-
-    // close socket
-    if (close(sock))
-    {
-        spdlog::error("[NetMgr::removeAndCloseSoc] Close sock[{}] fail. Error{}: {}",
-                      sock, errno, strerror(errno));
-    }
-}
-
-bool NetMgr::joinEpoll(Endpoint *pEndpoint, bool read, bool write)
-{
-    // spdlog::trace("[NetMgr::joinEpoll] endpoint[{}], read[{}], write[{}]", pEndpoint->toStr(), read, write);
-
-    struct epoll_event event;
-    event.data.ptr = pEndpoint;
-    event.events = EPOLLET | EPOLLRDHUP | (read ? EPOLLIN : 0) | (write ? EPOLLOUT : 0);
-    if (epoll_ctl(mEpollfd, EPOLL_CTL_ADD, pEndpoint->soc, &event))
-    {
-        spdlog::error("[NetMgr::joinEpoll] events[{}]-soc[{}] join fail. Error {}: {}",
-                      event.events, pEndpoint->soc, errno, strerror(errno));
-        return false;
-    }
-
-    return true;
-}
-
-bool NetMgr::resetEpollMode(Endpoint *pEndpoint, bool read, bool write)
-{
-    // spdlog::trace("[NetMgr::resetEpollMode] endpoint[{}], read[{}], write[{}]", pEndpoint->toStr(), read, write);
-
-    epoll_event event;
-    event.data.ptr = pEndpoint;
-    write = true;
-    event.events = EPOLLET | EPOLLRDHUP | (read ? EPOLLIN : 0) | (write ? EPOLLOUT : 0);
-    if (epoll_ctl(mEpollfd, EPOLL_CTL_MOD, pEndpoint->soc, &event))
-    {
-        spdlog::error("[NetMgr::resetEpollMode] Reset events[{}] for soc[{}] fail. Error{}: {}",
-                      event.events, pEndpoint->soc, errno, strerror(errno));
-        return false;
-    }
-
-    return true;
-}
-
-void *NetMgr::serviceIndexToPtr(uint32_t index)
-{
-    Converter_t conv;
-    conv.u32 = index;
-    return conv.ptr;
-}
-
-uint32_t NetMgr::ptrToServiceIndex(void *p)
-{
-    Converter_t conv;
-    conv.ptr = p;
-    return conv.u32;
-}
-
-void NetMgr::onSessionStatus(Session *pSession)
-{
-    mPostProcessList.push_back(pSession);
 }
 
 void NetMgr::timeoutCheck(time_t curTime)

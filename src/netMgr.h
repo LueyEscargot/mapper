@@ -16,13 +16,16 @@
 #include <string.h>
 #include <time.h>
 #include <list>
+#include <memory>
+#include <set>
 #include <thread>
 #include <vector>
-#include "config.h"
-#include "define.h"
 #include "endpoint.h"
-#include "sessionMgr.h"
 #include "timeoutContainer.h"
+#include "config/config.h"
+#include "config/forward.h"
+#include "link/type.h"
+#include "link/tunnelMgr.h"
 
 namespace mapper
 {
@@ -44,7 +47,7 @@ public:
     NetMgr();
     virtual ~NetMgr();
 
-    bool start(Config &cfg);
+    bool start(config::Config &cfg);
     void stop();
 
     inline void join()
@@ -60,30 +63,29 @@ protected:
     void closeEnv();
 
     void onSoc(time_t curTime, epoll_event &event);
-    void onService(time_t curTime, uint32_t events, Endpoint *pEndpoint);
+    void onService(time_t curTime, uint32_t events, link::EndpointService_t *pEndpoint);
 
-    void acceptClient(time_t curTime, Endpoint *pEndpoint);
-    int createNorthSoc(MapData_t *pMapData);
+    void acceptClient(time_t curTime, link::EndpointService_t *pes);
+    bool epollAddTunnel(link::Tunnel_t *pt);
+    void epollRemoveTunnel(link::Tunnel_t *pt);
+    bool epollAddEndpoint(link::EndpointBase_t *pe, bool read, bool write, bool edgeTriger);
+    void epollRemoveEndpoint(link::EndpointBase_t *pe);
+    bool epollResetEndpointMode(link::EndpointBase_t *pe, bool read, bool write, bool edgeTriger);
     void postProcess(time_t curTime);
-    void onClose(Session *pSession);
+    void onClose(link::Tunnel_t *pt);
 
-    void removeAndCloseSoc(int sock);
-    bool joinEpoll(Endpoint *pEndpoint, bool read, bool write);
-    bool resetEpollMode(Endpoint *pEndpoint, bool read, bool write);
-
-    void *serviceIndexToPtr(uint32_t index);
-    uint32_t ptrToServiceIndex(void *p);
-    void onSessionStatus(Session *pSession);
     void timeoutCheck(time_t curTime);
 
-    std::vector<mapper::MapData_t> mMapDatas;
+    std::vector<std::shared_ptr<mapper::config::Forward>> mForwards;
+    std::vector<link::EndpointService_t *> mServices;
 
+    config::Config * mpCfg;
+    int mPreConnEpollfd;
     int mEpollfd;
-    SessionMgr mSessionMgr;
-    std::vector<std::shared_ptr<Endpoint>> mSvrEndpoints;
+    link::TunnelMgr mTunnelMgr;
     std::vector<std::thread> mThreads;
     bool mStopFlag;
-    std::list<Session *> mPostProcessList;
+    std::set<link::Tunnel_t *> mPostProcessList;
 
     TimeoutContainer mConnectTimeoutContainer;
     TimeoutContainer mSessionTimeoutContainer;

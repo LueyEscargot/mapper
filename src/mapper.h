@@ -13,9 +13,9 @@
 #define __MAPPER_MAPPER_H__
 
 #include <vector>
-#include "config.h"
 #include "define.h"
 #include "netMgr.h"
+#include "config/config.h"
 
 namespace mapper
 {
@@ -26,7 +26,7 @@ public:
     Mapper();
     ~Mapper();
 
-    bool run(Config &cfg);
+    bool run(config::Config &cfg);
 
 protected:
     void release();

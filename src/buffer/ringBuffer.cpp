@@ -9,6 +9,8 @@ using namespace std;
 
 namespace mapper
 {
+namespace buffer
+{
 
 struct Constant
 {
@@ -180,4 +182,5 @@ uint64_t RingBuffer::alignToPageSize(uint64_t size)
     return m ? size + Const.pageSize - m : size;
 }
 
+} // namespace buffer
 } // namespace mapper

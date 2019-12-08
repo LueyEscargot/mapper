@@ -9,13 +9,15 @@
  * 
  */
 
-#ifndef __MAPPER_BUFFER_H__
-#define __MAPPER_BUFFER_H__
+#ifndef __MAPPER_BUFFER_BUFFER_H__
+#define __MAPPER_BUFFER_BUFFER_H__
 
 #include <stdint.h>
 #include <string>
 
 namespace mapper
+{
+namespace buffer
 {
 
 class Buffer
@@ -52,6 +54,7 @@ protected:
     uint64_t end;
 };
 
+} // namespace buffer
 } // namespace mapper
 
-#endif // __MAPPER_BUFFER_H__
+#endif // __MAPPER_BUFFER_BUFFER_H__

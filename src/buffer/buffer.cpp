@@ -27,6 +27,8 @@ _Reporter _reporter;
 
 namespace mapper
 {
+namespace buffer
+{
 
 Buffer::Buffer(uint32_t _capacity)
     : buffer(nullptr),
@@ -74,4 +76,5 @@ std::string Buffer::toStr()
     return ss.str();
 }
 
+} // namespace buffer
 } // namespace mapper
