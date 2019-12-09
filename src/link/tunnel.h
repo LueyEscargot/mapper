@@ -31,10 +31,10 @@ protected:
 public:
     static bool init(Tunnel_t *pt, EndpointService_t *pes, int southSoc);
     static void setStatus(Tunnel_t *pt, TunnelState_t stat);
+    static std::string toStr(Tunnel_t *pt);
+
     static bool connect(Tunnel_t *pt);
-
     static bool onSoc(uint64_t curTime, EndpointRemote_t *per, uint32_t events, CB_SetEpollMode cbSetEpollMode);
-
     static bool northSocRecv(Tunnel_t *pt, CB_SetEpollMode cbSetEpollMode);
     static bool northSocSend(Tunnel_t *pt, CB_SetEpollMode cbSetEpollMode);
     static bool southSocRecv(Tunnel_t *pt, CB_SetEpollMode cbSetEpollMode);

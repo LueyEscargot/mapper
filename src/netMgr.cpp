@@ -15,6 +15,7 @@
 #include "session.h"
 #include "link/endpoint.h"
 #include "link/tunnel.h"
+#include "link/type.h"
 
 using namespace std;
 
@@ -403,6 +404,7 @@ void NetMgr::acceptClient(time_t curTime, link::EndpointService_t *pes)
     }
 
     // TODO: add into timeout timer
+    mConnectTimer.insert(curTime, &pt->timerClient);
 
     char ip[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, &address.sin_addr, ip, INET_ADDRSTRLEN);
@@ -605,28 +607,26 @@ void NetMgr::onClose(link::Tunnel_t *pt)
 
 void NetMgr::timeoutCheck(time_t curTime)
 {
-    auto fn = [](time_t curTime,
-                 uint64_t timeoutInterval,
-                 TimeoutContainer &container,
-                 const char *containerName) {
-        TimeoutContainer::ContainerType timeoutClients =
-            container.removeTimeout(curTime - timeoutInterval);
-        for (auto *pClient : timeoutClients)
+    auto fn = [&](uint64_t interval,
+                  timer::Container &c,
+                  const char *title) {
+        for (auto p = c.removeTimeout(curTime - interval); p; p = p->next)
         {
-            Session *pSession = static_cast<Session *>(pClient);
-            spdlog::debug("[NetMgr::timeoutCheck] session[{}]@{} timeout.", pSession->toStr(), containerName);
-            pSession->setStatus(Session::State_t::CLOSE);
+            auto pt = static_cast<link::Tunnel_t *>(p->self);
+            spdlog::debug("[NetMgr::timeoutCheck] tunnel[{}]@{} timeout.", link::Tunnel::toStr(pt), title);
+            link::Tunnel::setStatus(pt, link::TunnelState_t::BROKEN);
+            onClose(pt);
         }
     };
 
-    if (!mConnectTimeoutContainer.empty())
+    if (!mConnectTimer.empty())
     {
-        fn(curTime, mConnectTimeout, mConnectTimeoutContainer, "CONN");
+        fn(mConnectTimeout, mConnectTimer, "CONN");
     }
-    if (!mSessionTimeoutContainer.empty())
-    {
-        fn(curTime, mSessionTimeout, mSessionTimeoutContainer, "ESTB");
-    }
+    // if (!mTunnelTimer.empty())
+    // {
+    //     fn(curTime, mSessionTimeout, mTunnelTimer, "ESTB");
+    // }
 }
 
 } // namespace mapper

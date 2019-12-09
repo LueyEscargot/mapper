@@ -5,6 +5,7 @@
 #include <string.h>
 #include <unistd.h>
 #include "../buffer/buffer.h"
+#include "../timer/container.h"
 
 namespace mapper
 {
@@ -41,6 +42,10 @@ typedef enum TUNNEL_STATE
 
 typedef struct ENDPOINT_BASE
 {
+    Type_t type;
+    int soc;
+    bool valid;
+
     inline void init(Type_t _type, int _soc)
     {
         type = _type;
@@ -51,10 +56,6 @@ typedef struct ENDPOINT_BASE
         soc = _soc;
         valid = true;
     }
-
-    Type_t type;
-    int soc;
-    bool valid;
 
     inline void close()
     {
@@ -117,6 +118,7 @@ typedef struct ENDPOINT_REMOTE : public EndpointBase_t
 
 typedef struct TUNNEL
 {
+    timer::Container::Client_t timerClient;
     Protocol_t protocol;
     EndpointRemote_t south;
     EndpointRemote_t north;
@@ -129,6 +131,12 @@ typedef struct TUNNEL
 
     inline void create(buffer::Buffer *_toNorthBUffer, buffer::Buffer *_toSouthBUffer)
     {
+        timerClient.time = 0;
+        timerClient.prev = nullptr;
+        timerClient.next = nullptr;
+        timerClient.container = nullptr;
+        timerClient.self = this;
+
         south.init(Type_t::SOUTH, this);
         north.init(Type_t::NORTH, this);
         status = TunnelState_t::CLOSED; // set initial status

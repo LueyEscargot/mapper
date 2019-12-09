@@ -26,6 +26,7 @@
 #include "config/forward.h"
 #include "link/type.h"
 #include "link/tunnelMgr.h"
+#include "timer/container.h"
 
 namespace mapper
 {
@@ -87,8 +88,8 @@ protected:
     bool mStopFlag;
     std::set<link::Tunnel_t *> mPostProcessList;
 
-    TimeoutContainer mConnectTimeoutContainer;
-    TimeoutContainer mSessionTimeoutContainer;
+    timer::Container mConnectTimer;
+    TimeoutContainer mTunnelTimer;
     uint32_t mConnectTimeout;
     uint32_t mSessionTimeout;
 };
