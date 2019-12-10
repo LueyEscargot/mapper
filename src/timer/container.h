@@ -26,6 +26,12 @@ namespace timer
 class Container
 {
 public:
+    typedef enum TYPE {
+        TIMER_CONNECT = 0,
+        TIMER_ESTABLISHED,
+        TIMER_BROKEN,
+        TYPE_COUNT
+    } Type_t;
     typedef struct CLIENT
     {
         time_t time;
