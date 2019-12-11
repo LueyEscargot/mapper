@@ -25,8 +25,11 @@ namespace timer
 
 class Container
 {
+    static const uint32_t DEFAULT_TIMEOUT_INTERVAL = 30;
+
 public:
-    typedef enum TYPE {
+    typedef enum TYPE
+    {
         TIMER_CONNECT = 0,
         TIMER_ESTABLISHED,
         TIMER_BROKEN,
@@ -41,10 +44,14 @@ public:
         void *self;
     } Client_t;
 
-    Container():tail( &head) { head.next = nullptr; };
+    Container() : tail(&head) { head.next = nullptr; };
     ~Container();
 
+    inline void setInterval(Type_t type, const uint32_t interval) { mTimeoutInterval[type] = interval; }
+    inline uint32_t getInterval(Type_t type) { return mTimeoutInterval[type]; }
+
     inline bool empty() { return tail == &head; }
+    void insert(Type_t type, time_t curTime, Client_t *pClient);
     inline void insert(time_t curTime, Client_t *pClient)
     {
         pClient->time = curTime;
@@ -61,11 +68,14 @@ public:
         assert(pClient->container == this);
 
         pClient->prev->next = pClient->next;
-        if (tail == pClient) {
+        if (tail == pClient)
+        {
             // remove last item
             assert(pClient->next == nullptr);
             tail = tail->prev;
-        } else {
+        }
+        else
+        {
             pClient->next->prev = pClient->prev;
         }
 
@@ -83,6 +93,10 @@ public:
 protected:
     Client_t head;
     Client_t *tail;
+
+    Client_t mTimerPool[TYPE_COUNT];
+    Client_t *mTimerTail[TYPE_COUNT];
+    uint32_t mTimeoutInterval[TYPE_COUNT];
 };
 
 } // namespace timer
