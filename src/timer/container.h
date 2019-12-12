@@ -25,7 +25,7 @@ namespace timer
 
 class Container
 {
-    static const uint32_t DEFAULT_TIMEOUT_INTERVAL = 30;
+    static const int DEFAULT_TIMEOUT_INTERVAL = 30;
 
 public:
     typedef enum TYPE
@@ -40,22 +40,21 @@ public:
         time_t time;
         CLIENT *prev;
         CLIENT *next;
-        Container *container;
+        Type_t type;
         void *self;
     } Client_t;
 
-    Container() : tail(&head) { head.next = nullptr; };
+    Container();
     ~Container();
 
-    inline void setInterval(Type_t type, const uint32_t interval) { mTimeoutInterval[type] = interval; }
-    inline uint32_t getInterval(Type_t type) { return mTimeoutInterval[type]; }
+    inline void setInterval(Type_t type, const int interval) { mTimeoutInterval[type] = interval; }
+    inline int getInterval(Type_t type) { return mTimeoutInterval[type]; }
 
     inline bool empty() { return tail == &head; }
     void insert(Type_t type, time_t curTime, Client_t *pClient);
     inline void insert(time_t curTime, Client_t *pClient)
     {
         pClient->time = curTime;
-        pClient->container = this;
 
         // insert at end of list and shift pointer 'tail' to new inserted item
         pClient->prev = tail;
@@ -63,40 +62,23 @@ public:
         tail->next = pClient;
         tail = pClient;
     }
-    inline void remove(Client_t *pClient)
-    {
-        assert(pClient->container == this);
-
-        pClient->prev->next = pClient->next;
-        if (tail == pClient)
-        {
-            // remove last item
-            assert(pClient->next == nullptr);
-            tail = tail->prev;
-        }
-        else
-        {
-            pClient->next->prev = pClient->prev;
-        }
-
-        pClient->prev = pClient->next = nullptr;
-        pClient->container = nullptr;
-    }
+    void remove(Client_t *pClient);
     inline void refresh(time_t curTime, Client_t *pClient)
     {
         remove(pClient);
         insert(curTime, pClient);
     }
 
+    Client_t *removeTimeout(Type_t type, time_t timePoint);
     Client_t *removeTimeout(time_t timePoint);
 
 protected:
     Client_t head;
     Client_t *tail;
 
-    Client_t mTimerPool[TYPE_COUNT];
-    Client_t *mTimerTail[TYPE_COUNT];
-    uint32_t mTimeoutInterval[TYPE_COUNT];
+    Client_t *mHead[TYPE_COUNT];
+    Client_t *mTail[TYPE_COUNT];
+    int mTimeoutInterval[TYPE_COUNT];
 };
 
 } // namespace timer

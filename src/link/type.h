@@ -134,7 +134,6 @@ typedef struct TUNNEL
         timerClient.time = 0;
         timerClient.prev = nullptr;
         timerClient.next = nullptr;
-        timerClient.container = nullptr;
         timerClient.self = this;
 
         south.init(Type_t::SOUTH, this);
