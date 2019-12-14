@@ -110,7 +110,8 @@ void Tunnel::setStatus(Tunnel_t *pt, TunnelState_t stat)
     pt->status = stat;
 }
 
-string Tunnel::toStr(Tunnel_t *pt) {
+string Tunnel::toStr(Tunnel_t *pt)
+{
     stringstream ss;
 
     ss << "["
@@ -119,7 +120,7 @@ string Tunnel::toStr(Tunnel_t *pt) {
        << "]";
 
     return ss.str();
-    }
+}
 
 bool Tunnel::connect(Tunnel_t *pt)
 {
@@ -186,7 +187,11 @@ bool Tunnel::connect(Tunnel_t *pt)
     }
 }
 
-bool Tunnel::onSoc(uint64_t curTime, EndpointRemote_t *per, uint32_t events, CB_SetEpollMode cbSetEpollMode)
+bool Tunnel::onSoc(uint64_t curTime,
+                   EndpointRemote_t *per,
+                   uint32_t events,
+                   CB_SetEpollMode cbSetEpollMode,
+                   CB_onEstablish cbOnEstablish)
 {
     Tunnel_t *pt = static_cast<Tunnel_t *>(per->tunnel);
 
@@ -205,7 +210,7 @@ bool Tunnel::onSoc(uint64_t curTime, EndpointRemote_t *per, uint32_t events, CB_
         {
             if (per->type == Type_t::NORTH)
             {
-                result = northSocSend(pt, cbSetEpollMode);
+                result = northSocSend(pt, cbSetEpollMode, cbOnEstablish);
             }
             else
             {
@@ -337,7 +342,7 @@ bool Tunnel::northSocRecv(Tunnel_t *pt, CB_SetEpollMode cbSetEpollMode)
     return true;
 }
 
-bool Tunnel::northSocSend(Tunnel_t *pt, CB_SetEpollMode cbSetEpollMode)
+bool Tunnel::northSocSend(Tunnel_t *pt, CB_SetEpollMode cbSetEpollMode, CB_onEstablish cbOnEstablish)
 {
     if (!pt->north.valid)
     {
@@ -353,6 +358,7 @@ bool Tunnel::northSocSend(Tunnel_t *pt, CB_SetEpollMode cbSetEpollMode)
             cbSetEpollMode(&pt->south, true, true, true))
         {
             setStatus(pt, TunnelState_t::ESTABLISHED);
+            cbOnEstablish(pt);
             return true;
         }
         else
@@ -449,7 +455,7 @@ bool Tunnel::southSocRecv(Tunnel_t *pt, CB_SetEpollMode cbSetEpollMode)
             pt->toNorthBUffer->stopRecv = true;
 
             // spdlog::trace("[Tunnel::southSocRecv] to south buffer full");
-            northSocSend(pt, cbSetEpollMode); // 如果发送失败，可由后续逻辑进行处理，在此不用关系
+            northSocSend(pt, cbSetEpollMode, [](Tunnel_t *) {}); // 如果发送失败，可由后续逻辑进行处理，在此不用关系
 
 #ifdef GREEDY_MODE
             // try again
@@ -471,7 +477,7 @@ bool Tunnel::southSocRecv(Tunnel_t *pt, CB_SetEpollMode cbSetEpollMode)
             if (errno == EAGAIN)
             {
                 // 此次数据接收已完毕，先尝试发送缓冲区中的数据
-                northSocSend(pt, cbSetEpollMode);
+                northSocSend(pt, cbSetEpollMode, [](Tunnel_t *) {});
                 break;
             }
             else

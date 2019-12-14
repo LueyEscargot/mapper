@@ -22,7 +22,8 @@ namespace link
 class Tunnel
 {
 protected:
-    using CB_SetEpollMode = std::function<bool(EndpointRemote_t*, bool, bool, bool)>;
+    using CB_SetEpollMode = std::function<bool(EndpointRemote_t *, bool, bool, bool)>;
+    using CB_onEstablish = std::function<void(Tunnel_t *)>;
 
     Tunnel() = default;
     Tunnel(const Tunnel &) = default;
@@ -34,9 +35,13 @@ public:
     static std::string toStr(Tunnel_t *pt);
 
     static bool connect(Tunnel_t *pt);
-    static bool onSoc(uint64_t curTime, EndpointRemote_t *per, uint32_t events, CB_SetEpollMode cbSetEpollMode);
+    static bool onSoc(uint64_t curTime,
+                      EndpointRemote_t *per,
+                      uint32_t events,
+                      CB_SetEpollMode cbSetEpollMode,
+                      CB_onEstablish cbOnEstablish);
     static bool northSocRecv(Tunnel_t *pt, CB_SetEpollMode cbSetEpollMode);
-    static bool northSocSend(Tunnel_t *pt, CB_SetEpollMode cbSetEpollMode);
+    static bool northSocSend(Tunnel_t *pt, CB_SetEpollMode cbSetEpollMode, CB_onEstablish cbOnEstablish);
     static bool southSocRecv(Tunnel_t *pt, CB_SetEpollMode cbSetEpollMode);
     static bool southSocSend(Tunnel_t *pt, CB_SetEpollMode cbSetEpollMode);
 

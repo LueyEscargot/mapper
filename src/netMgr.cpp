@@ -29,9 +29,7 @@ NetMgr::NetMgr()
     : mpCfg(nullptr),
       mPreConnEpollfd(0),
       mEpollfd(0),
-      mStopFlag(true),
-      mConnectTimeout(0),
-      mSessionTimeout(0)
+      mStopFlag(true)
 {
 }
 
@@ -44,11 +42,12 @@ bool NetMgr::start(config::Config &cfg)
 {
     spdlog::debug("[NetMgr::start] start.");
 
+    // read settings
     mpCfg = &cfg;
-
-    mForwards = move(mpCfg->getMapData());
-    mConnectTimeout = mpCfg->getAsUint32("connectionTimeout", "global", CONNECT_TIMEOUT);
-    mSessionTimeout = mpCfg->getAsUint32("sessionTimeout", "global", SESSION_TIMEOUT);
+    mForwards = move(mpCfg->getForwards("mapping"));
+    mTimer.setInterval(timer::Container::Type_t::TIMER_CONNECT, mpCfg->getGlobalConnectTimeout());
+    mTimer.setInterval(timer::Container::Type_t::TIMER_ESTABLISHED, mpCfg->getGlobalSessionTimeout());
+    mTimer.setInterval(timer::Container::Type_t::TIMER_BROKEN, mpCfg->getGlobalReleaseTimeout());
 
     // start thread
     {
@@ -324,6 +323,12 @@ void NetMgr::onSoc(time_t curTime, epoll_event &event)
                                      bool write,
                                      bool edgeTriger) -> bool {
                                      return epollResetEndpointMode(pe, read, write, edgeTriger);
+                                 },
+                                 [&](link::Tunnel_t *pt) {
+                                     // remove from connect timer container
+                                     mTimer.remove(&pt->timerClient);
+                                     // insert into established timer container
+                                     mTimer.insert(timer::Container::Type_t::TIMER_ESTABLISHED, curTime,  &pt->timerClient);
                                  }))
         {
             spdlog::error("[NetMgr::onSoc] endpoint[{}] process fail", per->soc);
@@ -403,8 +408,8 @@ void NetMgr::acceptClient(time_t curTime, link::EndpointService_t *pes)
         return;
     }
 
-    // TODO: add into timeout timer
-    mConnectTimer.insert(curTime, &pt->timerClient);
+    // add into timeout timer
+    mTimer.insert(timer::Container::Type_t::TIMER_CONNECT, curTime, &pt->timerClient);
 
     char ip[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, &address.sin_addr, ip, INET_ADDRSTRLEN);
@@ -576,6 +581,9 @@ void NetMgr::onClose(link::Tunnel_t *pt)
         spdlog::debug("[NetMgr::onClose] close tunnel[{}-{}]", pt->south.soc, pt->north.soc);
         epollRemoveTunnel(pt);
 
+        // remove from timer container
+        mTimer.remove(&pt->timerClient);
+
         // release session object
         mTunnelMgr.freeTunnel(pt);
     }
@@ -607,10 +615,10 @@ void NetMgr::onClose(link::Tunnel_t *pt)
 
 void NetMgr::timeoutCheck(time_t curTime)
 {
-    auto fn = [&](uint64_t interval,
-                  timer::Container &c,
+    auto fn = [&](time_t curTime,
+                  timer::Container::Type_t type,
                   const char *title) {
-        for (auto p = c.removeTimeout(curTime - interval); p; p = p->next)
+        for (auto p = mTimer.removeTimeout(type, curTime); p; p = p->next)
         {
             auto pt = static_cast<link::Tunnel_t *>(p->self);
             spdlog::debug("[NetMgr::timeoutCheck] tunnel[{}]@{} timeout.", link::Tunnel::toStr(pt), title);
@@ -619,14 +627,17 @@ void NetMgr::timeoutCheck(time_t curTime)
         }
     };
 
-    if (!mConnectTimer.empty())
+    for (int type = 0; type < timer::Container::Type_t::TYPE_COUNT; ++type)
     {
-        fn(mConnectTimeout, mConnectTimer, "CONN");
+        auto p = mTimer.removeTimeout(static_cast<timer::Container::Type_t>(type), curTime);
+        for (; p; p = p->next)
+        {
+            auto pt = static_cast<link::Tunnel_t *>(p->self);
+            spdlog::debug("[NetMgr::timeoutCheck] tunnel[{}]@{} timeout.", link::Tunnel::toStr(pt), type);
+            link::Tunnel::setStatus(pt, link::TunnelState_t::BROKEN);
+            onClose(pt);
+        }
     }
-    // if (!mTunnelTimer.empty())
-    // {
-    //     fn(curTime, mSessionTimeout, mTunnelTimer, "ESTB");
-    // }
 }
 
 } // namespace mapper

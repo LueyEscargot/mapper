@@ -10,25 +10,28 @@ namespace timer
 {
 
 Container::Container()
-    : tail(&head)
 {
-    head.next = nullptr;
-    for (int i = 0; i < Type_t::TYPE_COUNT; ++i)
+    for (int type = 0; type < Type_t::TYPE_COUNT; ++type)
     {
-        mHead[i] = mTail[i] = nullptr;
+        mHead[type] = mTail[type] = nullptr;
     }
 };
 
 Container::~Container()
 {
-    if (!empty())
+    for (int type = 0; type < Type_t::TYPE_COUNT; ++type)
     {
-        warn("[Container::~Container] timer container NOT empty!");
+        if (!empty(static_cast<Type_t>(type)))
+        {
+            warn("[Container::~Container] timer container[{}] NOT empty!", type);
+        }
     }
 }
 
 void Container::insert(Type_t type, time_t t, Client_t *c)
 {
+    assert(c);
+
     c->time = t;
     c->type = type;
     c->next = nullptr;
@@ -52,6 +55,11 @@ void Container::insert(Type_t type, time_t t, Client_t *c)
 
 void Container::remove(Client_t *c)
 {
+    if (!c)
+    {
+        return;
+    }
+
     if (c->prev)
     {
         c->prev->next = c->next;
@@ -73,9 +81,10 @@ void Container::remove(Client_t *c)
     }
 }
 
-Container::Client_t *Container::removeTimeout(Type_t type, time_t timeoutTime)
+Container::Client_t *Container::removeTimeout(Type_t type, time_t curTime)
 {
     Client_t *p = mHead[type];
+    time_t timeoutTime = curTime - mTimeoutInterval[type];
 
     if (!p || p->time > timeoutTime)
     {
@@ -107,35 +116,9 @@ Container::Client_t *Container::removeTimeout(Type_t type, time_t timeoutTime)
     return list;
 }
 
-Container::Client_t *Container::removeTimeout(time_t timeoutTime)
+bool Container::isInTimer(Type_t type, Client_t *pClient)
 {
-    Client_t *p = head.next;
-
-    if (!p || p->time > timeoutTime)
-    {
-        return nullptr;
-    }
-
-    Client_t *list = p;
-    p->prev = nullptr;
-    Client_t *last = p;
-    p = p->next;
-
-    while (p && p->time <= timeoutTime)
-    {
-        last = p;
-        p = p->next;
-    }
-
-    last->next = nullptr;
-
-    head.next = p;
-    if (p)
-    {
-        p->next->prev = nullptr;
-    }
-
-    return list;
+    return pClient->type == type;
 }
 
 } // namespace timer
