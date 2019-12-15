@@ -34,23 +34,23 @@ void Container::insert(Type_t type, time_t t, Client_t *c)
 
     c->time = t;
     c->type = type;
+    c->prev = mTail[type];
     c->next = nullptr;
 
     // insert at end of list and shift pointer 'tail' to new inserted item
     if (mHead[type])
     {
-        assert(mTail[type] == nullptr);
+        assert(mTail[type]);
 
-        c->prev = nullptr;
-        mHead[type] = mTail[type] = c;
+        mTail[type]->next = c;
     }
     else
     {
-        assert(mTail[type]);
+        assert(mTail[type] == nullptr);
 
-        c->prev = mTail[type];
-        mTail[type]->next = c;
+        mHead[type] = c;
     }
+    mTail[type] = c;
 }
 
 void Container::remove(Client_t *c)
@@ -91,7 +91,7 @@ Container::Client_t *Container::removeTimeout(Type_t type, time_t curTime)
         return nullptr;
     }
 
-    assert(p->prev = nullptr);
+    assert(p->prev == nullptr);
     Client_t *list = p;
 
     Client_t *last = p;
