@@ -325,6 +325,7 @@ void NetMgr::onSoc(time_t curTime, epoll_event &event)
                                      return epollResetEndpointMode(pe, read, write, edgeTriger);
                                  },
                                  [&](link::Tunnel_t *pt) {
+                                    spdlog::debug("[NetMgr::onSoc] tunnel[{},{}] established.", pt->south.soc, pt->north.soc);
                                      // remove from connect timer container
                                      mTimer.remove(&pt->timerClient);
                                      // insert into established timer container
@@ -413,7 +414,7 @@ void NetMgr::acceptClient(time_t curTime, link::EndpointService_t *pes)
 
     char ip[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, &address.sin_addr, ip, INET_ADDRSTRLEN);
-    spdlog::debug("[NetMgr::acceptClient] accept client[{}-{}]({}:{})--{}-->{}:{}",
+    spdlog::debug("[NetMgr::acceptClient] accept client[{},{}]({}:{})--{}-->{}:{}",
                   pt->south.soc, pt->north.soc,
                   ip, ntohs(address.sin_port),
                   pes->protocol == link::Protocol_t::TCP ? "tcp" : "udp",
@@ -578,7 +579,7 @@ void NetMgr::onClose(link::Tunnel_t *pt)
         (pt->toSouthBUffer->empty() || !pt->south.valid))
     {
         // release session object
-        spdlog::debug("[NetMgr::onClose] close tunnel[{}-{}]", pt->south.soc, pt->north.soc);
+        spdlog::debug("[NetMgr::onClose] close tunnel[{},{}]", pt->south.soc, pt->north.soc);
         epollRemoveTunnel(pt);
 
         // remove from timer container
