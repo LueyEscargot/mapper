@@ -30,7 +30,7 @@ Container::~Container()
 
 void Container::insert(Type_t type, time_t t, Client_t *c)
 {
-    assert(c);
+    assert(c || (c->prev == nullptr && c->next == nullptr));
 
     c->time = t;
     c->type = type;
@@ -60,25 +60,33 @@ void Container::remove(Client_t *c)
         return;
     }
 
+    Type_t type = c->type;
+
     if (c->prev)
     {
         c->prev->next = c->next;
-        c->prev = nullptr;
     }
     else
     {
-        mHead[c->type] = c->next;
+        assert(mHead[type] == c);
+
+        mHead[type] = c->next;
     }
 
     if (c->next)
     {
         c->next->prev = c->prev;
-        c->next = nullptr;
     }
     else
     {
-        mTail[c->type] = c->prev;
+        assert(mTail[type] == c);
+
+        mTail[type] = c->prev;
     }
+
+    c->prev = nullptr;
+    c->next = nullptr;
+
 }
 
 Container::Client_t *Container::removeTimeout(Type_t type, time_t curTime)
