@@ -9,6 +9,30 @@ namespace mapper
 namespace timer
 {
 
+/**
+ * timer state machine:
+ * 
+ *         *-----> INVALID
+ *         |          |
+ *         |          |
+ *         |          V
+ *         |       CONNECT -----> ESTABLISHED
+ *         |          |               |
+ *         |          |               |
+ *         |          *-------V-------*
+ *         |                  |
+ *         |                  |
+ *         |                  V
+ *         *--------------- BROKEN
+ */
+bool Container::StateMachine[TYPE_COUNT][TYPE_COUNT] = {
+    // INVALID, CONNECT, ESTABLISHED, BROKEN
+    {0, 1, 0, 0}, // INVALID
+    {0, 0, 1, 1}, // CONNECT
+    {0, 0, 0, 1}, // ESTABLISHED
+    {1, 0, 0, 0}, // BROKEN
+};
+
 Container::Container()
 {
     for (int type = 0; type < Type_t::TYPE_COUNT; ++type)
@@ -30,8 +54,13 @@ Container::~Container()
 
 void Container::insert(Type_t type, time_t t, Client_t *c)
 {
-    assert(c || (c->prev == nullptr && c->next == nullptr));
+    assert(c &&
+           c->inTimer == false &&
+           c->prev == nullptr &&
+           c->next == nullptr &&
+           checkStatChange(c, type));
 
+    c->inTimer = true;
     c->time = t;
     c->type = type;
     c->prev = mTail[type];
@@ -60,6 +89,8 @@ void Container::remove(Client_t *c)
         return;
     }
 
+    assert(c->inTimer);
+
     Type_t type = c->type;
 
     if (c->prev)
@@ -84,9 +115,9 @@ void Container::remove(Client_t *c)
         mTail[type] = c->prev;
     }
 
+    c->inTimer = false;
     c->prev = nullptr;
     c->next = nullptr;
-
 }
 
 Container::Client_t *Container::removeTimeout(Type_t type, time_t curTime)
@@ -100,12 +131,17 @@ Container::Client_t *Container::removeTimeout(Type_t type, time_t curTime)
     }
 
     assert(p->prev == nullptr);
-    Client_t *list = p;
+    p->inTimer = false;
+    p->type = Type_t::TYPE_INVALID;
 
+    Client_t *list = p;
     Client_t *last = p;
     p = p->next;
     while (p && p->time <= timeoutTime)
     {
+        p->inTimer = false;
+        p->type = Type_t::TYPE_INVALID;
+
         last = p;
         p = p->next;
     }
@@ -114,6 +150,7 @@ Container::Client_t *Container::removeTimeout(Type_t type, time_t curTime)
 
     if (p)
     {
+        p->prev = nullptr;
         mHead[type] = p;
     }
     else

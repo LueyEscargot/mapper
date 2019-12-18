@@ -31,18 +31,29 @@ class Container
 public:
     typedef enum TYPE
     {
-        TIMER_CONNECT = 0,
+        TYPE_INVALID = 0,
+        TIMER_CONNECT,
         TIMER_ESTABLISHED,
         TIMER_BROKEN,
         TYPE_COUNT
     } Type_t;
     typedef struct CLIENT
     {
+        bool inTimer;
         time_t time;
         CLIENT *prev;
         CLIENT *next;
         Type_t type;
-        void *self;
+        void *tunnel; // 用于通过 timer client 查找对应的 Tunnel 结构体
+
+        inline void init()
+        {
+            inTimer = false;
+            time = 0;
+            prev = nullptr;
+            next = nullptr;
+            type = Type_t::TYPE_INVALID;
+        }
     } Client_t;
 
     Container();
@@ -68,6 +79,13 @@ public:
     bool isInTimer(Type_t type, Client_t *pClient);
 
 protected:
+    inline bool checkStatChange(Client_t *pClient, Type_t newType)
+    {
+        return StateMachine[pClient->type][newType];
+    }
+
+    static bool StateMachine[TYPE_COUNT][TYPE_COUNT];
+
     Client_t *mHead[TYPE_COUNT];
     Client_t *mTail[TYPE_COUNT];
     int mTimeoutInterval[TYPE_COUNT];

@@ -134,7 +134,7 @@ typedef struct TUNNEL
         timerClient.time = 0;
         timerClient.prev = nullptr;
         timerClient.next = nullptr;
-        timerClient.self = this;
+        timerClient.tunnel = this;
 
         south.init(Type_t::SOUTH, this);
         north.init(Type_t::NORTH, this);
@@ -146,6 +146,7 @@ typedef struct TUNNEL
     }
     inline void init(Protocol_t _protocol, int southSoc, int northSoc)
     {
+        timerClient.init();
         protocol = _protocol;
         south.setSoc(southSoc);
         north.setSoc(northSoc);

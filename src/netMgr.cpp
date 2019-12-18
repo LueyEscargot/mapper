@@ -325,11 +325,11 @@ void NetMgr::onSoc(time_t curTime, epoll_event &event)
                                      return epollResetEndpointMode(pe, read, write, edgeTriger);
                                  },
                                  [&](link::Tunnel_t *pt) {
-                                    spdlog::debug("[NetMgr::onSoc] tunnel[{},{}] established.", pt->south.soc, pt->north.soc);
+                                     spdlog::debug("[NetMgr::onSoc] tunnel[{},{}] established.", pt->south.soc, pt->north.soc);
                                      // remove from connect timer container
                                      mTimer.remove(&pt->timerClient);
                                      // insert into established timer container
-                                     mTimer.insert(timer::Container::Type_t::TIMER_ESTABLISHED, curTime,  &pt->timerClient);
+                                     mTimer.insert(timer::Container::Type_t::TIMER_ESTABLISHED, curTime, &pt->timerClient);
                                  }))
         {
             spdlog::error("[NetMgr::onSoc] endpoint[{}] process fail", per->soc);
@@ -583,7 +583,15 @@ void NetMgr::onClose(link::Tunnel_t *pt)
         epollRemoveTunnel(pt);
 
         // remove from timer container
-        mTimer.remove(&pt->timerClient);
+        if (pt->timerClient.inTimer)
+        {
+            mTimer.remove(&pt->timerClient);
+        }
+        else
+        {
+            assert(!pt->timerClient.inTimer &&
+                   pt->timerClient.type == timer::Container::Type_t::TYPE_INVALID);
+        }
 
         // release session object
         mTunnelMgr.freeTunnel(pt);
@@ -621,7 +629,7 @@ void NetMgr::timeoutCheck(time_t curTime)
                   const char *title) {
         for (auto p = mTimer.removeTimeout(type, curTime); p; p = p->next)
         {
-            auto pt = static_cast<link::Tunnel_t *>(p->self);
+            auto pt = static_cast<link::Tunnel_t *>(p->tunnel);
             spdlog::debug("[NetMgr::timeoutCheck] tunnel[{}]@{} timeout.", link::Tunnel::toStr(pt), title);
             link::Tunnel::setStatus(pt, link::TunnelState_t::BROKEN);
             onClose(pt);
@@ -633,7 +641,7 @@ void NetMgr::timeoutCheck(time_t curTime)
         auto p = mTimer.removeTimeout(static_cast<timer::Container::Type_t>(type), curTime);
         for (; p; p = p->next)
         {
-            auto pt = static_cast<link::Tunnel_t *>(p->self);
+            auto pt = static_cast<link::Tunnel_t *>(p->tunnel);
             spdlog::debug("[NetMgr::timeoutCheck] tunnel[{}]@{} timeout.", link::Tunnel::toStr(pt), type);
             link::Tunnel::setStatus(pt, link::TunnelState_t::BROKEN);
             onClose(pt);
