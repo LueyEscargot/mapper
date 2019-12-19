@@ -629,7 +629,7 @@ void NetMgr::timeoutCheck(time_t curTime)
                   const char *title) {
         for (auto p = mTimer.removeTimeout(type, curTime); p; p = p->next)
         {
-            auto pt = static_cast<link::Tunnel_t *>(p->tunnel);
+            auto pt = static_cast<link::Tunnel_t *>(p->tag);
             spdlog::debug("[NetMgr::timeoutCheck] tunnel[{}]@{} timeout.", link::Tunnel::toStr(pt), title);
             link::Tunnel::setStatus(pt, link::TunnelState_t::BROKEN);
             onClose(pt);
@@ -641,7 +641,7 @@ void NetMgr::timeoutCheck(time_t curTime)
         auto p = mTimer.removeTimeout(static_cast<timer::Container::Type_t>(type), curTime);
         for (; p; p = p->next)
         {
-            auto pt = static_cast<link::Tunnel_t *>(p->tunnel);
+            auto pt = static_cast<link::Tunnel_t *>(p->tag);
             spdlog::debug("[NetMgr::timeoutCheck] tunnel[{}]@{} timeout.", link::Tunnel::toStr(pt), type);
             link::Tunnel::setStatus(pt, link::TunnelState_t::BROKEN);
             onClose(pt);

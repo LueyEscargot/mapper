@@ -44,7 +44,7 @@ public:
         CLIENT *prev;
         CLIENT *next;
         Type_t type;
-        void *tunnel; // 用于通过 timer client 查找对应的 Tunnel 结构体
+        void *tag; // 客户端自维护指针，此类不负责初始化、生命周期管理、校验、释放等等
 
         inline void init()
         {
