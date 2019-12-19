@@ -35,6 +35,7 @@ protected:
     static std::regex REG_FOR_TRIM_COMMENTS;
     static std::regex REG_SECTION;
     static std::regex REG_CONFIG;
+    static std::regex REG_VALID_NUMBER;
     static std::regex REG_VALID_UNSIGNED_NUMBER;
 
     // default value of global properties
@@ -69,15 +70,16 @@ public:
     bool parse(int argc, char *argv[]);
     bool parse(const char *file, bool silence = false);
     std::string get(std::string key, std::string section = "", std::string defaultValue = "");
+    int32_t getAsInt32(std::string key, std::string section = "", int32_t defaultValue = 0);
     uint32_t getAsUint32(std::string key, std::string section = "", uint32_t defaultValue = 0);
 
     std::vector<std::shared_ptr<Forward>> getForwards(std::string section = "*");
 
     // properties of global
     inline int getGlobalSessions() { return getAsUint32("sessions", "global", DEFAULT_GLOBAL_SESSIONS); }
-    inline int getGlobalConnectTimeout() { return getAsUint32("connectTimeout", "global", DEFAULT_GLOBAL_CONNECT_TIMEOUT); }
-    inline int getGlobalSessionTimeout() { return getAsUint32("sessionTimeout", "global", DEFAULT_GLOBAL_SESSION_TIMEOUT); }
-    inline int getGlobalReleaseTimeout() { return getAsUint32("releaseTimeout", "global", DEFAULT_GLOBAL_RELEASE_TIMEOUT); }
+    inline int getGlobalConnectTimeout() { return getAsInt32("connectTimeout", "global", DEFAULT_GLOBAL_CONNECT_TIMEOUT); }
+    inline int getGlobalSessionTimeout() { return getAsInt32("sessionTimeout", "global", DEFAULT_GLOBAL_SESSION_TIMEOUT); }
+    inline int getGlobalReleaseTimeout() { return getAsInt32("releaseTimeout", "global", DEFAULT_GLOBAL_RELEASE_TIMEOUT); }
 
     // properties of link-tunnels
     inline int getLinkTunnels() { return getAsUint32("tunnels", "link", DEFAULT_LINK_TUNNELS); }

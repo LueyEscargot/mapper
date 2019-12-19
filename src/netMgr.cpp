@@ -311,6 +311,7 @@ void NetMgr::onSoc(time_t curTime, epoll_event &event)
     case Endpoint::Type_t::SOUTH:
     {
         link::EndpointRemote_t *per = static_cast<link::EndpointRemote_t *>(pEndpoint);
+        link::Tunnel_t *pt = static_cast<link::Tunnel_t *>(per->tunnel);
 
         // spdlog::trace("[NetMgr::onSoc] Session: {}", link::Endpoint::toStr(per));
 
@@ -333,8 +334,11 @@ void NetMgr::onSoc(time_t curTime, epoll_event &event)
                                  }))
         {
             spdlog::error("[NetMgr::onSoc] endpoint[{}] process fail", per->soc);
-            link::Tunnel_t *pt = static_cast<link::Tunnel_t *>(per->tunnel);
             mPostProcessList.insert(pt);
+        }
+        else
+        {
+            mTimer.refresh(curTime, &pt->timerClient);
         }
     }
     break;

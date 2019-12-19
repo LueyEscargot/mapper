@@ -27,10 +27,10 @@ namespace timer
  */
 bool Container::StateMachine[TYPE_COUNT][TYPE_COUNT] = {
     // INVALID, CONNECT, ESTABLISHED, BROKEN
-    {0, 1, 0, 0}, // INVALID
-    {0, 0, 1, 1}, // CONNECT
-    {0, 0, 0, 1}, // ESTABLISHED
-    {1, 0, 0, 0}, // BROKEN
+    {1, 1, 0, 0}, // INVALID
+    {0, 1, 1, 1}, // CONNECT
+    {0, 0, 1, 1}, // ESTABLISHED
+    {1, 0, 0, 1}, // BROKEN
 };
 
 Container::Container()
@@ -122,6 +122,11 @@ void Container::remove(Client_t *c)
 
 Container::Client_t *Container::removeTimeout(Type_t type, time_t curTime)
 {
+    if (mTimeoutInterval[type] <= 0)
+    {
+        return nullptr;
+    }
+
     Client_t *p = mHead[type];
     time_t timeoutTime = curTime - mTimeoutInterval[type];
 
