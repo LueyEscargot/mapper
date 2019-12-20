@@ -66,8 +66,8 @@ protected:
     void onService(time_t curTime, uint32_t events, link::EndpointService_t *pEndpoint);
 
     void acceptClient(time_t curTime, link::EndpointService_t *pes);
-    void onSend(link::EndpointRemote_t *per, link::Tunnel_t *pt);
-    void onRecv(link::EndpointRemote_t *per, link::Tunnel_t *pt);
+    void onSend(time_t curTime, link::EndpointRemote_t *per, link::Tunnel_t *pt);
+    void onRecv(time_t curTime, link::EndpointRemote_t *per, link::Tunnel_t *pt);
     bool epollAddTunnel(link::Tunnel_t *pt);
     void epollRemoveTunnel(link::Tunnel_t *pt);
     bool epollAddEndpoint(link::EndpointBase_t *pe, bool read, bool write, bool edgeTriger);
@@ -81,7 +81,7 @@ protected:
     std::vector<std::shared_ptr<mapper::config::Forward>> mForwards;
     std::vector<link::EndpointService_t *> mServices;
 
-    config::Config * mpCfg;
+    config::Config *mpCfg;
     int mPreConnEpollfd;
     int mEpollfd;
     link::TunnelMgr mTunnelMgr;

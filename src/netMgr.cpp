@@ -198,10 +198,10 @@ bool NetMgr::initEnv()
         spdlog::debug("[NetMgr::initEnv] process forward: {}", forward->toStr());
 
         link::EndpointService_t *pes = link::Endpoint::createService(forward->protocol.c_str(),
-                                                         forward->interface.c_str(),
-                                                         forward->service.c_str(),
-                                                         forward->targetHost.c_str(),
-                                                         forward->targetService.c_str());
+                                                                     forward->interface.c_str(),
+                                                                     forward->service.c_str(),
+                                                                     forward->targetHost.c_str(),
+                                                                     forward->targetService.c_str());
         if (pes == nullptr)
         {
             spdlog::error("[NetMgr::initEnv] create service endpoint fail");
@@ -319,13 +319,13 @@ void NetMgr::onSoc(time_t curTime, epoll_event &event)
             // TCP - send
             if (event.events & EPOLLOUT)
             {
-                onSend(per, pt);
+                onSend(curTime, per, pt);
             }
 
             // TCP - recv
             if (event.events & EPOLLIN)
             {
-                onRecv(per, pt);
+                onRecv(curTime, per, pt);
             }
         }
         else
@@ -333,51 +333,6 @@ void NetMgr::onSoc(time_t curTime, epoll_event &event)
             spdlog::error("[NetMgr::onSoc] support function for UDP NOT implemented yet.");
         }
     }
-
-    // switch (pe->type)
-    // {
-    // case link::Type_t::SERVICE:
-    //     onService(curTime, event.events, static_cast<link::EndpointService_t *>(pe));
-    //     break;
-    // case link::Type_t::NORTH:
-    // case link::Type_t::SOUTH:
-    // {
-    //     link::EndpointRemote_t *per = static_cast<link::EndpointRemote_t *>(pe);
-    //     link::Tunnel_t *pt = static_cast<link::Tunnel_t *>(per->tunnel);
-
-    //     // spdlog::trace("[NetMgr::onSoc] Session: {}", link::Endpoint::toStr(per));
-
-    //     using namespace std::placeholders;
-    //     if (!link::Tunnel::onSoc(curTime,
-    //                        per,
-    //                        event.events,
-    //                        [&](link::EndpointBase_t *pe,
-    //                            bool read,
-    //                            bool write,
-    //                            bool edgeTriger) -> bool {
-    //                            return epollResetEndpointMode(pe, read, write, edgeTriger);
-    //                        },
-    //                        [&](link::Tunnel_t *pt) {
-    //                            spdlog::debug("[NetMgr::onSoc] tunnel[{},{}] established.", pt->south.soc, pt->north.soc);
-    //                            // remove from connect timer container
-    //                            mTimer.remove(&pt->timerClient);
-    //                            // insert into established timer container
-    //                            mTimer.insert(timer::Container::Type_t::TIMER_ESTABLISHED, curTime, &pt->timerClient);
-    //                        }))
-    //     {
-    //         spdlog::error("[NetMgr::onSoc] endpoint[{}] process fail", per->soc);
-    //         mPostProcessList.insert(pt);
-    //     }
-    //     else
-    //     {
-    //         mTimer.refresh(curTime, &pt->timerClient);
-    //     }
-    // }
-    // break;
-    // default:
-    //     spdlog::critical("[NetMgr::onSoc] invalid endpoint:", link::Endpoint::toStr(pe));
-    //     assert(false);
-    // }
 }
 
 void NetMgr::onService(time_t curTime, uint32_t events, link::EndpointService_t *pe)
@@ -457,61 +412,236 @@ void NetMgr::acceptClient(time_t curTime, link::EndpointService_t *pes)
                   pes->targetHost, pes->targetService);
 }
 
-void NetMgr::onSend(link::EndpointRemote_t *per, link::Tunnel_t *pt)
+void NetMgr::onSend(time_t curTime, link::EndpointRemote_t *per, link::Tunnel_t *pt)
 {
-    /*
-
-    switch (pe->type)
+    if (per->type == link::Type_t::NORTH)
     {
-    case link::Type_t::SERVICE:
-        onService(curTime, event.events, static_cast<link::EndpointService_t *>(pe));
-        break;
-    case link::Type_t::NORTH:
-    case link::Type_t::SOUTH:
-    {
-        link::EndpointRemote_t *per = static_cast<link::EndpointRemote_t *>(pe);
-        link::Tunnel_t *pt = static_cast<link::Tunnel_t *>(per->tunnel);
-
-        // spdlog::trace("[NetMgr::onSoc] Session: {}", link::Endpoint::toStr(per));
-
-        using namespace std::placeholders;
-        if (!link::Tunnel::onSoc(curTime,
-                           per,
-                           event.events,
-                           [&](link::EndpointBase_t *pe,
-                               bool read,
-                               bool write,
-                               bool edgeTriger) -> bool {
-                               return epollResetEndpointMode(pe, read, write, edgeTriger);
-                           },
-                           [&](link::Tunnel_t *pt) {
-                               spdlog::debug("[NetMgr::onSoc] tunnel[{},{}] established.", pt->south.soc, pt->north.soc);
-                               // remove from connect timer container
-                               mTimer.remove(&pt->timerClient);
-                               // insert into established timer container
-                               mTimer.insert(timer::Container::Type_t::TIMER_ESTABLISHED, curTime, &pt->timerClient);
-                           }))
+        if (!pt->north.valid)
         {
-            spdlog::error("[NetMgr::onSoc] endpoint[{}] process fail", per->soc);
+            spdlog::error("[NetMgr::onSend] can't send on invalid north soc[{}]",
+                          pt->north.soc);
             mPostProcessList.insert(pt);
+            return;
+        }
+
+        // 状态处理
+        switch (pt->status)
+        {
+        case link::TunnelState_t::CONNECT:
+            // 会话已建立，并且此时并没有数据需要发送
+            if (epollResetEndpointMode(&pt->north, true, true, true) &&
+                epollResetEndpointMode(&pt->south, true, true, true))
+            {
+                link::Tunnel::setStatus(pt, link::TunnelState_t::ESTABLISHED);
+
+                spdlog::debug("[NetMgr::onSend] tunnel[{},{}] established.",
+                              pt->south.soc, pt->north.soc);
+                // remove from connect timer container
+                mTimer.remove(&pt->timerClient);
+                // insert into established timer container
+                mTimer.insert(timer::Container::Type_t::TIMER_ESTABLISHED,
+                              curTime,
+                              &pt->timerClient);
+                return;
+            }
+            else
+            {
+                spdlog::error("[NetMgr::onSend] north soc[{}] connect fail",
+                              pt->north.soc);
+                mPostProcessList.insert(pt);
+                return;
+            }
+        case link::TunnelState_t::ESTABLISHED:
+        case link::TunnelState_t::BROKEN:
+            break;
+        default:
+            spdlog::error("[NetMgr::onSend] north soc[{}] invalid tunnel status: {}",
+                          pt->north.soc, pt->status);
+            assert(false);
+        }
+
+        if (!link::Tunnel::northSocSend(pt))
+        {
+            // spdlog::error("[NetMgr::onSend] north soc[{}] send fail", pt->north.soc);
+            mPostProcessList.insert(pt);
+            return;
         }
         else
         {
-            mTimer.refresh(curTime, &pt->timerClient);
+            // 判断是否已有能力接收从南向来的数据
+            if (pt->status == link::TunnelState_t::ESTABLISHED && // 只在链路建立的状态下接收来自南向的数据
+                pt->toNorthBUffer->stopRecv &&                    // 北向缓冲区之前因无空间而停止接收数据
+                pt->toNorthBUffer->freeSize() &&                  // 北向缓冲区当前可以接收数据
+                pt->south.valid)                                  // 南向链路有效
+            {
+                pt->toNorthBUffer->stopRecv = false;
+                if (!epollResetEndpointMode(&pt->south, true, true, true))
+                {
+                    spdlog::error("[NetMgr::onSend] reset south soc[{}] fail", pt->south.soc);
+                    mPostProcessList.insert(pt);
+                    return;
+                }
+            }
         }
     }
-    break;
-    default:
-        spdlog::critical("[NetMgr::onSoc] invalid endpoint:", link::Endpoint::toStr(pe));
-        assert(false);
+    else
+    {
+        if (!pt->south.valid)
+        {
+            spdlog::error("[NetMgr::onSend] can't send on invalid south soc[{}]",
+                          pt->south.soc);
+            mPostProcessList.insert(pt);
+            return;
+        }
+
+        // 状态处理
+        switch (pt->status)
+        {
+        case link::TunnelState_t::ESTABLISHED:
+        case link::TunnelState_t::BROKEN:
+            break;
+        default:
+            spdlog::error("[NetMgr::onSend] south soc[{}] invalid tunnel status: {}",
+                          pt->south.soc, pt->status);
+            assert(false);
+        }
+
+        if (!link::Tunnel::southSocSend(pt))
+        {
+            // spdlog::error("[NetMgr::onSend] south soc[{}] send fail", pt->south.soc);
+            mPostProcessList.insert(pt);
+            return;
+        }
+        else
+        {
+            // 判断是否已有能力接收从北向来的数据
+            if (pt->status == link::TunnelState_t::ESTABLISHED && // 只在链路建立的状态下接收来自南向的数据
+                pt->toSouthBUffer->stopRecv &&                    // 南向缓冲区之前因无空间而停止接收数据
+                pt->toSouthBUffer->freeSize() &&                  // 南向缓冲区当前可以接收数据
+                pt->north.valid)                                  // 北向链路有效
+            {
+                pt->toSouthBUffer->stopRecv = false;
+                if (!epollResetEndpointMode(&pt->north, true, true, true))
+                {
+                    spdlog::error("[NetMgr::onSend] reset north soc[{}] fail", pt->north.soc);
+                    mPostProcessList.insert(pt);
+                    return;
+                }
+            }
+        }
     }
-    */
-    spdlog::error("[NetMgr::onSend] TBD.");
 }
 
-void NetMgr::onRecv(link::EndpointRemote_t *per, link::Tunnel_t *pt)
+void NetMgr::onRecv(time_t curTime, link::EndpointRemote_t *per, link::Tunnel_t *pt)
 {
-    spdlog::error("[NetMgr::onRecv] TBD.");
+    if (per->type == link::Type_t::NORTH)
+    {
+        if (!pt->north.valid)
+        {
+            spdlog::error("[NetMgr::onRecv] can't recv on invalid north soc[{}]",
+                          pt->north.soc);
+            mPostProcessList.insert(pt);
+            return;
+        }
+
+        // 状态处理
+        switch (pt->status)
+        {
+        case link::TunnelState_t::ESTABLISHED:
+            break;
+        case link::TunnelState_t::BROKEN:
+            // 此状态下，不接收新数据
+            return;
+        default:
+            spdlog::error("[NetMgr::onRecv] north soc[{}] invalid tunnel status: {}",
+                          pt->north.soc, pt->status);
+            assert(false);
+        }
+
+        if (link::Tunnel::northSocRecv(pt))
+        {
+            // 收到数据后立即尝试发送
+            if (pt->toSouthBUffer->dataSize() && !link::Tunnel::southSocSend(pt))
+            {
+                // spdlog::error("[NetMgr::onRecv] send data to south fail");
+                mPostProcessList.insert(pt);
+                return;
+            }
+            if (pt->toSouthBUffer->stopRecv && pt->toSouthBUffer->freeSize())
+            {
+                if (epollResetEndpointMode(&pt->north, true, true, true))
+                {
+                    pt->toSouthBUffer->stopRecv = false;
+                }
+                else
+                {
+                    spdlog::error("[NetMgr::onRecv] reset north soc[{}] fail", pt->north.soc);
+                    mPostProcessList.insert(pt);
+                    return;
+                }
+            }
+        }
+        else
+        {
+            spdlog::error("[NetMgr::onRecv] north soc[{}] recv fail", pt->north.soc);
+            mPostProcessList.insert(pt);
+            return;
+        }
+    }
+    else
+    {
+        if (!pt->south.valid)
+        {
+            spdlog::error("[NetMgr::onRecv] can't recv on invalid south soc[{}]",
+                          pt->south.soc);
+            mPostProcessList.insert(pt);
+            return;
+        }
+
+        // 状态处理
+        switch (pt->status)
+        {
+        case link::TunnelState_t::ESTABLISHED:
+            break;
+        case link::TunnelState_t::BROKEN:
+            // 此状态下，不接收新数据
+            return;
+        default:
+            spdlog::error("[NetMgr::onRecv] south soc[{}] invalid tunnel status: {}",
+                          pt->south.soc, pt->status);
+            assert(false);
+        }
+
+        if (link::Tunnel::southSocRecv(pt))
+        {
+            // 收到数据后立即尝试发送
+            if (pt->toNorthBUffer->dataSize() && !link::Tunnel::northSocSend(pt))
+            {
+                // spdlog::error("[NetMgr::onRecv] send data to north fail");
+                mPostProcessList.insert(pt);
+                return;
+            }
+            if (pt->toNorthBUffer->stopRecv && pt->toNorthBUffer->freeSize())
+            {
+                if (epollResetEndpointMode(&pt->south, true, true, true))
+                {
+                    pt->toNorthBUffer->stopRecv = false;
+                }
+                else
+                {
+                    spdlog::error("[NetMgr::onRecv] reset north soc[{}] fail", pt->north.soc);
+                    mPostProcessList.insert(pt);
+                    return;
+                }
+            }
+        }
+        else
+        {
+            spdlog::error("[NetMgr::onRecv] south soc[{}] recv fail", pt->south.soc);
+            mPostProcessList.insert(pt);
+            return;
+        }
+    }
 }
 
 bool NetMgr::epollAddTunnel(link::Tunnel_t *pt)
