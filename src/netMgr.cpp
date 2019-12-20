@@ -198,10 +198,10 @@ bool NetMgr::initEnv()
         spdlog::debug("[NetMgr::initEnv] process forward: {}", forward->toStr());
 
         link::EndpointService_t *pes = link::Endpoint::createService(forward->protocol.c_str(),
-                                                                     forward->interface.c_str(),
-                                                                     forward->service.c_str(),
-                                                                     forward->targetHost.c_str(),
-                                                                     forward->targetService.c_str());
+                                                         forward->interface.c_str(),
+                                                         forward->service.c_str(),
+                                                         forward->targetHost.c_str(),
+                                                         forward->targetService.c_str());
         if (pes == nullptr)
         {
             spdlog::error("[NetMgr::initEnv] create service endpoint fail");
@@ -264,8 +264,8 @@ void NetMgr::closeEnv()
 
 void NetMgr::onSoc(time_t curTime, epoll_event &event)
 {
-    link::EndpointBase_t *pEndpoint = static_cast<link::EndpointBase_t *>(event.data.ptr);
-    // spdlog::trace("[NetMgr::onSoc] {}", pEndpoint->toStr());
+    link::EndpointBase_t *pe = static_cast<link::EndpointBase_t *>(event.data.ptr);
+    // spdlog::trace("[NetMgr::onSoc] {}", pe->toStr());
 
     if (event.events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR))
     {
@@ -284,76 +284,108 @@ void NetMgr::onSoc(time_t curTime, epoll_event &event)
             ss << "error;";
         }
 
-        pEndpoint->valid = false;
-        if (pEndpoint->type & (Endpoint::Type_t::NORTH | Endpoint::Type_t::SOUTH))
+        pe->valid = false;
+        if (pe->type == link::Type_t::SERVICE)
         {
-            spdlog::trace("[NetMgr::onSoc] endpoint[{}] broken: {}", link::Endpoint::toStr(pEndpoint), ss.str());
-            link::EndpointRemote_t *per = static_cast<link::EndpointRemote_t *>(pEndpoint);
-            link::Tunnel_t *pt = static_cast<link::Tunnel_t *>(per->tunnel);
-            mPostProcessList.insert(pt);
+            link::EndpointService_t *pes = static_cast<link::EndpointService_t *>(pe);
+            spdlog::error("[NetMgr::onSoc] service endpoint[{}] broken",
+                          link::Endpoint::toStr(pes));
+            ::close(pes->soc);
+            pes->soc = 0;
         }
         else
         {
-            spdlog::error("[NetMgr::onSoc] service endpoint[{}] broken",
-                          link::Endpoint::toStr(static_cast<link::EndpointService_t *>(pEndpoint)));
-            link::EndpointService_t *pes = static_cast<link::EndpointService_t *>(pEndpoint);
+            spdlog::trace("[NetMgr::onSoc] endpoint[{}] broken: {}", link::Endpoint::toStr(pe), ss.str());
+            link::EndpointRemote_t *per = static_cast<link::EndpointRemote_t *>(pe);
+            link::Tunnel_t *pt = static_cast<link::Tunnel_t *>(per->tunnel);
+            mPostProcessList.insert(pt);
         }
 
         return;
     }
 
-    switch (pEndpoint->type)
+    if (pe->type == link::Type_t::SERVICE)
     {
-    case Endpoint::Type_t::SERVICE:
-        onService(curTime, event.events, static_cast<link::EndpointService_t *>(pEndpoint));
-        break;
-    case Endpoint::Type_t::NORTH:
-    case Endpoint::Type_t::SOUTH:
+        onService(curTime, event.events, static_cast<link::EndpointService_t *>(pe));
+    }
+    else
     {
-        link::EndpointRemote_t *per = static_cast<link::EndpointRemote_t *>(pEndpoint);
+        link::EndpointRemote_t *per = static_cast<link::EndpointRemote_t *>(pe);
         link::Tunnel_t *pt = static_cast<link::Tunnel_t *>(per->tunnel);
 
-        // spdlog::trace("[NetMgr::onSoc] Session: {}", link::Endpoint::toStr(per));
-
-        using namespace std::placeholders;
-        if (!link::Tunnel::onSoc(curTime,
-                                 per,
-                                 event.events,
-                                 [&](link::EndpointBase_t *pe,
-                                     bool read,
-                                     bool write,
-                                     bool edgeTriger) -> bool {
-                                     return epollResetEndpointMode(pe, read, write, edgeTriger);
-                                 },
-                                 [&](link::Tunnel_t *pt) {
-                                     spdlog::debug("[NetMgr::onSoc] tunnel[{},{}] established.", pt->south.soc, pt->north.soc);
-                                     // remove from connect timer container
-                                     mTimer.remove(&pt->timerClient);
-                                     // insert into established timer container
-                                     mTimer.insert(timer::Container::Type_t::TIMER_ESTABLISHED, curTime, &pt->timerClient);
-                                 }))
+        // TCP or UDP
+        if (pt->protocol == link::Protocol_t::TCP)
         {
-            spdlog::error("[NetMgr::onSoc] endpoint[{}] process fail", per->soc);
-            mPostProcessList.insert(pt);
+            // TCP - send
+            if (event.events & EPOLLOUT)
+            {
+                onSend(per, pt);
+            }
+
+            // TCP - recv
+            if (event.events & EPOLLIN)
+            {
+                onRecv(per, pt);
+            }
         }
         else
         {
-            mTimer.refresh(curTime, &pt->timerClient);
+            spdlog::error("[NetMgr::onSoc] support function for UDP NOT implemented yet.");
         }
     }
-    break;
-    default:
-        spdlog::critical("[NetMgr::onSoc] invalid endpoint:", link::Endpoint::toStr(pEndpoint));
-        assert(false);
-    }
+
+    // switch (pe->type)
+    // {
+    // case link::Type_t::SERVICE:
+    //     onService(curTime, event.events, static_cast<link::EndpointService_t *>(pe));
+    //     break;
+    // case link::Type_t::NORTH:
+    // case link::Type_t::SOUTH:
+    // {
+    //     link::EndpointRemote_t *per = static_cast<link::EndpointRemote_t *>(pe);
+    //     link::Tunnel_t *pt = static_cast<link::Tunnel_t *>(per->tunnel);
+
+    //     // spdlog::trace("[NetMgr::onSoc] Session: {}", link::Endpoint::toStr(per));
+
+    //     using namespace std::placeholders;
+    //     if (!link::Tunnel::onSoc(curTime,
+    //                        per,
+    //                        event.events,
+    //                        [&](link::EndpointBase_t *pe,
+    //                            bool read,
+    //                            bool write,
+    //                            bool edgeTriger) -> bool {
+    //                            return epollResetEndpointMode(pe, read, write, edgeTriger);
+    //                        },
+    //                        [&](link::Tunnel_t *pt) {
+    //                            spdlog::debug("[NetMgr::onSoc] tunnel[{},{}] established.", pt->south.soc, pt->north.soc);
+    //                            // remove from connect timer container
+    //                            mTimer.remove(&pt->timerClient);
+    //                            // insert into established timer container
+    //                            mTimer.insert(timer::Container::Type_t::TIMER_ESTABLISHED, curTime, &pt->timerClient);
+    //                        }))
+    //     {
+    //         spdlog::error("[NetMgr::onSoc] endpoint[{}] process fail", per->soc);
+    //         mPostProcessList.insert(pt);
+    //     }
+    //     else
+    //     {
+    //         mTimer.refresh(curTime, &pt->timerClient);
+    //     }
+    // }
+    // break;
+    // default:
+    //     spdlog::critical("[NetMgr::onSoc] invalid endpoint:", link::Endpoint::toStr(pe));
+    //     assert(false);
+    // }
 }
 
-void NetMgr::onService(time_t curTime, uint32_t events, link::EndpointService_t *pEndpoint)
+void NetMgr::onService(time_t curTime, uint32_t events, link::EndpointService_t *pe)
 {
     // accept client for TCP service endpoint
     if (events & EPOLLIN)
     {
-        acceptClient(curTime, pEndpoint);
+        acceptClient(curTime, pe);
     }
 
     // TODO: UDP service endpoint
@@ -423,6 +455,63 @@ void NetMgr::acceptClient(time_t curTime, link::EndpointService_t *pes)
                   ip, ntohs(address.sin_port),
                   pes->protocol == link::Protocol_t::TCP ? "tcp" : "udp",
                   pes->targetHost, pes->targetService);
+}
+
+void NetMgr::onSend(link::EndpointRemote_t *per, link::Tunnel_t *pt)
+{
+    /*
+
+    switch (pe->type)
+    {
+    case link::Type_t::SERVICE:
+        onService(curTime, event.events, static_cast<link::EndpointService_t *>(pe));
+        break;
+    case link::Type_t::NORTH:
+    case link::Type_t::SOUTH:
+    {
+        link::EndpointRemote_t *per = static_cast<link::EndpointRemote_t *>(pe);
+        link::Tunnel_t *pt = static_cast<link::Tunnel_t *>(per->tunnel);
+
+        // spdlog::trace("[NetMgr::onSoc] Session: {}", link::Endpoint::toStr(per));
+
+        using namespace std::placeholders;
+        if (!link::Tunnel::onSoc(curTime,
+                           per,
+                           event.events,
+                           [&](link::EndpointBase_t *pe,
+                               bool read,
+                               bool write,
+                               bool edgeTriger) -> bool {
+                               return epollResetEndpointMode(pe, read, write, edgeTriger);
+                           },
+                           [&](link::Tunnel_t *pt) {
+                               spdlog::debug("[NetMgr::onSoc] tunnel[{},{}] established.", pt->south.soc, pt->north.soc);
+                               // remove from connect timer container
+                               mTimer.remove(&pt->timerClient);
+                               // insert into established timer container
+                               mTimer.insert(timer::Container::Type_t::TIMER_ESTABLISHED, curTime, &pt->timerClient);
+                           }))
+        {
+            spdlog::error("[NetMgr::onSoc] endpoint[{}] process fail", per->soc);
+            mPostProcessList.insert(pt);
+        }
+        else
+        {
+            mTimer.refresh(curTime, &pt->timerClient);
+        }
+    }
+    break;
+    default:
+        spdlog::critical("[NetMgr::onSoc] invalid endpoint:", link::Endpoint::toStr(pe));
+        assert(false);
+    }
+    */
+    spdlog::error("[NetMgr::onSend] TBD.");
+}
+
+void NetMgr::onRecv(link::EndpointRemote_t *per, link::Tunnel_t *pt)
+{
+    spdlog::error("[NetMgr::onRecv] TBD.");
 }
 
 bool NetMgr::epollAddTunnel(link::Tunnel_t *pt)
