@@ -21,11 +21,11 @@
 #include <thread>
 #include <vector>
 #include "endpoint.h"
-#include "timeoutContainer.h"
 #include "config/config.h"
 #include "config/forward.h"
 #include "link/type.h"
 #include "link/tunnelMgr.h"
+#include "timer/container.h"
 
 namespace mapper
 {
@@ -41,8 +41,8 @@ public:
     static const int INTERVAL_EPOLL_RETRY;
     static const int INTERVAL_CONNECT_RETRY;
     static const int EPOLL_MAX_EVENTS = 16;
-    static const int CONNECT_TIMEOUT = 3;
-    static const int SESSION_TIMEOUT = 30;
+    // static const int CONNECT_TIMEOUT = 3;
+    // static const int SESSION_TIMEOUT = 30;
 
     NetMgr();
     virtual ~NetMgr();
@@ -87,10 +87,7 @@ protected:
     bool mStopFlag;
     std::set<link::Tunnel_t *> mPostProcessList;
 
-    TimeoutContainer mConnectTimeoutContainer;
-    TimeoutContainer mSessionTimeoutContainer;
-    uint32_t mConnectTimeout;
-    uint32_t mSessionTimeout;
+    timer::Container mTimer;
 };
 
 } // namespace mapper

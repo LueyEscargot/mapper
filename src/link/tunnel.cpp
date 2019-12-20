@@ -3,6 +3,7 @@
 #include <arpa/inet.h>
 #include <sys/epoll.h>
 #include <spdlog/spdlog.h>
+#include <sstream>
 #include "endpoint.h"
 
 #define GREEDY_MODE
@@ -28,12 +29,12 @@ namespace link
  */
 const bool Tunnel::StateMaine[TUNNEL_STATE_COUNT][TUNNEL_STATE_COUNT] = {
     // CLOSED | ALLOCATED | INITIALIZED | CONNECT | ESTABLISHED | BROKEN
-    {true, true, false, false, false, false}, // CLOSED
-    {false, true, true, false, false, false}, // ALLOCATED
-    {false, false, true, true, false, true},  // INITIALIZED
-    {false, false, false, true, true, true},  // CONNECT
-    {false, false, false, false, true, true}, // ESTABLISHED
-    {true, false, false, false, false, true}, // BROKEN
+    {1, 1, 0, 0, 0, 0}, // CLOSED
+    {0, 1, 1, 0, 0, 0}, // ALLOCATED
+    {0, 0, 1, 1, 0, 1}, // INITIALIZED
+    {0, 0, 0, 1, 1, 1}, // CONNECT
+    {0, 0, 0, 0, 1, 1}, // ESTABLISHED
+    {1, 0, 0, 0, 0, 1}, // BROKEN
 };
 
 bool Tunnel::init(Tunnel_t *pt, EndpointService_t *pes, int southSoc)
@@ -109,6 +110,18 @@ void Tunnel::setStatus(Tunnel_t *pt, TunnelState_t stat)
     pt->status = stat;
 }
 
+string Tunnel::toStr(Tunnel_t *pt)
+{
+    stringstream ss;
+
+    ss << "["
+       << pt->south.soc << ","
+       << pt->north.soc
+       << "]";
+
+    return ss.str();
+}
+
 bool Tunnel::connect(Tunnel_t *pt)
 {
     switch (pt->status)
@@ -174,7 +187,11 @@ bool Tunnel::connect(Tunnel_t *pt)
     }
 }
 
-bool Tunnel::onSoc(uint64_t curTime, EndpointRemote_t *per, uint32_t events, CB_SetEpollMode cbSetEpollMode)
+bool Tunnel::onSoc(uint64_t curTime,
+                   EndpointRemote_t *per,
+                   uint32_t events,
+                   CB_SetEpollMode cbSetEpollMode,
+                   CB_onEstablish cbOnEstablish)
 {
     Tunnel_t *pt = static_cast<Tunnel_t *>(per->tunnel);
 
@@ -193,7 +210,7 @@ bool Tunnel::onSoc(uint64_t curTime, EndpointRemote_t *per, uint32_t events, CB_
         {
             if (per->type == Type_t::NORTH)
             {
-                result = northSocSend(pt, cbSetEpollMode);
+                result = northSocSend(pt, cbSetEpollMode, cbOnEstablish);
             }
             else
             {
@@ -238,7 +255,8 @@ bool Tunnel::onSoc(uint64_t curTime, EndpointRemote_t *per, uint32_t events, CB_
 
 bool Tunnel::northSocRecv(Tunnel_t *pt, CB_SetEpollMode cbSetEpollMode)
 {
-    if (!pt->north.valid) {
+    if (!pt->north.valid)
+    {
         return false;
     }
 
@@ -324,9 +342,10 @@ bool Tunnel::northSocRecv(Tunnel_t *pt, CB_SetEpollMode cbSetEpollMode)
     return true;
 }
 
-bool Tunnel::northSocSend(Tunnel_t *pt, CB_SetEpollMode cbSetEpollMode)
+bool Tunnel::northSocSend(Tunnel_t *pt, CB_SetEpollMode cbSetEpollMode, CB_onEstablish cbOnEstablish)
 {
-    if (!pt->north.valid) {
+    if (!pt->north.valid)
+    {
         return false;
     }
 
@@ -339,6 +358,7 @@ bool Tunnel::northSocSend(Tunnel_t *pt, CB_SetEpollMode cbSetEpollMode)
             cbSetEpollMode(&pt->south, true, true, true))
         {
             setStatus(pt, TunnelState_t::ESTABLISHED);
+            cbOnEstablish(pt);
             return true;
         }
         else
@@ -406,7 +426,8 @@ bool Tunnel::northSocSend(Tunnel_t *pt, CB_SetEpollMode cbSetEpollMode)
 
 bool Tunnel::southSocRecv(Tunnel_t *pt, CB_SetEpollMode cbSetEpollMode)
 {
-    if (!pt->south.valid) {
+    if (!pt->south.valid)
+    {
         return false;
     }
 
@@ -434,7 +455,7 @@ bool Tunnel::southSocRecv(Tunnel_t *pt, CB_SetEpollMode cbSetEpollMode)
             pt->toNorthBUffer->stopRecv = true;
 
             // spdlog::trace("[Tunnel::southSocRecv] to south buffer full");
-            northSocSend(pt, cbSetEpollMode); // 如果发送失败，可由后续逻辑进行处理，在此不用关系
+            northSocSend(pt, cbSetEpollMode, [](Tunnel_t *) {}); // 如果发送失败，可由后续逻辑进行处理，在此不用关系
 
 #ifdef GREEDY_MODE
             // try again
@@ -456,7 +477,7 @@ bool Tunnel::southSocRecv(Tunnel_t *pt, CB_SetEpollMode cbSetEpollMode)
             if (errno == EAGAIN)
             {
                 // 此次数据接收已完毕，先尝试发送缓冲区中的数据
-                northSocSend(pt, cbSetEpollMode);
+                northSocSend(pt, cbSetEpollMode, [](Tunnel_t *) {});
                 break;
             }
             else
@@ -491,7 +512,8 @@ bool Tunnel::southSocRecv(Tunnel_t *pt, CB_SetEpollMode cbSetEpollMode)
 
 bool Tunnel::southSocSend(Tunnel_t *pt, CB_SetEpollMode cbSetEpollMode)
 {
-    if (!pt->south.valid) {
+    if (!pt->south.valid)
+    {
         return false;
     }
 

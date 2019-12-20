@@ -20,7 +20,8 @@ regex Config::REG_FOR_TRIM_LEADING_SPACE = regex(R"(^\s+)");
 regex Config::REG_FOR_TRIM_TAIL_SPACE = regex(R"(\s+$)");
 regex Config::REG_FOR_TRIM_COMMENTS = regex(R"(\s*(?:#.*$))");
 regex Config::REG_SECTION = regex(R"(^\s*\[\s*(\w+)\s*]\s*$)");
-regex Config::REG_CONFIG = regex(R"(^\s*(\w+)\s*=\s*(\w+)\s*$)");
+regex Config::REG_CONFIG = regex(R"(^\s*(\w+)\s*=\s*((\w+)|(-?\d+))\s*$)");
+regex Config::REG_VALID_NUMBER = regex(R"(^\s*[\+-]?\d+\s*$)");
 regex Config::REG_VALID_UNSIGNED_NUMBER = regex(R"(^\s*\d+\s*$)");
 
 Config::Config()
@@ -131,6 +132,17 @@ string Config::get(string key, string section, string defaultValue)
     return setting->second;
 }
 
+int32_t Config::getAsInt32(std::string key, std::string section, int32_t defaultValue)
+{
+    string sVal = get(key, section);
+    smatch m;
+    if (regex_match(sVal, m, REG_VALID_NUMBER))
+    {
+        return atoi(sVal.c_str());
+    }
+    return defaultValue;
+}
+
 uint32_t Config::getAsUint32(std::string key, std::string section, uint32_t defaultValue)
 {
     string sVal = get(key, section);
@@ -193,7 +205,7 @@ void Config::parseLine(string &line)
     else if (regex_match(line, m, REG_CONFIG))
     {
         // config
-        assert(m.size() == 3);
+        assert(m.size() == 5);
         string key = m[1];
         string value = m[2];
 

@@ -15,6 +15,7 @@
 #include "session.h"
 #include "link/endpoint.h"
 #include "link/tunnel.h"
+#include "link/type.h"
 
 using namespace std;
 
@@ -28,9 +29,7 @@ NetMgr::NetMgr()
     : mpCfg(nullptr),
       mPreConnEpollfd(0),
       mEpollfd(0),
-      mStopFlag(true),
-      mConnectTimeout(0),
-      mSessionTimeout(0)
+      mStopFlag(true)
 {
 }
 
@@ -43,11 +42,12 @@ bool NetMgr::start(config::Config &cfg)
 {
     spdlog::debug("[NetMgr::start] start.");
 
+    // read settings
     mpCfg = &cfg;
-
-    mForwards = move(mpCfg->getMapData());
-    mConnectTimeout = mpCfg->getAsUint32("connectionTimeout", "global", CONNECT_TIMEOUT);
-    mSessionTimeout = mpCfg->getAsUint32("sessionTimeout", "global", SESSION_TIMEOUT);
+    mForwards = move(mpCfg->getForwards("mapping"));
+    mTimer.setInterval(timer::Container::Type_t::TIMER_CONNECT, mpCfg->getGlobalConnectTimeout());
+    mTimer.setInterval(timer::Container::Type_t::TIMER_ESTABLISHED, mpCfg->getGlobalSessionTimeout());
+    mTimer.setInterval(timer::Container::Type_t::TIMER_BROKEN, mpCfg->getGlobalReleaseTimeout());
 
     // start thread
     {
@@ -311,6 +311,7 @@ void NetMgr::onSoc(time_t curTime, epoll_event &event)
     case Endpoint::Type_t::SOUTH:
     {
         link::EndpointRemote_t *per = static_cast<link::EndpointRemote_t *>(pEndpoint);
+        link::Tunnel_t *pt = static_cast<link::Tunnel_t *>(per->tunnel);
 
         // spdlog::trace("[NetMgr::onSoc] Session: {}", link::Endpoint::toStr(per));
 
@@ -323,11 +324,21 @@ void NetMgr::onSoc(time_t curTime, epoll_event &event)
                                      bool write,
                                      bool edgeTriger) -> bool {
                                      return epollResetEndpointMode(pe, read, write, edgeTriger);
+                                 },
+                                 [&](link::Tunnel_t *pt) {
+                                     spdlog::debug("[NetMgr::onSoc] tunnel[{},{}] established.", pt->south.soc, pt->north.soc);
+                                     // remove from connect timer container
+                                     mTimer.remove(&pt->timerClient);
+                                     // insert into established timer container
+                                     mTimer.insert(timer::Container::Type_t::TIMER_ESTABLISHED, curTime, &pt->timerClient);
                                  }))
         {
             spdlog::error("[NetMgr::onSoc] endpoint[{}] process fail", per->soc);
-            link::Tunnel_t *pt = static_cast<link::Tunnel_t *>(per->tunnel);
             mPostProcessList.insert(pt);
+        }
+        else
+        {
+            mTimer.refresh(curTime, &pt->timerClient);
         }
     }
     break;
@@ -402,11 +413,12 @@ void NetMgr::acceptClient(time_t curTime, link::EndpointService_t *pes)
         return;
     }
 
-    // TODO: add into timeout timer
+    // add into timeout timer
+    mTimer.insert(timer::Container::Type_t::TIMER_CONNECT, curTime, &pt->timerClient);
 
     char ip[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, &address.sin_addr, ip, INET_ADDRSTRLEN);
-    spdlog::debug("[NetMgr::acceptClient] accept client[{}-{}]({}:{})--{}-->{}:{}",
+    spdlog::debug("[NetMgr::acceptClient] accept client[{},{}]({}:{})--{}-->{}:{}",
                   pt->south.soc, pt->north.soc,
                   ip, ntohs(address.sin_port),
                   pes->protocol == link::Protocol_t::TCP ? "tcp" : "udp",
@@ -571,8 +583,19 @@ void NetMgr::onClose(link::Tunnel_t *pt)
         (pt->toSouthBUffer->empty() || !pt->south.valid))
     {
         // release session object
-        spdlog::debug("[NetMgr::onClose] close tunnel[{}-{}]", pt->south.soc, pt->north.soc);
+        spdlog::debug("[NetMgr::onClose] close tunnel[{},{}]", pt->south.soc, pt->north.soc);
         epollRemoveTunnel(pt);
+
+        // remove from timer container
+        if (pt->timerClient.inTimer)
+        {
+            mTimer.remove(&pt->timerClient);
+        }
+        else
+        {
+            assert(!pt->timerClient.inTimer &&
+                   pt->timerClient.type == timer::Container::Type_t::TYPE_INVALID);
+        }
 
         // release session object
         mTunnelMgr.freeTunnel(pt);
@@ -605,27 +628,28 @@ void NetMgr::onClose(link::Tunnel_t *pt)
 
 void NetMgr::timeoutCheck(time_t curTime)
 {
-    auto fn = [](time_t curTime,
-                 uint64_t timeoutInterval,
-                 TimeoutContainer &container,
-                 const char *containerName) {
-        TimeoutContainer::ContainerType timeoutClients =
-            container.removeTimeout(curTime - timeoutInterval);
-        for (auto *pClient : timeoutClients)
+    auto fn = [&](time_t curTime,
+                  timer::Container::Type_t type,
+                  const char *title) {
+        for (auto p = mTimer.removeTimeout(type, curTime); p; p = p->next)
         {
-            Session *pSession = static_cast<Session *>(pClient);
-            spdlog::debug("[NetMgr::timeoutCheck] session[{}]@{} timeout.", pSession->toStr(), containerName);
-            pSession->setStatus(Session::State_t::CLOSE);
+            auto pt = static_cast<link::Tunnel_t *>(p->tag);
+            spdlog::debug("[NetMgr::timeoutCheck] tunnel[{}]@{} timeout.", link::Tunnel::toStr(pt), title);
+            link::Tunnel::setStatus(pt, link::TunnelState_t::BROKEN);
+            onClose(pt);
         }
     };
 
-    if (!mConnectTimeoutContainer.empty())
+    for (int type = 0; type < timer::Container::Type_t::TYPE_COUNT; ++type)
     {
-        fn(curTime, mConnectTimeout, mConnectTimeoutContainer, "CONN");
-    }
-    if (!mSessionTimeoutContainer.empty())
-    {
-        fn(curTime, mSessionTimeout, mSessionTimeoutContainer, "ESTB");
+        auto p = mTimer.removeTimeout(static_cast<timer::Container::Type_t>(type), curTime);
+        for (; p; p = p->next)
+        {
+            auto pt = static_cast<link::Tunnel_t *>(p->tag);
+            spdlog::debug("[NetMgr::timeoutCheck] tunnel[{}]@{} timeout.", link::Tunnel::toStr(pt), type);
+            link::Tunnel::setStatus(pt, link::TunnelState_t::BROKEN);
+            onClose(pt);
+        }
     }
 }
 

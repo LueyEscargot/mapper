@@ -7,6 +7,7 @@
  * @history
  *  2019-11-09  ver 1   创建基础版本
  *  2019-11-22  ver 2   用自建单向链表替代 std::list
+ *  2019-12-08  ver 3   新增定时器类型定义
  * 
  * @copyright Copyright (c) 2019
  * 
@@ -25,58 +26,69 @@ namespace timer
 
 class Container
 {
+    static const int DEFAULT_TIMEOUT_INTERVAL = 30;
+
 public:
+    typedef enum TYPE
+    {
+        TYPE_INVALID = 0,
+        TIMER_CONNECT,
+        TIMER_ESTABLISHED,
+        TIMER_BROKEN,
+        TYPE_COUNT
+    } Type_t;
     typedef struct CLIENT
     {
+        bool inTimer;
         time_t time;
         CLIENT *prev;
         CLIENT *next;
-        Container *container;
-        void *self;
+        Type_t type;
+        void *tag; // 客户端自维护指针，此类不负责初始化、生命周期管理、校验、释放等等
+
+        inline void init()
+        {
+            inTimer = false;
+            time = 0;
+            prev = nullptr;
+            next = nullptr;
+            type = Type_t::TYPE_INVALID;
+        }
     } Client_t;
 
-    Container():tail( &head) { head.next = nullptr; };
+    Container();
     ~Container();
 
-    inline bool empty() { return tail == &head; }
-    inline void insert(time_t curTime, Client_t *pClient)
-    {
-        pClient->time = curTime;
-        pClient->container = this;
+    inline void setInterval(Type_t type, const int interval) { mTimeoutInterval[type] = interval; }
+    inline int getInterval(Type_t type) { return mTimeoutInterval[type]; }
 
-        // insert at end of list and shift pointer 'tail' to new inserted item
-        pClient->prev = tail;
-        pClient->next = nullptr;
-        tail->next = pClient;
-        tail = pClient;
-    }
-    inline void remove(Client_t *pClient)
-    {
-        assert(pClient->container == this);
-
-        pClient->prev->next = pClient->next;
-        if (tail == pClient) {
-            // remove last item
-            assert(pClient->next == nullptr);
-            tail = tail->prev;
-        } else {
-            pClient->next->prev = pClient->prev;
-        }
-
-        pClient->prev = pClient->next = nullptr;
-        pClient->container = nullptr;
-    }
+    inline bool empty(Type_t type) { return mHead[type] == nullptr; }
+    void insert(Type_t type, time_t curTime, Client_t *pClient);
+    void remove(Client_t *pClient);
     inline void refresh(time_t curTime, Client_t *pClient)
     {
-        remove(pClient);
-        insert(curTime, pClient);
+        if (pClient)
+        {
+            remove(pClient);
+            insert(pClient->type, curTime, pClient);
+        }
     }
 
-    Client_t *removeTimeout(time_t timePoint);
+    Client_t *removeTimeout(Type_t type, time_t curTime);
+
+    bool isInTimer(Type_t type, Client_t *pClient);
 
 protected:
-    Client_t head;
-    Client_t *tail;
+    inline bool checkStatChange(Client_t *pClient, Type_t newType)
+    {
+        return StateMachine[pClient->type][newType];
+    }
+
+    static bool StateMachine[TYPE_COUNT][TYPE_COUNT];
+
+    Client_t *mHead[TYPE_COUNT];
+    Client_t *mTail[TYPE_COUNT];
+    int mTimeoutInterval[TYPE_COUNT];
 };
 
 } // namespace timer

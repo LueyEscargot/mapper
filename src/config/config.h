@@ -35,8 +35,15 @@ protected:
     static std::regex REG_FOR_TRIM_COMMENTS;
     static std::regex REG_SECTION;
     static std::regex REG_CONFIG;
+    static std::regex REG_VALID_NUMBER;
     static std::regex REG_VALID_UNSIGNED_NUMBER;
 
+    // default value of global properties
+    static const int DEFAULT_GLOBAL_SESSIONS = 256;
+    static const int DEFAULT_GLOBAL_CONNECT_TIMEOUT = 15;
+    static const int DEFAULT_GLOBAL_SESSION_TIMEOUT = 180;
+    static const int DEFAULT_GLOBAL_RELEASE_TIMEOUT = 15;
+    // default value of link properties
     static const int DEFAULT_LINK_TUNNELS = 1 << 16;
     static const int DEFAULT_LINK_NORTHBUF = 1;
     static const int DEFAULT_LINK_SOUTHBUF = 1;
@@ -59,42 +66,20 @@ public:
     Config(int argc, char *argv[]);
 
     std::string getSyntax();
-    void initLog();
 
     bool parse(int argc, char *argv[]);
     bool parse(const char *file, bool silence = false);
-    // void parse(const char *file, std::vector<std::string> &argMapData);
     std::string get(std::string key, std::string section = "", std::string defaultValue = "");
+    int32_t getAsInt32(std::string key, std::string section = "", int32_t defaultValue = 0);
     uint32_t getAsUint32(std::string key, std::string section = "", uint32_t defaultValue = 0);
 
-    inline uint32_t getSessions(uint32_t defaultValue = 0)
-    {
-        return getAsUint32("sessions", "global", defaultValue);
-    }
-    template <class T>
-    inline void setSessions(T sessions) { mConfig["sessions"]["global"] = sessions; }
-    inline void setSessions(uint32_t sessions) { setSessions(std::to_string(sessions)); }
-    inline uint32_t getConnectTimeoutInterval(uint32_t defaultValue = 0)
-    {
-        return getAsUint32("connectTimeout", "global", defaultValue);
-    }
-    template <class T>
-    inline void setConnectTimeoutInterval(T interval) { mConfig["connectTimeout"]["global"] = interval; }
-    inline void setConnectTimeoutInterval(uint32_t interval) { setConnectTimeoutInterval(std::to_string(interval)); }
-    inline uint32_t getSessionTimeoutInterval(uint32_t defaultValue = 0)
-    {
-        return getAsUint32("sessionTimeout", "global", defaultValue);
-    }
-    template <class T>
-    inline void setSessionTimeoutInterval(T interval) { mConfig["sessionTimeout"]["global"] = interval; }
-    inline void setSessionTimeoutInterval(uint32_t interval) { setSessionTimeoutInterval(std::to_string(interval)); }
-    template <class T>
-    inline std::string getLogLevel(T &defaultValue = "info")
-    {
-        return get("level", "log", defaultValue);
-    }
     std::vector<std::shared_ptr<Forward>> getForwards(std::string section = "*");
-    inline std::vector<std::shared_ptr<Forward>> getMapData(std::string section = "*") { return getForwards(section); }
+
+    // properties of global
+    inline int getGlobalSessions() { return getAsUint32("sessions", "global", DEFAULT_GLOBAL_SESSIONS); }
+    inline int getGlobalConnectTimeout() { return getAsInt32("connectTimeout", "global", DEFAULT_GLOBAL_CONNECT_TIMEOUT); }
+    inline int getGlobalSessionTimeout() { return getAsInt32("sessionTimeout", "global", DEFAULT_GLOBAL_SESSION_TIMEOUT); }
+    inline int getGlobalReleaseTimeout() { return getAsInt32("releaseTimeout", "global", DEFAULT_GLOBAL_RELEASE_TIMEOUT); }
 
     // properties of link-tunnels
     inline int getLinkTunnels() { return getAsUint32("tunnels", "link", DEFAULT_LINK_TUNNELS); }
