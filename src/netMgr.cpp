@@ -745,12 +745,16 @@ void NetMgr::postProcess(time_t curTime)
                     // 只有当南向链路完好时才尝试进行北向重连操作
                     if (link::Tunnel::connect(pt))
                     {
-                        // TODO: refresh timeout timer
+                        // refresh timeout timer
+                        mTimer.refresh(curTime, &pt->timerClient);
                     }
                     else
                     {
                         // reconnect failed
-                        // TODO: remove out of timeout timer
+
+                        // remove out of timeout container
+                        mTimer.remove(&pt->timerClient);
+
                         // spdlog::trace("[NetMgr::postProcess] tunnel({}) reconnect failed",
                         //               link::Endpoint::toStr(pt));
                         link::Tunnel::setStatus(pt, link::TunnelState_t::BROKEN);
@@ -766,16 +770,23 @@ void NetMgr::postProcess(time_t curTime)
                 }
                 break;
             case link::TunnelState_t::ESTABLISHED:
-                // TODO: switch timeout timer
-
+                // remove from 'established' timeout container
+                mTimer.remove(&pt->timerClient);
                 // set tunnel status to broken
                 link::Tunnel::setStatus(pt, link::TunnelState_t::BROKEN);
+                // insert into 'broken' timeout container
+                mTimer.insert(timer::Container::Type_t::TIMER_BROKEN,
+                              curTime,
+                              &pt->timerClient);
                 // close tunnel
                 onClose(pt);
                 break;
             case link::TunnelState_t::BROKEN:
+                // remove from 'broken' timeout container
+                mTimer.remove(&pt->timerClient);
                 // close tunnel
-                // TODO: refresh timeout timer
+                pt->north.valid = false;
+                pt->south.valid = false;
                 onClose(pt);
                 break;
             default:
