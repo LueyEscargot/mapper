@@ -26,10 +26,9 @@ public:
     ~Mapper();
 
     bool run(config::Config &cfg);
+    void stop();
 
 protected:
-    void release();
-
     NetMgr mNetMgr;
 };
 

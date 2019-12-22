@@ -27,7 +27,6 @@ TunnelMgr::TunnelMgr()
 
 TunnelMgr::~TunnelMgr()
 {
-    close();
 }
 
 bool TunnelMgr::init(config::Config *pCfg)
@@ -93,6 +92,7 @@ void TunnelMgr::close()
         mpTunnels = nullptr;
         mTunnelCounts = 0;
     }
+    spdlog::debug("[TunnelMgr::close] closed.");
 }
 
 Tunnel_t *TunnelMgr::allocTunnel()

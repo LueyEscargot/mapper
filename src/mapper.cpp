@@ -16,7 +16,6 @@ Mapper::Mapper()
 
 Mapper::~Mapper()
 {
-    release();
 }
 
 bool Mapper::run(config::Config &cfg)
@@ -32,14 +31,17 @@ bool Mapper::run(config::Config &cfg)
 
     mNetMgr.join();
 
+    spdlog::info("[Mapper::run] stop running.");
+
     return true;
 }
 
-void Mapper::release()
+void Mapper::stop()
 {
     // stpo net manager
-    spdlog::debug("[Mapper::release] stpo net manager.");
+    spdlog::debug("[Mapper::stop] stop net manager.");
     mNetMgr.stop();
+    spdlog::debug("[Mapper::stop] stop");
 }
 
 } // namespace mapper

@@ -29,14 +29,21 @@ static const auto LOG_LEVEL = spdlog::level::debug;
 void showSantax(char *argv[]);
 bool hasArg(char **begin, char **end, const std::string &arg);
 const char *getArg(char **begin, char **end, const std::string &arg);
-void getArgMapData(int argc, char *argv[], const char *arg, std::vector<std::string> &argMapData);
+void onSigHandler(int s);
 
-mapper::Mapper gMapper;
+mapper::Mapper *gpMapper = nullptr;
 
 int main(int argc, char *argv[])
 {
     // disable signal: SIGPIPE
-    signal(SIGPIPE, SIG_IGN);
+    signal(SIGINT, SIG_IGN);
+    // handle signal: SIGINT
+    struct sigaction sigIntHandler;
+    sigIntHandler.sa_handler = onSigHandler;
+    sigemptyset(&sigIntHandler.sa_mask);
+    sigIntHandler.sa_flags = 0;
+    sigaction(SIGINT, &sigIntHandler, NULL);
+    sigaction(SIGPIPE, &sigIntHandler, NULL);
 
     // show santax
     if (hasArg(argv, argv + argc, "-h"))
@@ -76,11 +83,14 @@ int main(int argc, char *argv[])
 
     // run mapper
     spdlog::debug("[main] run mapper");
-    if (!gMapper.run(cfg))
+    gpMapper = new mapper::Mapper();
+    if (!gpMapper->run(cfg))
     {
         spdlog::error("[main] run mapper fail");
         std::exit(EXIT_FAILURE);
     }
+    delete gpMapper;
+    gpMapper = nullptr;
 
     spdlog::info("[main] Stop");
 
@@ -110,13 +120,21 @@ const char *getArg(char **begin, char **end, const std::string &arg)
     return itr != end && ++itr != end ? *itr : "";
 }
 
-void getArgMapData(int argc, char *argv[], const char *arg, std::vector<std::string> &argMapData)
+void onSigHandler(int s)
 {
-    for (int i = 1; i < argc - 1; ++i)
+    switch (s)
     {
-        if (strcasecmp(argv[i], arg) == 0)
+    case SIGINT:
+        spdlog::info("[main] recv signal SIGINT(ctrl-c).");
+        if (gpMapper)
         {
-            argMapData.emplace_back(argv[++i]);
+            gpMapper->stop();
         }
+        break;
+    case SIGPIPE:
+        // skip
+        break;
+    default:
+        spdlog::warn("[main] receive signal[{}]. drop it", s);
     }
 }
