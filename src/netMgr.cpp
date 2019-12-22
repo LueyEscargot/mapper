@@ -12,7 +12,6 @@
 #include <exception>
 #include <set>
 #include <spdlog/spdlog.h>
-#include "session.h"
 #include "link/endpoint.h"
 #include "link/tunnel.h"
 #include "link/type.h"
