@@ -40,10 +40,10 @@ public:
                       uint32_t events,
                       CB_SetEpollMode cbSetEpollMode,
                       CB_onEstablish cbOnEstablish);
-    static bool northSocRecv(Tunnel_t *pt, CB_SetEpollMode cbSetEpollMode);
-    static bool northSocSend(Tunnel_t *pt, CB_SetEpollMode cbSetEpollMode, CB_onEstablish cbOnEstablish);
-    static bool southSocRecv(Tunnel_t *pt, CB_SetEpollMode cbSetEpollMode);
-    static bool southSocSend(Tunnel_t *pt, CB_SetEpollMode cbSetEpollMode);
+    static bool northSocRecv(Tunnel_t *pt);
+    static bool northSocSend(Tunnel_t *pt);
+    static bool southSocRecv(Tunnel_t *pt);
+    static bool southSocSend(Tunnel_t *pt);
 
     static const bool StateMaine[TUNNEL_STATE_COUNT][TUNNEL_STATE_COUNT];
 };

@@ -16,4 +16,5 @@ target_include_directories(Lib_Link PUBLIC "${PROJECT_BINARY_DIR}")
 #------------------------------------------------------------------------------
 target_link_libraries(Lib_Link PUBLIC
     anl
+    Lib_Buffer
     )

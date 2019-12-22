@@ -13,7 +13,6 @@
 #define __MAPPER_MAPPER_H__
 
 #include <vector>
-#include "define.h"
 #include "netMgr.h"
 #include "config/config.h"
 
