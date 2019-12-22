@@ -47,12 +47,7 @@ public:
     bool start(config::Config &cfg);
     void stop();
 
-    inline void join()
-    {
-        for (auto &t : mThreads)
-            if (t.joinable())
-                t.join();
-    }
+    void join();
 
 protected:
     void threadFunc();
@@ -82,8 +77,8 @@ protected:
     int mPreConnEpollfd;
     int mEpollfd;
     link::TunnelMgr mTunnelMgr;
-    std::vector<std::thread> mThreads;
-    bool mStopFlag;
+    std::thread mMainRoutineThread;
+    volatile bool mStopFlag;
     std::set<link::Tunnel_t *> mPostProcessList;
 
     timer::Container mTimer;

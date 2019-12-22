@@ -34,7 +34,6 @@ NetMgr::NetMgr()
 
 NetMgr::~NetMgr()
 {
-    stop();
 }
 
 bool NetMgr::start(config::Config &cfg)
@@ -58,7 +57,7 @@ bool NetMgr::start(config::Config &cfg)
         }
 
         mStopFlag = false;
-        mThreads.emplace_back(&NetMgr::threadFunc, this);
+        mMainRoutineThread = thread(&NetMgr::threadFunc, this);
     }
 
     return true;
@@ -72,14 +71,26 @@ void NetMgr::stop()
         if (!mStopFlag)
         {
             mStopFlag = true;
-            join();
-            mThreads.clear();
         }
         else
         {
             spdlog::debug("[NetMgr::stop] threads not running");
         }
     }
+
+    spdlog::debug("[NetMgr::stop] stop");
+}
+
+void NetMgr::join()
+{
+    if (mMainRoutineThread.joinable())
+    {
+        spdlog::debug("[NetMgr::join] join main routine thead.");
+        mMainRoutineThread.join();
+        spdlog::debug("[NetMgr::join] main routine thead stop.");
+    }
+
+    spdlog::debug("[NetMgr::join] main routine thread stopped.");
 }
 
 void NetMgr::threadFunc()
