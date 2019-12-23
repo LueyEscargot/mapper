@@ -31,17 +31,17 @@ public:
     static GenericBuffer *alloc(uint32_t capacity);
     static void release(GenericBuffer *pGenericBuffer);
 
-    inline void init() override;
-    inline char *getBuffer() override;
-    inline char *getData() override;
-    inline void incDataSize(uint64_t count) override;
-    inline void incFreeSize(uint64_t count) override;
-    inline uint64_t dataSize() override;
-    inline uint64_t freeSize() override;
-    inline bool empty() override;
-    inline bool full() override;
-    inline bool writable() override;
-    inline bool defrag() override;
+    void init() override;
+    char *getBuffer() override;
+    char *getData() override;
+    void incDataSize(uint64_t count) override;
+    void incFreeSize(uint64_t count) override;
+    uint64_t dataSize() override;
+    uint64_t freeSize() override;
+    bool empty() override;
+    bool full() override;
+    bool writable() override;
+    bool defrag() override;
 };
 
 } // namespace buffer
