@@ -58,8 +58,8 @@ protected:
     void onService(time_t curTime, uint32_t events, link::EndpointService_t *pEndpoint);
 
     void acceptClient(time_t curTime, link::EndpointService_t *pes);
-    void onSend(time_t curTime, link::EndpointRemote_t *per, link::Tunnel_t *pt);
-    void onRecv(time_t curTime, link::EndpointRemote_t *per, link::Tunnel_t *pt);
+    bool onSend(time_t curTime, link::EndpointRemote_t *per, link::Tunnel_t *pt);
+    bool onRecv(time_t curTime, link::EndpointRemote_t *per, link::Tunnel_t *pt);
     bool epollAddTunnel(link::Tunnel_t *pt);
     void epollRemoveTunnel(link::Tunnel_t *pt);
     bool epollAddEndpoint(link::EndpointBase_t *pe, bool read, bool write, bool edgeTriger);

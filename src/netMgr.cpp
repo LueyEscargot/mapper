@@ -326,16 +326,29 @@ void NetMgr::onSoc(time_t curTime, epoll_event &event)
         // TCP or UDP
         if (pt->protocol == link::Protocol_t::TCP)
         {
+            bool retSend = true;
+            bool retRecv = true;
+
             // TCP - send
             if (event.events & EPOLLOUT)
             {
-                onSend(curTime, per, pt);
+                retSend = onSend(curTime, per, pt);
             }
 
             // TCP - recv
             if (event.events & EPOLLIN)
             {
-                onRecv(curTime, per, pt);
+                retRecv = onRecv(curTime, per, pt);
+            }
+
+            if (retSend && retRecv)
+            {
+                // 收发成功，更新时间戳
+                mTimer.refresh(curTime, &pt->timerClient);
+            }
+            else
+            {
+                mPostProcessList.insert(pt);
             }
         }
         else
@@ -347,13 +360,19 @@ void NetMgr::onSoc(time_t curTime, epoll_event &event)
 
 void NetMgr::onService(time_t curTime, uint32_t events, link::EndpointService_t *pe)
 {
-    // accept client for TCP service endpoint
-    if (events & EPOLLIN)
-    {
-        acceptClient(curTime, pe);
-    }
 
-    // TODO: UDP service endpoint
+    if (pe->protocol == link::Protocol_t::TCP)
+    {
+        // accept client for TCP service endpoint
+        if (events & EPOLLIN)
+        {
+            acceptClient(curTime, pe);
+        }
+    }
+    else
+    {
+        // TODO: UDP service endpoint
+    }
 }
 
 void NetMgr::acceptClient(time_t curTime, link::EndpointService_t *pes)
@@ -422,7 +441,7 @@ void NetMgr::acceptClient(time_t curTime, link::EndpointService_t *pes)
                   pes->targetHost, pes->targetService);
 }
 
-void NetMgr::onSend(time_t curTime, link::EndpointRemote_t *per, link::Tunnel_t *pt)
+bool NetMgr::onSend(time_t curTime, link::EndpointRemote_t *per, link::Tunnel_t *pt)
 {
     if (per->type == link::Type_t::NORTH)
     {
@@ -430,8 +449,7 @@ void NetMgr::onSend(time_t curTime, link::EndpointRemote_t *per, link::Tunnel_t 
         {
             spdlog::error("[NetMgr::onSend] can't send on invalid north soc[{}]",
                           pt->north.soc);
-            mPostProcessList.insert(pt);
-            return;
+            return false;
         }
 
         // 状态处理
@@ -452,14 +470,13 @@ void NetMgr::onSend(time_t curTime, link::EndpointRemote_t *per, link::Tunnel_t 
                 mTimer.insert(timer::Container::Type_t::TIMER_ESTABLISHED,
                               curTime,
                               &pt->timerClient);
-                return;
+                return true;
             }
             else
             {
                 spdlog::error("[NetMgr::onSend] north soc[{}] connect fail",
                               pt->north.soc);
-                mPostProcessList.insert(pt);
-                return;
+                return false;
             }
         case link::TunnelState_t::ESTABLISHED:
         case link::TunnelState_t::BROKEN:
@@ -473,8 +490,7 @@ void NetMgr::onSend(time_t curTime, link::EndpointRemote_t *per, link::Tunnel_t 
         if (!link::Tunnel::northSocSend(pt))
         {
             // spdlog::error("[NetMgr::onSend] north soc[{}] send fail", pt->north.soc);
-            mPostProcessList.insert(pt);
-            return;
+            return false;
         }
         else
         {
@@ -488,10 +504,11 @@ void NetMgr::onSend(time_t curTime, link::EndpointRemote_t *per, link::Tunnel_t 
                 if (!epollResetEndpointMode(&pt->south, true, true, true))
                 {
                     spdlog::error("[NetMgr::onSend] reset south soc[{}] fail", pt->south.soc);
-                    mPostProcessList.insert(pt);
-                    return;
+                    return false;
                 }
             }
+
+            return true;
         }
     }
     else
@@ -500,8 +517,7 @@ void NetMgr::onSend(time_t curTime, link::EndpointRemote_t *per, link::Tunnel_t 
         {
             spdlog::error("[NetMgr::onSend] can't send on invalid south soc[{}]",
                           pt->south.soc);
-            mPostProcessList.insert(pt);
-            return;
+            return false;
         }
 
         // 状态处理
@@ -519,8 +535,7 @@ void NetMgr::onSend(time_t curTime, link::EndpointRemote_t *per, link::Tunnel_t 
         if (!link::Tunnel::southSocSend(pt))
         {
             // spdlog::error("[NetMgr::onSend] south soc[{}] send fail", pt->south.soc);
-            mPostProcessList.insert(pt);
-            return;
+            return false;
         }
         else
         {
@@ -534,15 +549,16 @@ void NetMgr::onSend(time_t curTime, link::EndpointRemote_t *per, link::Tunnel_t 
                 if (!epollResetEndpointMode(&pt->north, true, true, true))
                 {
                     spdlog::error("[NetMgr::onSend] reset north soc[{}] fail", pt->north.soc);
-                    mPostProcessList.insert(pt);
-                    return;
+                    return false;
                 }
             }
+
+            return true;
         }
     }
 }
 
-void NetMgr::onRecv(time_t curTime, link::EndpointRemote_t *per, link::Tunnel_t *pt)
+bool NetMgr::onRecv(time_t curTime, link::EndpointRemote_t *per, link::Tunnel_t *pt)
 {
     if (per->type == link::Type_t::NORTH)
     {
@@ -550,8 +566,7 @@ void NetMgr::onRecv(time_t curTime, link::EndpointRemote_t *per, link::Tunnel_t 
         {
             spdlog::error("[NetMgr::onRecv] can't recv on invalid north soc[{}]",
                           pt->north.soc);
-            mPostProcessList.insert(pt);
-            return;
+            return false;
         }
 
         // 状态处理
@@ -561,7 +576,7 @@ void NetMgr::onRecv(time_t curTime, link::EndpointRemote_t *per, link::Tunnel_t 
             break;
         case link::TunnelState_t::BROKEN:
             // 此状态下，不接收新数据
-            return;
+            return true;
         default:
             spdlog::error("[NetMgr::onRecv] north soc[{}] invalid tunnel status: {}",
                           pt->north.soc, pt->status);
@@ -574,8 +589,7 @@ void NetMgr::onRecv(time_t curTime, link::EndpointRemote_t *per, link::Tunnel_t 
             if (pt->toSouthBUffer->dataSize() && !link::Tunnel::southSocSend(pt))
             {
                 // spdlog::error("[NetMgr::onRecv] send data to south fail");
-                mPostProcessList.insert(pt);
-                return;
+                return false;
             }
             if (pt->toSouthBUffer->stopRecv && pt->toSouthBUffer->freeSize())
             {
@@ -586,16 +600,16 @@ void NetMgr::onRecv(time_t curTime, link::EndpointRemote_t *per, link::Tunnel_t 
                 else
                 {
                     spdlog::error("[NetMgr::onRecv] reset north soc[{}] fail", pt->north.soc);
-                    mPostProcessList.insert(pt);
-                    return;
+                    return false;
                 }
             }
+
+            return true;
         }
         else
         {
             spdlog::error("[NetMgr::onRecv] north soc[{}] recv fail", pt->north.soc);
-            mPostProcessList.insert(pt);
-            return;
+            return false;
         }
     }
     else
@@ -604,8 +618,7 @@ void NetMgr::onRecv(time_t curTime, link::EndpointRemote_t *per, link::Tunnel_t 
         {
             spdlog::error("[NetMgr::onRecv] can't recv on invalid south soc[{}]",
                           pt->south.soc);
-            mPostProcessList.insert(pt);
-            return;
+            return false;
         }
 
         // 状态处理
@@ -615,7 +628,7 @@ void NetMgr::onRecv(time_t curTime, link::EndpointRemote_t *per, link::Tunnel_t 
             break;
         case link::TunnelState_t::BROKEN:
             // 此状态下，不接收新数据
-            return;
+            return true;
         default:
             spdlog::error("[NetMgr::onRecv] south soc[{}] invalid tunnel status: {}",
                           pt->south.soc, pt->status);
@@ -628,8 +641,7 @@ void NetMgr::onRecv(time_t curTime, link::EndpointRemote_t *per, link::Tunnel_t 
             if (pt->toNorthBUffer->dataSize() && !link::Tunnel::northSocSend(pt))
             {
                 // spdlog::error("[NetMgr::onRecv] send data to north fail");
-                mPostProcessList.insert(pt);
-                return;
+                return false;
             }
             if (pt->toNorthBUffer->stopRecv && pt->toNorthBUffer->freeSize())
             {
@@ -640,16 +652,16 @@ void NetMgr::onRecv(time_t curTime, link::EndpointRemote_t *per, link::Tunnel_t 
                 else
                 {
                     spdlog::error("[NetMgr::onRecv] reset north soc[{}] fail", pt->north.soc);
-                    mPostProcessList.insert(pt);
-                    return;
+                    return false;
                 }
             }
+
+            return true;
         }
         else
         {
             spdlog::error("[NetMgr::onRecv] south soc[{}] recv fail", pt->south.soc);
-            mPostProcessList.insert(pt);
-            return;
+            return false;
         }
     }
 }
