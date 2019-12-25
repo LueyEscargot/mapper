@@ -1,8 +1,15 @@
 cmake_minimum_required (VERSION 3.5)
 
-enable_testing()
+#------------------------------------------------------------------------------
+# Project Infomation
+#------------------------------------------------------------------------------
+set (PROJECT_NAME Mapper)
+project(${PROJECT_NAME} LANGUAGES CXX VERSION 2.0.0)
 
-project(Mapper LANGUAGES CXX VERSION 2.0.0)
+message("Project: " ${PROJECT_NAME})
+message("Working Directory: " ${PROJECT_SOURCE_DIR})
+message("Executable output Directory: " ${EXECUTABLE_OUTPUT_PATH})
+message("Library output Directory: " ${LIBRARY_OUTPUT_PATH})
 
 #------------------------------------------------------------------------------
 # Setup compile environment
@@ -14,6 +21,25 @@ set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
 
 include(GNUInstallDirs)
+
+#------------------------------------------------------------------------------
+# Build Mode: Debug version or Release version.
+#             Default is Release Version
+#------------------------------------------------------------------------------
+
+set(DEFAULT_BUILD_TYPE "Release")
+
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+    set(CMAKE_BUILD_TYPE "${DEFAULT_BUILD_TYPE}" CACHE STRING "Choose the type of build." FORCE)
+    # Set the possible values of build type for cmake-gui
+    set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release" "MinSizeRel" "RelWithDebInfo")
+endif()
+
+message( "" )
+message( "=====================" )
+message( "Build Mode: " ${CMAKE_BUILD_TYPE} )
+message( "=====================" )
+message( "" )
 
 #------------------------------------------------------------------------------
 # Transmit System Infomation and compile options to project
@@ -35,27 +61,20 @@ add_definitions( -DCMAKE_LIBRARY_ARCHITECTURE=${CMAKE_LIBRARY_ARCHITECTURE} )
 #------------------------------------------------------------------------------
 option(USE_RINGBUFFER "use Ring Buffer" OFF)
 if( USE_RINGBUFFER )
+    message( "" )
+    message( "===================" )
+    message( "=== Ring Buffer ===" )
+    message( "===================" )
+    message( "" )
     add_definitions( -DUSE_RINGBUFFER=${USE_RINGBUFFER} )
 endif()
 
 #------------------------------------------------------------------------------
-# build in sub-directory: buffer
+# add subdirectories
 #------------------------------------------------------------------------------
 add_subdirectory(buffer)
-
-#------------------------------------------------------------------------------
-# build in sub-directory: config
-#------------------------------------------------------------------------------
 add_subdirectory(config)
-
-#------------------------------------------------------------------------------
-# build in sub-directory: link
-#------------------------------------------------------------------------------
 add_subdirectory(link)
-
-#------------------------------------------------------------------------------
-# build in sub-directory: timer
-#------------------------------------------------------------------------------
 add_subdirectory(timer)
 
 #------------------------------------------------------------------------------
