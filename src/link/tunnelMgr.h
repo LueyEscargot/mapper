@@ -1,3 +1,13 @@
+/**
+ * @file tunnelMgr.h
+ * @author Liu Yu (source@liuyu.com)
+ * @brief tunnel manager.
+ * @version 1.0
+ * @date 2019-12-02
+ * 
+ * @copyright Copyright (c) 2019
+ * 
+ */
 #ifndef __MAPPER_LINK_TUNNELMGR_H__
 #define __MAPPER_LINK_TUNNELMGR_H__
 
