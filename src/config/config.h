@@ -44,9 +44,11 @@ protected:
     static const int DEFAULT_GLOBAL_SESSION_TIMEOUT = 180;
     static const int DEFAULT_GLOBAL_RELEASE_TIMEOUT = 15;
     // default value of link properties
-    static const int DEFAULT_LINK_TUNNELS = 1 << 16;
+    static const int DEFAULT_LINK_TUNNELS = 1 << 10;
     static const int DEFAULT_LINK_NORTHBUF = 1;
     static const int DEFAULT_LINK_SOUTHBUF = 1;
+    static const int DEFAULT_LINK_UDP_TUNNELS = 1 << 10;
+    static const int DEFAULT_LINK_UDP_BUFFER = 1 << 17;
 
     static const int BUF_SIZE_UNIT = 1 << 10;
 
@@ -85,6 +87,8 @@ public:
     inline int getLinkTunnels() { return getAsUint32("tunnels", "link", DEFAULT_LINK_TUNNELS); }
     inline int getLinkNorthBuf() { return BUF_SIZE_UNIT * getAsUint32("northBuf", "link", DEFAULT_LINK_NORTHBUF); }
     inline int getLinkSouthBuf() { return BUF_SIZE_UNIT * getAsUint32("southBuf", "link", DEFAULT_LINK_SOUTHBUF); }
+    inline int getLinkUdpTunnels() { return BUF_SIZE_UNIT * getAsUint32("udpTunnels", "link", DEFAULT_LINK_UDP_TUNNELS); }
+    inline int getLinkUdpBuffer() { return BUF_SIZE_UNIT * getAsUint32("udpBuffer", "link", DEFAULT_LINK_UDP_BUFFER); }
 
     std::string mConfigFile;
 
