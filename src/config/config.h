@@ -78,17 +78,17 @@ public:
     std::vector<std::shared_ptr<Forward>> getForwards(std::string section = "*");
 
     // properties of global
-    inline int getGlobalSessions() { return getAsUint32("sessions", "global", DEFAULT_GLOBAL_SESSIONS); }
+    inline uint32_t getGlobalSessions() { return getAsUint32("sessions", "global", DEFAULT_GLOBAL_SESSIONS); }
     inline int getGlobalConnectTimeout() { return getAsInt32("connectTimeout", "global", DEFAULT_GLOBAL_CONNECT_TIMEOUT); }
     inline int getGlobalSessionTimeout() { return getAsInt32("sessionTimeout", "global", DEFAULT_GLOBAL_SESSION_TIMEOUT); }
     inline int getGlobalReleaseTimeout() { return getAsInt32("releaseTimeout", "global", DEFAULT_GLOBAL_RELEASE_TIMEOUT); }
 
     // properties of link-tunnels
-    inline int getLinkTunnels() { return getAsUint32("tunnels", "link", DEFAULT_LINK_TUNNELS); }
-    inline int getLinkNorthBuf() { return BUF_SIZE_UNIT * getAsUint32("northBuf", "link", DEFAULT_LINK_NORTHBUF); }
-    inline int getLinkSouthBuf() { return BUF_SIZE_UNIT * getAsUint32("southBuf", "link", DEFAULT_LINK_SOUTHBUF); }
-    inline int getLinkUdpTunnels() { return BUF_SIZE_UNIT * getAsUint32("udpTunnels", "link", DEFAULT_LINK_UDP_TUNNELS); }
-    inline int getLinkUdpBuffer() { return BUF_SIZE_UNIT * getAsUint32("udpBuffer", "link", DEFAULT_LINK_UDP_BUFFER); }
+    inline uint32_t getLinkTunnels() { return getAsUint32("tunnels", "link", DEFAULT_LINK_TUNNELS); }
+    inline uint32_t getLinkNorthBuf() { return BUF_SIZE_UNIT * getAsUint32("northBuf", "link", DEFAULT_LINK_NORTHBUF); }
+    inline uint32_t getLinkSouthBuf() { return BUF_SIZE_UNIT * getAsUint32("southBuf", "link", DEFAULT_LINK_SOUTHBUF); }
+    inline uint32_t getLinkUdpTunnels() { return BUF_SIZE_UNIT * getAsUint32("udpTunnels", "link", DEFAULT_LINK_UDP_TUNNELS); }
+    inline uint32_t getLinkUdpBuffer() { return BUF_SIZE_UNIT * getAsUint32("udpBuffer", "link", DEFAULT_LINK_UDP_BUFFER); }
 
     std::string mConfigFile;
 
