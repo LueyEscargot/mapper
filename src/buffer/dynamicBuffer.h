@@ -12,6 +12,7 @@
 #ifndef __MAPPER_BUFFER_DYNAMICBUFFER_H__
 #define __MAPPER_BUFFER_DYNAMICBUFFER_H__
 
+#include <sys/socket.h>
 #include <list>
 #include <tuple>
 #include <string>
@@ -23,23 +24,19 @@ namespace buffer
 
 class DynamicBuffer
 {
-    static const uint32_t BUFBLK_HEAD_START_FLAG = 0xA55A;
-
+public:
     typedef struct BUFBLK
     {
-        uint16_t startFlag;
-        union {
-            bool inUse;
-            uint16_t _align;
-        };
+        bool inUse;
         BUFBLK *prev;
         BUFBLK *next;
+        sockaddr_storage peer_addr;
+        socklen_t peer_addr_len;
         uint32_t size;
         char buffer[0];
 
         void init(uint32_t _size, BUFBLK *_prev, BUFBLK *_next)
         {
-            startFlag = BUFBLK_HEAD_START_FLAG;
             inUse = false;
             prev = _prev;
             next = _next;
@@ -57,9 +54,9 @@ public:
     static DynamicBuffer *alloc(uint32_t capacity);
     static void release(DynamicBuffer *pDynamicBuffer);
 
-    void *getBuffer(int reserve);
-    void cutBuffer(uint32_t size);
-    void releaseBuffer(void *pBuffer);
+    void *reserve(int size);
+    BufBlk_t *cut(uint32_t size);
+    void putBack(BufBlk_t *pBuffer);
 
 protected:
     void *mBuffer;

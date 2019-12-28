@@ -58,14 +58,14 @@ void DynamicBuffer::release(DynamicBuffer *pDynamicBuffer)
     delete pDynamicBuffer;
 }
 
-void *DynamicBuffer::getBuffer(int reserve)
+void *DynamicBuffer::reserve(int size)
 {
     if (mpFreePos == nullptr)
     {
         // 已无可用缓冲区
         return nullptr;
     }
-    else if (mpFreePos->size >= reserve)
+    else if (mpFreePos->size >= size)
     {
         // 从当前缓冲区中分配
         return mpFreePos->buffer;
@@ -76,7 +76,7 @@ void *DynamicBuffer::getBuffer(int reserve)
 
         // 1. 向后查找
         BufBlk_t *p = mpFreePos->next;
-        while (p && (p->inUse || (p->size < reserve)))
+        while (p && (p->inUse || (p->size < size)))
         {
             p = p->next;
         }
@@ -90,7 +90,7 @@ void *DynamicBuffer::getBuffer(int reserve)
         {
             // 2. 从头查找
             p = static_cast<BufBlk_t *>(mBuffer);
-            while (p != mpFreePos && (p->inUse || (p->size < reserve)))
+            while (p != mpFreePos && (p->inUse || (p->size < size)))
             {
                 // 因为 mpFreePos 是属于链表中的某一段
                 // 因此从头开始查找时 p 不可能为空
@@ -112,12 +112,14 @@ void *DynamicBuffer::getBuffer(int reserve)
     }
 }
 
-void DynamicBuffer::cutBuffer(uint32_t size)
+DynamicBuffer::BufBlk_t *DynamicBuffer::cut(uint32_t size)
 {
     assert(mpFreePos && size <= mpFreePos->size && mpFreePos->inUse == false);
 
     // 后一个缓冲区为空，或者已被分配（否则应该与当前缓冲区合并）
     assert(mpFreePos->next == nullptr || mpFreePos->next->inUse);
+
+    DynamicBuffer::BufBlk_t *cutBlock = mpFreePos;
 
     // 如果剩余缓冲区大小 小于或等于 缓冲区结构体头部大小，
     // 则当前所有缓冲区都被分配出去。
@@ -187,14 +189,12 @@ void DynamicBuffer::cutBuffer(uint32_t size)
             }
         }
     }
+
+    return cutBlock;
 }
 
-void DynamicBuffer::releaseBuffer(void *pBuffer)
+void DynamicBuffer::putBack(BufBlk_t *pBlk)
 {
-    char *p = static_cast<char *>(pBuffer);
-    BufBlk_t *pBlk = reinterpret_cast<BufBlk_t *>(p - BUFBLK_HEAD_SIZE);
-    assert(pBlk->startFlag == BUFBLK_HEAD_START_FLAG);
-
     BufBlk_t *prev = pBlk->prev;
     if (prev && prev->inUse == false)
     {
