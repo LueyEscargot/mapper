@@ -1,46 +1,42 @@
+/**
+ * @file service.h
+ * @author Liu Yu (source@liuyu.com)
+ * @brief Base Class of Network Services.
+ * @version 2
+ * @date 2019-12-05
+ * 
+ * @copyright Copyright (c) 2019
+ * 
+ */
 #ifndef __MAPPER_LINK_SERVER_H__
 #define __MAPPER_LINK_SERVER_H__
 
-#include <ifaddrs.h>
-#include <netinet/in.h>
+#include <time.h>
 #include <string>
-#include "base.h"
+#include "type.h"
+#include "../config/config.h"
 
 namespace mapper
 {
 namespace link
 {
 
-class Service : public Base
+class Service
 {
-protected:
-    Service(int soc) : Base(Type_t::SERVICE, soc) {}
-
 public:
-    /**
-     * @brief 
-     * 
-     * @param serviceInfo [interface]:[service port]:[target host]:[target port]
-     *      [interface]:     'any' or interface name(for example: eth0). default(empty) is 'any'.
-     *      [service port]:  listen port
-     *      [target host]:   ip or domain name of target host
-     *      [target port]:   target host service port
-     * @return Service* new created Service Endpoint Object
-     */
-    static Service *create(std::string &serviceInfo);
-    static Service *create(std::string &interface, int servicePort,
-                           std::string &targetHost, int targetPort);
+    Service(std::string name);
+    virtual ~Service();
 
-    std::string toStr() override;
+    virtual std::string toStr();
 
-    std::string mInterface;
-    std::string mIp;
-    int mServicePort;
-    std::string mTargetHost;
-    int mTargetPort;
+    virtual bool init(config::Config *pConf, int epollfd) = 0;
+    virtual void close() = 0;
+    virtual void onSoc(time_t curTime, uint32_t events, Endpoint_t *pe) = 0;
 
 protected:
-    static bool getIfSockAddr(std::string &interface, std::string &ip, sockaddr_in &sa);
+    std::string mName;
+    config::Config *mpConf;
+    int mEpollfd;
 };
 
 } // namespace link
