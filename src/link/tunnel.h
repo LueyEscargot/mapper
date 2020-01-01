@@ -30,6 +30,9 @@ public:
     static void setStatus(Tunnel_t *pt, TunnelState_t stat);
     static std::string toStr(Tunnel_t *pt);
 
+    static UdpTunnel_t *getTunnel();
+    static void releaseTunnel(UdpTunnel_t *pe);
+
     static bool connect(Tunnel_t *pt);
     static bool northSocRecv(Tunnel_t *pt);
     static bool northSocSend(Tunnel_t *pt);

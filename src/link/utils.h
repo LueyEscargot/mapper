@@ -31,6 +31,9 @@ public:
     static void closeAddrInfo(struct addrinfo *pAddrInfo);
     static int createSoc(Protocol_t protocol, bool nonblock);
     static int createServiceSoc(Protocol_t protocol, sockaddr_in *sa, socklen_t salen);
+
+    static int compareAddr(const sockaddr *l, const sockaddr *r);
+    static int compareAddr(const sockaddr_in *l, const sockaddr_in *r);
 };
 
 } // namespace link

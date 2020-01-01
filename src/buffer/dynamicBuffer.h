@@ -12,6 +12,7 @@
 #ifndef __MAPPER_BUFFER_DYNAMICBUFFER_H__
 #define __MAPPER_BUFFER_DYNAMICBUFFER_H__
 
+#include <netinet/in.h>
 #include <sys/socket.h>
 #include <list>
 #include <tuple>
@@ -25,24 +26,18 @@ namespace buffer
 class DynamicBuffer
 {
 public:
-    typedef struct BUFBLK
+    struct BufBlk_t
     {
+        BufBlk_t *__innerPrev;
+        BufBlk_t *__innerNext;
         bool inUse;
-        BUFBLK *prev;
-        BUFBLK *next;
-        sockaddr_storage peer_addr;
-        socklen_t peer_addr_len;
+        BufBlk_t *prev;
+        BufBlk_t *next;
+        sockaddr_in sockaddr;
+        socklen_t sockaddr_len;
         uint32_t size;
         char buffer[0];
-
-        void init(uint32_t _size, BUFBLK *_prev, BUFBLK *_next)
-        {
-            inUse = false;
-            prev = _prev;
-            next = _next;
-            size = _size;
-        }
-    } BufBlk_t;
+    };
 
     static const uint32_t BUFBLK_HEAD_SIZE = sizeof(BufBlk_t);
 
@@ -51,14 +46,19 @@ protected:
     virtual ~DynamicBuffer();
 
 public:
-    static DynamicBuffer *alloc(uint32_t capacity);
-    static void release(DynamicBuffer *pDynamicBuffer);
+    static DynamicBuffer *allocDynamicBuffer(uint32_t capacity);
+    static void releaseDynamicBuffer(DynamicBuffer *pDynamicBuffer);
 
     void *reserve(int size);
     BufBlk_t *cut(uint32_t size);
-    void putBack(BufBlk_t *pBuffer);
+    void release(BufBlk_t *pBuffer);
 
 protected:
+    static void init(DynamicBuffer::BufBlk_t *pBlk,
+                     uint32_t size,
+                     BufBlk_t *innerlink_prev,
+                     BufBlk_t *innerlink_next);
+
     void *mBuffer;
     BufBlk_t *mpFreePos;
 };

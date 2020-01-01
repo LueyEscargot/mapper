@@ -12,9 +12,9 @@
 #define __MAPPER_LINK_SERVER_H__
 
 #include <time.h>
+#include <memory>
 #include <string>
 #include "type.h"
-#include "../config/config.h"
 
 namespace mapper
 {
@@ -29,13 +29,12 @@ public:
 
     virtual std::string toStr();
 
-    virtual bool init(config::Config *pConf, int epollfd) = 0;
+    bool init(int epollfd);
     virtual void close() = 0;
     virtual void onSoc(time_t curTime, uint32_t events, Endpoint_t *pe) = 0;
 
 protected:
     std::string mName;
-    config::Config *mpConf;
     int mEpollfd;
 };
 

@@ -22,6 +22,7 @@
 #include <vector>
 #include "config/config.h"
 #include "config/forward.h"
+#include "link/service.h"
 #include "link/type.h"
 #include "link/tunnelMgr.h"
 #include "timer/container.h"
@@ -55,7 +56,6 @@ protected:
     void closeEnv();
 
     void onSoc(time_t curTime, epoll_event &event);
-    void onService(time_t curTime, uint32_t events, link::EndpointService_t *pEndpoint);
 
     void acceptClient(time_t curTime, link::EndpointService_t *pes);
     bool onSend(time_t curTime, link::EndpointRemote_t *per, link::Tunnel_t *pt);
@@ -72,9 +72,9 @@ protected:
 
     std::vector<std::shared_ptr<mapper::config::Forward>> mForwards;
     std::vector<link::EndpointService_t *> mServices;
+    std::vector<link::Service *> mUdpServices;
 
     config::Config *mpCfg;
-    int mPreConnEpollfd;
     int mEpollfd;
     link::TunnelMgr mTunnelMgr;
     std::thread mMainRoutineThread;

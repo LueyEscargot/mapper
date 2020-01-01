@@ -24,36 +24,37 @@ DynamicBuffer::~DynamicBuffer()
     }
 };
 
-DynamicBuffer *DynamicBuffer::alloc(uint32_t capacity)
+DynamicBuffer *DynamicBuffer::allocDynamicBuffer(uint32_t capacity)
 {
     assert(capacity);
 
     DynamicBuffer *pDynamicBuffer = new DynamicBuffer();
     if (!pDynamicBuffer)
     {
-        spdlog::error("[DynamicBuffer::alloc] create object fail.");
+        spdlog::error("[DynamicBuffer::allocDynamicBuffer] create object fail.");
         return nullptr;
     }
 
     uint32_t allocSize = capacity + BUFBLK_HEAD_SIZE;
-    spdlog::trace("[DynamicBuffer::alloc] capacity: {}", allocSize);
+    spdlog::trace("[DynamicBuffer::allocDynamicBuffer] capacity: {}", allocSize);
     pDynamicBuffer->mBuffer = static_cast<char *>(malloc(allocSize));
     if (pDynamicBuffer->mBuffer == nullptr)
     {
-        spdlog::error("[DynamicBuffer::alloc] malloc {} bytes fail.", allocSize);
+        spdlog::error("[DynamicBuffer::allocDynamicBuffer] malloc {} bytes fail.",
+                      allocSize);
         delete pDynamicBuffer;
         return nullptr;
     }
     else
     {
         pDynamicBuffer->mpFreePos = static_cast<BufBlk_t *>(pDynamicBuffer->mBuffer);
-        pDynamicBuffer->mpFreePos->init(capacity, nullptr, nullptr);
+        init(pDynamicBuffer->mpFreePos, capacity, nullptr, nullptr);
 
         return pDynamicBuffer;
     }
 }
 
-void DynamicBuffer::release(DynamicBuffer *pDynamicBuffer)
+void DynamicBuffer::releaseDynamicBuffer(DynamicBuffer *pDynamicBuffer)
 {
     delete pDynamicBuffer;
 }
@@ -75,10 +76,10 @@ void *DynamicBuffer::reserve(int size)
         // 查找可用缓冲区
 
         // 1. 向后查找
-        BufBlk_t *p = mpFreePos->next;
+        BufBlk_t *p = mpFreePos->__innerNext;
         while (p && (p->inUse || (p->size < size)))
         {
-            p = p->next;
+            p = p->__innerNext;
         }
         if (p)
         {
@@ -95,7 +96,7 @@ void *DynamicBuffer::reserve(int size)
                 // 因为 mpFreePos 是属于链表中的某一段
                 // 因此从头开始查找时 p 不可能为空
                 assert(p);
-                p = p->next;
+                p = p->__innerNext;
             }
             if (p != mpFreePos)
             {
@@ -117,7 +118,7 @@ DynamicBuffer::BufBlk_t *DynamicBuffer::cut(uint32_t size)
     assert(mpFreePos && size <= mpFreePos->size && mpFreePos->inUse == false);
 
     // 后一个缓冲区为空，或者已被分配（否则应该与当前缓冲区合并）
-    assert(mpFreePos->next == nullptr || mpFreePos->next->inUse);
+    assert(mpFreePos->__innerNext == nullptr || mpFreePos->__innerNext->inUse);
 
     DynamicBuffer::BufBlk_t *cutBlock = mpFreePos;
 
@@ -139,10 +140,12 @@ DynamicBuffer::BufBlk_t *DynamicBuffer::cut(uint32_t size)
         BufBlk_t *nextBlk = reinterpret_cast<BufBlk_t *>(p +
                                                          BUFBLK_HEAD_SIZE +
                                                          cutSize);
-        nextBlk->init(remainSize - BUFBLK_HEAD_SIZE, mpFreePos, mpFreePos->next);
-
+        init(nextBlk,
+             remainSize - BUFBLK_HEAD_SIZE,
+             mpFreePos,
+             mpFreePos->__innerNext);
         mpFreePos->size = cutSize;
-        mpFreePos->next = nextBlk;
+        mpFreePos->__innerNext = nextBlk;
         mpFreePos->inUse = true;
 
         mpFreePos = nextBlk;
@@ -156,10 +159,10 @@ DynamicBuffer::BufBlk_t *DynamicBuffer::cut(uint32_t size)
         // 查找可用缓冲区
 
         // 1. 向后查找
-        BufBlk_t *p = mpFreePos->next;
+        BufBlk_t *p = mpFreePos->__innerNext;
         while (p && p->inUse)
         {
-            p = p->next;
+            p = p->__innerNext;
         }
         if (p)
         {
@@ -175,7 +178,7 @@ DynamicBuffer::BufBlk_t *DynamicBuffer::cut(uint32_t size)
                 // 因为 mpFreePos 是属于链表中的某一段
                 // 因此从头开始查找时 p 不可能为空
                 assert(p);
-                p = p->next;
+                p = p->__innerNext;
             }
             if (p != mpFreePos)
             {
@@ -193,36 +196,65 @@ DynamicBuffer::BufBlk_t *DynamicBuffer::cut(uint32_t size)
     return cutBlock;
 }
 
-void DynamicBuffer::putBack(BufBlk_t *pBlk)
+void DynamicBuffer::release(BufBlk_t *pBlk)
 {
-    BufBlk_t *prev = pBlk->prev;
-    if (prev && prev->inUse == false)
+    assert(pBlk && pBlk->inUse);
+
+    pBlk->inUse = false;
+    if (mpFreePos == nullptr)
     {
-        // 向前合并
-        prev->size += BUFBLK_HEAD_SIZE + pBlk->size;
+        // 调整 mpFreePos
+        mpFreePos = pBlk;
     }
-    else
+
+    // 向后合并
+    BufBlk_t *nextItem = pBlk->__innerNext;
+    if (nextItem && nextItem->inUse == false)
     {
-        BufBlk_t *next = pBlk->next;
-        if (next && next->inUse == false)
+        pBlk->size += BUFBLK_HEAD_SIZE + nextItem->size;
+        pBlk->__innerNext = nextItem->__innerNext;
+        if (pBlk->__innerNext)
         {
-            // 向后合并
-            pBlk->size += BUFBLK_HEAD_SIZE + next->size;
-            // 调整 mpFreePos
-            if (mpFreePos == next)
-            {
-                mpFreePos = pBlk;
-            }
+            pBlk->__innerNext->__innerPrev = pBlk;
         }
-        else
+
+        if (mpFreePos == nextItem)
         {
             // 调整 mpFreePos
-            if (mpFreePos == nullptr)
-            {
-                mpFreePos = pBlk;
-            }
+            mpFreePos = pBlk;
         }
     }
+
+    // 向前合并
+    BufBlk_t *prevItem = pBlk->__innerPrev;
+    if (prevItem && prevItem->inUse == false)
+    {
+        prevItem->size += BUFBLK_HEAD_SIZE + pBlk->size;
+        prevItem->__innerNext = pBlk->__innerNext;
+        if (prevItem->__innerNext)
+        {
+            prevItem->__innerNext->__innerPrev = prevItem;
+        }
+
+        if (mpFreePos == pBlk)
+        {
+            // 调整 mpFreePos
+            mpFreePos = prevItem;
+        }
+    }
+}
+
+void DynamicBuffer::init(DynamicBuffer::BufBlk_t *pBlk,
+                         uint32_t size,
+                         BufBlk_t *innerlink_prev,
+                         BufBlk_t *innerlink_next)
+{
+    pBlk->inUse = false;
+    pBlk->__innerPrev = innerlink_prev;
+    pBlk->__innerNext = innerlink_next;
+    pBlk->prev = nullptr;
+    pBlk->next = nullptr;
+    pBlk->size = size;
 }
 
 } // namespace buffer

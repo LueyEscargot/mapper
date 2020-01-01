@@ -2,7 +2,6 @@
 #include <spdlog/spdlog.h>
 
 using namespace std;
-using namespace mapper::config;
 
 namespace mapper
 {
@@ -18,16 +17,16 @@ Service::~Service()
 {
 }
 
-bool Service::init(config::Config *pConf, int epollfd)
-{
-    mpConf = pConf;
-    mEpollfd = epollfd;
-    return true;
-}
-
 std::string Service::toStr()
 {
     string str = R"([")" + mName + R"("])";
+}
+
+bool Service::init(int epollfd)
+{
+    mEpollfd = epollfd;
+
+    return true;
 }
 
 } // namespace link
