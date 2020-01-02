@@ -31,15 +31,15 @@ GenericBuffer *GenericBuffer::alloc(uint32_t capacity)
     GenericBuffer *pGenericBuffer = new GenericBuffer(capacity);
     if (!pGenericBuffer)
     {
-        spdlog::error("[GenericBuffer::createBuffer] create RainBuffer object fail.");
+        spdlog::error("[GenericBuffer::alloc] create object fail.");
         return nullptr;
     }
 
-    spdlog::trace("[GenericBuffer::createBuffer] capacity: {}", capacity);
+    spdlog::trace("[GenericBuffer::alloc] capacity: {}", capacity);
     pGenericBuffer->buffer = static_cast<char *>(malloc(capacity));
     if (pGenericBuffer->buffer == nullptr)
     {
-        spdlog::error("[GenericBuffer::createBuffer] malloc {} bytes fail.", capacity);
+        spdlog::error("[GenericBuffer::alloc] malloc {} bytes fail.", capacity);
         delete pGenericBuffer;
         return nullptr;
     }

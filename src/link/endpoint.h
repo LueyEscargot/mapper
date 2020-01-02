@@ -4,6 +4,7 @@
 #include <netinet/in.h> // for sockaddr_in
 #include <string>
 #include "type.h"
+#include "../buffer/dynamicBuffer.h"
 
 namespace mapper
 {
@@ -29,6 +30,13 @@ public:
     static std::string toStr(const EndpointService_t *pEndpoint);
     static std::string toStr(const EndpointRemote_t *pEndpoint);
     static std::string toStr(const Tunnel_t *pEndpoint);
+
+    static Endpoint_t *getEndpoint(Protocol_t protocol,
+                                   Direction_t direction,
+                                   Type_t type);
+    static void releaseEndpoint(Endpoint_t *pe);
+    static void appendToSendList(Endpoint_t *pe,
+                                 buffer::DynamicBuffer::BufBlk_t *pBufBlk);
 
 protected:
     static bool getIntfAddr(const char *intf, sockaddr_in &sa);

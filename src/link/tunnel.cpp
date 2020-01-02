@@ -75,7 +75,7 @@ bool Tunnel::init(Tunnel_t *pt, EndpointService_t *pes, int southSoc)
         }
 
         // set north soc and south soc for tunnel
-        pt->init(link::Protocol_t::TCP, southSoc, northSoc);
+        pt->init(southSoc, northSoc);
         Tunnel::setStatus(pt, TunnelState_t::INITIALIZED);
 
         return true;
@@ -117,6 +117,27 @@ string Tunnel::toStr(Tunnel_t *pt)
        << "]";
 
     return ss.str();
+}
+
+UdpTunnel_t *Tunnel::getTunnel()
+{
+    // TODO: use Tunnel buffer
+    UdpTunnel_t *pt = new UdpTunnel_t;
+    if (pt)
+    {
+        pt->init();
+    }
+
+    return pt;
+}
+
+void Tunnel::releaseTunnel(UdpTunnel_t *pt)
+{
+    // TODO: use Tunnel buffer
+    if (pt)
+    {
+        delete pt;
+    }
 }
 
 bool Tunnel::connect(Tunnel_t *pt)
@@ -184,89 +205,23 @@ bool Tunnel::connect(Tunnel_t *pt)
     }
 }
 
-bool Tunnel::onSoc(uint64_t curTime,
-                   EndpointRemote_t *per,
-                   uint32_t events,
-                   CB_SetEpollMode cbSetEpollMode,
-                   CB_onEstablish cbOnEstablish)
-{
-    // Tunnel_t *pt = static_cast<Tunnel_t *>(per->tunnel);
-
-    // // TCP or UDP
-    // if (pt->protocol == Protocol_t::TCP)
-    // {
-    //     assert(per->type & (Type_t::NORTH | Type_t::SOUTH));
-
-    //     bool result = false;
-
-    //     // spdlog::debug("[Tunnel::onSoc] curTime[{}], endpoint[{}], event.events[0x{:x}]",
-    //     //               curTime, Endpoint::toStr(per), events);
-
-    //     // send
-    //     if (events & EPOLLOUT)
-    //     {
-    //         if (per->type == Type_t::NORTH)
-    //         {
-    //             result = northSocSend(pt, cbSetEpollMode, cbOnEstablish);
-    //         }
-    //         else
-    //         {
-    //             result = southSocSend(pt, cbSetEpollMode);
-    //         }
-    //     }
-
-    //     // recv
-    //     if (events & EPOLLIN)
-    //     {
-    //         if (per->type == Type_t::NORTH)
-    //         {
-    //             result = northSocRecv(pt, cbSetEpollMode);
-    //         }
-    //         else
-    //         {
-    //             result = southSocRecv(pt, cbSetEpollMode);
-    //         }
-    //     }
-
-    //     if (result)
-    //     {
-    //         return true;
-    //     }
-    //     else
-    //     {
-    //         // current endpoint not valid
-    //         per->valid = false;
-
-    //         // set tunnel as broken
-    //         setStatus(pt, TunnelState_t::BROKEN);
-    //         return false;
-    //     }
-    // }
-    // else
-    // {
-    //     // TODO: finish UDP routine
-    //     spdlog::critical("[Tunnel::onSoc] Routine for UDP Not Implemeted yet.");
-    //     return false;
-    // }
-}
-
 bool Tunnel::northSocRecv(Tunnel_t *pt)
 {
     while (true)
     {
-        uint64_t bufSize = pt->toSouthBUffer->freeSize();
+        uint64_t bufSize = pt->toSouthBuffer->freeSize();
 
-        // spdlog::trace("[Tunnel::northSocRecv] bufSize: {}, pt->toSouthBUffer: {}",
-        //               bufSize, pt->toSouthBUffer->toStr());
+        // spdlog::trace("[Tunnel::northSocRecv] bufSize: {}, pt->toSouthBuffer: {}",
+        //               bufSize, pt->toSouthBuffer->toStr());
 
         if (bufSize == 0)
         {
             // 接收缓冲区已满
-            pt->toSouthBUffer->stopRecv = true;
+            pt->toSouthBuffer->stopRecv = true;
             break;
         }
 
-        char *buf = pt->toSouthBUffer->getBuffer();
+        char *buf = pt->toSouthBuffer->getBuffer();
         int nRet = recv(pt->north.soc, buf, bufSize, 0);
         if (nRet <= 0)
         {
@@ -288,8 +243,8 @@ bool Tunnel::northSocRecv(Tunnel_t *pt)
                                   pt->north.soc, errno, strerror(errno));
                 }
 
-                spdlog::trace("[Tunnel::northSocRecv] current stat: bufSize: {}, pt->toNorthBUffer: {}",
-                              bufSize, pt->toSouthBUffer->toStr());
+                spdlog::trace("[Tunnel::northSocRecv] current stat: bufSize: {}, pt->toNorthBuffer: {}",
+                              bufSize, pt->toSouthBuffer->toStr());
 
                 pt->north.valid = false;
 
@@ -298,7 +253,7 @@ bool Tunnel::northSocRecv(Tunnel_t *pt)
         }
         else
         {
-            pt->toSouthBUffer->incDataSize(nRet);
+            pt->toSouthBuffer->incDataSize(nRet);
         }
     }
 
@@ -307,10 +262,10 @@ bool Tunnel::northSocRecv(Tunnel_t *pt)
 
 bool Tunnel::northSocSend(Tunnel_t *pt)
 {
-    while (uint64_t bufSize = pt->toNorthBUffer->dataSize())
+    while (uint64_t bufSize = pt->toNorthBuffer->dataSize())
     {
         // send data to north
-        char *buf = pt->toNorthBUffer->getData();
+        char *buf = pt->toNorthBuffer->getData();
         int nRet = send(pt->north.soc, buf, bufSize, 0);
         if (nRet < 0)
         {
@@ -328,7 +283,7 @@ bool Tunnel::northSocSend(Tunnel_t *pt)
             return false;
         }
 
-        pt->toNorthBUffer->incFreeSize(nRet);
+        pt->toNorthBuffer->incFreeSize(nRet);
     }
 
     return true;
@@ -338,19 +293,19 @@ bool Tunnel::southSocRecv(Tunnel_t *pt)
 {
     while (true)
     {
-        uint64_t bufSize = pt->toNorthBUffer->freeSize();
+        uint64_t bufSize = pt->toNorthBuffer->freeSize();
 
-        // spdlog::trace("[Tunnel::southSocRecv] bufSize: {}, pt->toNorthBUffer: {}",
-        //               bufSize, pt->toNorthBUffer->toStr());
+        // spdlog::trace("[Tunnel::southSocRecv] bufSize: {}, pt->toNorthBuffer: {}",
+        //               bufSize, pt->toNorthBuffer->toStr());
 
         if (bufSize == 0)
         {
             // 接收缓冲区已满
-            pt->toNorthBUffer->stopRecv = true;
+            pt->toNorthBuffer->stopRecv = true;
             break;
         }
 
-        char *buf = pt->toNorthBUffer->getBuffer();
+        char *buf = pt->toNorthBuffer->getBuffer();
         int nRet = recv(pt->south.soc, buf, bufSize, 0);
         if (nRet <= 0)
         {
@@ -372,8 +327,8 @@ bool Tunnel::southSocRecv(Tunnel_t *pt)
                                   pt->south.soc, errno, strerror(errno));
                 }
 
-                spdlog::trace("[Tunnel::southSocRecv] current stat: bufSize: {}, pt->toNorthBUffer: {}",
-                              bufSize, pt->toNorthBUffer->toStr());
+                spdlog::trace("[Tunnel::southSocRecv] current stat: bufSize: {}, pt->toNorthBuffer: {}",
+                              bufSize, pt->toNorthBuffer->toStr());
 
                 pt->south.valid = false;
 
@@ -382,7 +337,7 @@ bool Tunnel::southSocRecv(Tunnel_t *pt)
         }
         else
         {
-            pt->toNorthBUffer->incDataSize(nRet);
+            pt->toNorthBuffer->incDataSize(nRet);
         }
     }
 
@@ -391,10 +346,10 @@ bool Tunnel::southSocRecv(Tunnel_t *pt)
 
 bool Tunnel::southSocSend(Tunnel_t *pt)
 {
-    while (uint64_t bufSize = pt->toSouthBUffer->dataSize())
+    while (uint64_t bufSize = pt->toSouthBuffer->dataSize())
     {
         // send data to south
-        char *buf = pt->toSouthBUffer->getData();
+        char *buf = pt->toSouthBuffer->getData();
         int nRet = send(pt->south.soc, buf, bufSize, 0);
         if (nRet < 0)
         {
@@ -411,7 +366,7 @@ bool Tunnel::southSocSend(Tunnel_t *pt)
             return false;
         }
 
-        pt->toSouthBUffer->incFreeSize(nRet);
+        pt->toSouthBuffer->incFreeSize(nRet);
     }
 
     return true;

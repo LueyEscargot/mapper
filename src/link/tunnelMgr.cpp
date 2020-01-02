@@ -53,18 +53,18 @@ bool TunnelMgr::init(config::Config *pCfg)
     {
         uint32_t northBufSize = pCfg->getLinkSouthBuf();
         uint32_t southBufSize = pCfg->getLinkNorthBuf();
-        buffer::Buffer *northBUffer = buffer::Buffer::alloc(northBufSize);
-        buffer::Buffer *southBUffer = buffer::Buffer::alloc(southBufSize);
-        if (northBUffer && southBUffer)
+        buffer::Buffer *northBuffer = buffer::Buffer::alloc(northBufSize);
+        buffer::Buffer *southBuffer = buffer::Buffer::alloc(southBufSize);
+        if (northBuffer && southBuffer)
         {
-            mpTunnels[i].create(northBUffer, southBUffer);
+            mpTunnels[i].create(northBuffer, southBuffer);
             mFreeList.push_back(mpTunnels + i);
         }
         else
         {
             spdlog::error("[TunnelMgr::init] alloc tunnel buffer fail.");
-            buffer::Buffer::release(northBUffer);
-            buffer::Buffer::release(southBUffer);
+            buffer::Buffer::release(northBuffer);
+            buffer::Buffer::release(southBuffer);
             return false;
         }
     }
@@ -80,10 +80,10 @@ void TunnelMgr::close()
         // release send/recv buffers
         for (int i = 0; i < mTunnelCounts; ++i)
         {
-            buffer::Buffer::release(mpTunnels[i].toNorthBUffer);
-            buffer::Buffer::release(mpTunnels[i].toSouthBUffer);
-            mpTunnels[i].toNorthBUffer = nullptr;
-            mpTunnels[i].toSouthBUffer = nullptr;
+            buffer::Buffer::release(mpTunnels[i].toNorthBuffer);
+            buffer::Buffer::release(mpTunnels[i].toSouthBuffer);
+            mpTunnels[i].toNorthBuffer = nullptr;
+            mpTunnels[i].toSouthBuffer = nullptr;
             mpTunnels[i].close();
         }
 

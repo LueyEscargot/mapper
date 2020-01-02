@@ -65,14 +65,7 @@ public:
     inline bool empty(Type_t type) { return mHead[type] == nullptr; }
     void insert(Type_t type, time_t curTime, Client_t *pClient);
     void remove(Client_t *pClient);
-    inline void refresh(time_t curTime, Client_t *pClient)
-    {
-        if (pClient)
-        {
-            remove(pClient);
-            insert(pClient->type, curTime, pClient);
-        }
-    }
+    void refresh(time_t curTime, Client_t *pClient);
 
     Client_t *removeTimeout(Type_t type, time_t curTime);
 

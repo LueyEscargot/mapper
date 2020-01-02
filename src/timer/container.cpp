@@ -120,6 +120,44 @@ void Container::remove(Client_t *c)
     c->next = nullptr;
 }
 
+void Container::refresh(time_t t, Client_t *c)
+{
+    assert(c && c->inTimer);
+
+    c->time = t;
+
+    // move client to the tail of current list
+    // 处理后指针
+    if (c->next)
+    {
+        // 不是链表中最后一个元素
+        c->next->prev = c->prev;
+    }
+    else
+    {
+        // 已在最后，无需移动
+        return;
+    }
+    // 处理前指针
+    if (c->prev)
+    {
+        // 不是链表中第一个元素
+        c->prev->next = c->next;
+    }
+    else
+    {
+        // 此时 c->next 必然存在
+        mHead[c->type] = c->next;
+    }
+    // 插入到最后
+    // 此时 mTail[c->type] 必然存在
+    c->prev = mTail[c->type];
+    c->next = nullptr;
+    mTail[c->type]->next = c;
+    // 重置
+    mTail[c->type] = c;
+}
+
 Container::Client_t *Container::removeTimeout(Type_t type, time_t curTime)
 {
     if (mTimeoutInterval[type] <= 0)
