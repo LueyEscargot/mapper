@@ -50,26 +50,23 @@ bool UdpForwardService::init(int epollfd,
 
     mForwardCmd = forward;
 
-    mServiceEndpoint.init();
-    mServiceEndpoint.direction = ENDPOINT_DIRECTION_SOUTH;
-    mServiceEndpoint.type = ENDPOINT_TYPE_SERVICE;
-    mServiceEndpoint.valid = ENDPOINT_VALID;
-    mServiceEndpoint.protocol = ENDPOINT_PROTOCOL_UDP;
-    mServiceEndpoint.sockAddrLen = sizeof(struct sockaddr_in);
+    mServiceEndpoint.init(Protocol_t::UDP,
+                          Direction_t::DIR_SOUTH,
+                          Type_t::SERVICE);
     mServiceEndpoint.service = this;
 
     // get local address of specified interface
-    if (!Utils::getIntfAddr(forward->interface.c_str(), mServiceEndpoint.sockAddr))
+    if (!Utils::getIntfAddr(forward->interface.c_str(), mServiceEndpoint.ipTuple.l))
     {
         spdlog::error("[UdpForwardService::init] get address of interface[{}] fail.", forward->interface);
         return false;
     }
-    mServiceEndpoint.sockAddr.sin_port = htons(atoi(forward->service.c_str()));
+    mServiceEndpoint.ipTuple.l.sin_port = htons(atoi(forward->service.c_str()));
 
     // create server socket
     mServiceEndpoint.soc = Utils::createServiceSoc(Protocol_t::UDP,
-                                                   &mServiceEndpoint.sockAddr,
-                                                   sizeof(mServiceEndpoint.sockAddr));
+                                                   &mServiceEndpoint.ipTuple.l,
+                                                   sizeof(mServiceEndpoint.ipTuple.l));
     if (mServiceEndpoint.soc < 0)
     {
         spdlog::error("[UdpForwardService::init] create server socket fail.");
@@ -80,7 +77,7 @@ bool UdpForwardService::init(int epollfd,
     if (!Utils::getAddrInfo(forward->targetHost.c_str(),
                             forward->targetService.c_str(),
                             Protocol_t::UDP,
-                            &mServiceEndpoint.targetHostAddrs))
+                            &mServiceEndpoint.remoteAddrInfo))
     {
         spdlog::error("[UdpForwardService::init] get addr of host[{}:{}] fail",
                       forward->targetHost, forward->targetService);
@@ -112,10 +109,10 @@ bool UdpForwardService::init(int epollfd,
 void UdpForwardService::close()
 {
     // release target addrs
-    if (mServiceEndpoint.targetHostAddrs)
+    if (mServiceEndpoint.remoteAddrInfo)
     {
-        Utils::closeAddrInfo(mServiceEndpoint.targetHostAddrs);
-        mServiceEndpoint.targetHostAddrs = nullptr;
+        Utils::closeAddrInfo(mServiceEndpoint.remoteAddrInfo);
+        mServiceEndpoint.remoteAddrInfo = nullptr;
     }
 
     // close service socket
@@ -136,9 +133,14 @@ void UdpForwardService::close()
 
 void UdpForwardService::onSoc(time_t curTime, uint32_t events, Endpoint_t *pe)
 {
-    pe->isService()
-        ? onServiceSoc(curTime, events, pe)
-        : onNorthSoc(curTime, events, pe);
+    if (pe->type == Type_t::SERVICE)
+    {
+        onServiceSoc(curTime, events, pe);
+    }
+    else
+    {
+        onNorthSoc(curTime, events, pe);
+    }
 }
 
 void UdpForwardService::onServiceSoc(time_t curTime, uint32_t events, Endpoint_t *pe)
@@ -147,6 +149,14 @@ void UdpForwardService::onServiceSoc(time_t curTime, uint32_t events, Endpoint_t
     {
         // connection broken
         stringstream ss;
+        if (events & EPOLLIN)
+        {
+            ss << "in;";
+        }
+        if (events & EPOLLOUT)
+        {
+            ss << "out;";
+        }
         if (events & EPOLLRDHUP)
         {
             ss << "closed by peer;";
@@ -159,9 +169,11 @@ void UdpForwardService::onServiceSoc(time_t curTime, uint32_t events, Endpoint_t
         {
             ss << "error;";
         }
-
+        // TODO: detect error by send data
         pe->valid = false;
-        spdlog::error("[NetMgr::onSoc] service endpoint[{}] error: {}", ss.str());
+        spdlog::error("[UdpForwardService::onServiceSoc] endpoint[{}] error: {}",
+                      Utils::toStr(pe),
+                      ss.str());
         return;
     }
 
@@ -193,10 +205,19 @@ void UdpForwardService::onNorthSoc(time_t curTime, uint32_t events, Endpoint_t *
         }
         if (events & EPOLLERR)
         {
-            ss << "error;";
+            if (events & EPOLLOUT)
+            {
+                ss << "error(connect fail?)";
+            }
+            else
+            {
+                ss << "error;";
+            }
         }
 
-        spdlog::error("[UdpForwardService::onNorthSoc] service endpoint[{}] error: {}", pe->soc, ss.str());
+        spdlog::error("[UdpForwardService::onNorthSoc] endpoint[{}]: {}",
+                      Utils::toStr(pe),
+                      ss.str());
         pe->valid = false;
         return;
     }
@@ -237,37 +258,24 @@ bool UdpForwardService::epollAddEndpoint(link::Endpoint_t *pe, bool read, bool w
     return true;
 }
 
-UdpTunnel_t *UdpForwardService::getTunnel(sockaddr_in *pSAI)
+UdpTunnel_t *UdpForwardService::getTunnel(sockaddr_in *southRemoteAddr)
 {
-    auto it = mAddr2Tunnel.find(*pSAI);
+    auto it = mAddr2Tunnel.find(*southRemoteAddr);
     if (it != mAddr2Tunnel.end())
     {
         return it->second;
     }
 
     // create north endpoint
-    auto north = Endpoint::getEndpoint();
+    auto north = Endpoint::getEndpoint(Protocol_t::UDP, Direction_t::DIR_NORTH, Type_t::NORMAL);
     if (north == nullptr)
     {
         spdlog::error("[UdpForwardService::getTunnel] create north endpoint fail");
         return nullptr;
     }
-
-    // create tunnel
-    auto tunnel = Tunnel::getTunnel();
-    if (tunnel == nullptr)
+    else
     {
-        spdlog::error("[UdpForwardService::getTunnel] create tunnel fail");
-        Endpoint::releaseEndpoint(north);
-        return nullptr;
-    }
-
-    // init north endpoint
-    {
-        north->direction = ENDPOINT_DIRECTION_NORTH;
-        north->type = ENDPOINT_TYPE_NORMAL;
-        north->valid = ENDPOINT_VALID;
-        north->protocol = ENDPOINT_PROTOCOL_UDP;
+        // north->valid = ENDPOINT_VALID;
         north->service = this;
         north->peer = &mServiceEndpoint;
 
@@ -277,16 +285,18 @@ UdpTunnel_t *UdpForwardService::getTunnel(sockaddr_in *pSAI)
         {
             spdlog::error("[UdpForwardService::getTunnel] create north socket fail.");
             Endpoint::releaseEndpoint(north);
-            Tunnel::releaseTunnel(tunnel);
             return nullptr;
         }
-        auto p = mServiceEndpoint.targetHostAddrs;
-        while (p)
+        spdlog::debug("[UdpForwardService::getTunnel] create north socket[{}].", north->soc);
+
+        // connect to host
+        auto addrs = mServiceEndpoint.remoteAddrInfo;
+        while (addrs)
         {
-            if (connect(north->soc, p->ai_addr, p->ai_addrlen) < 0)
+            if (connect(north->soc, addrs->ai_addr, addrs->ai_addrlen) < 0)
             {
-                p = p->ai_next;
-                if (p)
+                addrs = addrs->ai_next;
+                if (addrs)
                 {
                     spdlog::debug("[UdpForwardService::getTunnel] connect fail, try next address. {} - {}",
                                   errno, strerror(errno));
@@ -301,11 +311,11 @@ UdpTunnel_t *UdpForwardService::getTunnel(sockaddr_in *pSAI)
             }
             break;
         }
-        if (p == nullptr)
+        if (addrs == nullptr)
         {
             spdlog::error("[UdpForwardService::getTunnel] connect to north host fail.");
+            ::close(north->soc);
             Endpoint::releaseEndpoint(north);
-            Tunnel::releaseTunnel(tunnel);
             return nullptr;
         }
 
@@ -313,22 +323,48 @@ UdpTunnel_t *UdpForwardService::getTunnel(sockaddr_in *pSAI)
         if (!epollAddEndpoint(north, true, true, true))
         {
             spdlog::error("[UdpForwardService::getTunnel] add endpoint[{}] into epoll fail.", north->soc);
+            ::close(north->soc);
             Endpoint::releaseEndpoint(north);
-            Tunnel::releaseTunnel(tunnel);
             return nullptr;
         }
+
+        // save ip-tuple info
+        socklen_t socLen;
+        getsockname(north->soc, (sockaddr *)&north->ipTuple.l, &socLen);
+        north->ipTuple.r = *(sockaddr_in *)addrs->ai_addr;
     }
 
-    // init tunnel
+    // create tunnel
+    auto tunnel = Tunnel::getTunnel();
+    if (tunnel == nullptr)
     {
-        tunnel->north = north;
-        tunnel->south = &mServiceEndpoint;
+        spdlog::error("[UdpForwardService::getTunnel] create tunnel fail");
+        ::close(north->soc);
+        Endpoint::releaseEndpoint(north);
+        return nullptr;
+    }
+    else
+    {
         tunnel->service = this;
         // TODO: Tunnel::setStatus()
         tunnel->status = TunnelState_t::CONNECT;
     }
+
+    // bind tunnel and endpoints
+    tunnel->north = north;
+    tunnel->south = &mServiceEndpoint;
+    north->container = tunnel;
+
     // put into map
-    mAddr2Tunnel[*pSAI] = tunnel;
+    mAddr2Tunnel[*southRemoteAddr] = tunnel;
+    mAddr2Endpoint[*southRemoteAddr] = north;
+    mNorthSoc2SouthRemoteAddr[north->soc] = *southRemoteAddr;
+
+    spdlog::debug("[UdpForwardService::getTunnel] ({}-udp-{})=>({}-udp-{})",
+                  Utils::toStr(southRemoteAddr),
+                  Utils::toStr(mServiceEndpoint.ipTuple.l),
+                  Utils::toStr(north->ipTuple.l),
+                  Utils::toStr(north->ipTuple.r));
 
     return tunnel;
 }
@@ -387,7 +423,7 @@ void UdpForwardService::southRead(link::Endpoint_t *pe)
 
 void UdpForwardService::southWrite(link::Endpoint_t *pe)
 {
-    auto p = static_cast<DynamicBuffer::BufBlk_t *>(pe->sendListHead);
+    auto p = (DynamicBuffer::BufBlk_t *)pe->sendListHead;
     while (p)
     {
         int nRet = sendto(mServiceEndpoint.soc,
@@ -395,7 +431,7 @@ void UdpForwardService::southWrite(link::Endpoint_t *pe)
                           p->size,
                           0,
                           (sockaddr *)&p->sockaddr,
-                          p->sockaddr_len);
+                          sizeof(sockaddr_in));
         if (nRet < 0)
         {
             if (errno == EAGAIN)
@@ -446,16 +482,23 @@ void UdpForwardService::northRead(link::Endpoint_t *pe)
         if (nRet > 0)
         {
             // 判断数据包来源是否合法
-            if (Utils::compareAddr(&addr, &pe->sockAddr))
+            if (Utils::compareAddr(&addr, &pe->ipTuple.r))
             {
                 // drop unknown incoming packet
                 spdlog::trace("[UdpForwardService::northRead] drop unknown incoming packet");
                 continue;
             }
+            // 取南向地址
+            auto it = mNorthSoc2SouthRemoteAddr.find(pe->soc);
+            if (it == mNorthSoc2SouthRemoteAddr.end())
+            {
+                // drop unknown incoming packet
+                spdlog::trace("[UdpForwardService::northRead] south addr not exist");
+                continue;
+            }
 
             auto pBlk = mpDynamicBuffer->cut(nRet);
-            pBlk->sockaddr = addr;
-            pBlk->sockaddr_len = addrLen;
+            pBlk->sockaddr = it->second;
 
             Endpoint::appendToSendList(&mServiceEndpoint, pBlk);
             // 尝试发送
@@ -484,7 +527,7 @@ void UdpForwardService::northRead(link::Endpoint_t *pe)
 
 void UdpForwardService::northWrite(link::Endpoint_t *pe)
 {
-    auto p = static_cast<buffer::DynamicBuffer::BufBlk_t *>(pe->sendListHead);
+    auto p = (buffer::DynamicBuffer::BufBlk_t *)pe->sendListHead;
     while (p)
     {
         int nRet = send(pe->soc, p->buffer, p->size, 0);
@@ -525,10 +568,6 @@ void UdpForwardService::northWrite(link::Endpoint_t *pe)
         // 还有待发送数据
         pe->sendListHead = p;
     }
-}
-
-bool UdpForwardService::onTunnelData(Endpoint_t *pe, UdpTunnel_t *pt, buffer::DynamicBuffer::BufBlk_t *pBufBlk)
-{
 }
 
 } // namespace link

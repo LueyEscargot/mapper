@@ -30,18 +30,25 @@ static const uint32_t MAX_INTERFACE_NAME_LENGTH = 64;
 static const uint32_t MAX_HOST_NAME_LENGTH = 256;
 static const uint32_t MAX_PORT_STR_LENGTH = 6;
 
-typedef enum TYPE
+enum Type_t
 {
     SERVICE = 1,
-    NORTH = 1 << 1,
-    SOUTH = 1 << 2
-} Type_t;
+    NORTH = 1 << 1, // TODO: remove
+    SOUTH = 1 << 2, // TODO: remove
+    NORMAL
+};
 
-typedef enum PROTOCOL
+enum Protocol_t
 {
-    UDP = 1,
-    TCP = 1 << 1
-} Protocol_t;
+    UDP,
+    TCP
+};
+
+enum Direction_t
+{
+    DIR_NORTH,
+    DIR_SOUTH
+};
 
 typedef enum TUNNEL_STATE
 {
@@ -179,69 +186,74 @@ typedef struct TUNNEL
     }
 } Tunnel_t;
 
-static const bool ENDPOINT_DIRECTION_NORTH = false;
-static const bool ENDPOINT_DIRECTION_SOUTH = true;
-static const bool ENDPOINT_TYPE_SERVICE = false;
-static const bool ENDPOINT_TYPE_NORMAL = true;
-static const bool ENDPOINT_INVALID = false;
-static const bool ENDPOINT_VALID = true;
-static const bool ENDPOINT_PROTOCOL_TCP = false;
-static const bool ENDPOINT_PROTOCOL_UDP = true;
-
-typedef struct ENDPOINT : public ENDPOINT_BASE
+struct IpTuple_t
 {
-    bool direction : 1;
-    bool type : 1;
-    bool valid : 1;
-    bool protocol : 1;
-    int reverse : 4;
+    Protocol_t p;  // protocol
+    sockaddr_in l; // local
+    sockaddr_in r; // remote
+
+    void init(Protocol_t protocol)
+    {
+        p = protocol;
+        l = {0};
+        r = {0};
+    }
+};
+
+// static const bool ENDPOINT_DIRECTION_NORTH = false;
+// static const bool ENDPOINT_DIRECTION_SOUTH = true;
+// static const bool ENDPOINT_TYPE_SERVICE = false;
+static const bool ENDPOINT_TYPE_NORMAL = true;
+// static const bool ENDPOINT_INVALID = false;
+// static const bool ENDPOINT_VALID = true;
+// static const bool ENDPOINT_PROTOCOL_TCP = false;
+// static const bool ENDPOINT_PROTOCOL_UDP = true;
+
+struct Endpoint_t : public ENDPOINT_BASE
+{
+    Direction_t direction;
+    Type_t type;
+    bool valid;
 
     int soc;
-    sockaddr_in sockAddr;
-    socklen_t sockAddrLen;
-    addrinfo *targetHostAddrs;
+    IpTuple_t ipTuple;
+    addrinfo *remoteAddrInfo;
 
-    ENDPOINT *prev;
-    ENDPOINT *next;
-    ENDPOINT *peer;
+    Endpoint_t *prev;
+    Endpoint_t *next;
+    Endpoint_t *peer;
     void *service;
+    void *container;
     void *sendListHead;
     void *sendListTail;
     void *tag;
 
-    inline void init()
+    inline void init(Protocol_t protocol,
+                     Direction_t _direction,
+                     Type_t _type)
     {
         //---------------------------------------------
         // TODO: remove this after refactory
-        ENDPOINT_BASE::init(Protocol_t::UDP, Type_t::SERVICE, 0);
+        ENDPOINT_BASE::init(protocol, _type, 0);
         //---------------------------------------------
 
-        direction = ENDPOINT_DIRECTION_NORTH;
-        type = ENDPOINT_TYPE_SERVICE;
-        valid = ENDPOINT_INVALID;
-        protocol = ENDPOINT_PROTOCOL_TCP;
+        direction = _direction;
+        type = _type;
+        valid = true;
+
         soc = 0;
-        sockAddrLen = sizeof(sockaddr_in);
-        targetHostAddrs = nullptr;
+        ipTuple.init(protocol);
+
         prev = nullptr;
         next = nullptr;
         peer = nullptr;
         service = nullptr;
+        container = nullptr;
         sendListHead = nullptr;
         sendListTail = nullptr;
         tag = nullptr;
     }
-
-    inline void setDirection(const bool toNorth) { direction = toNorth; }
-    inline void setType(const bool isService) { type = isService; }
-    inline void setValid(const bool isValid) { valid = isValid; }
-    inline void setProtocol(const bool isTcp) { protocol = isTcp; }
-
-    inline bool isToNorth() const { return direction == ENDPOINT_DIRECTION_NORTH; }
-    inline bool isService() const { return type == ENDPOINT_TYPE_SERVICE; }
-    inline bool isValid() const { return valid == ENDPOINT_VALID; }
-    inline bool isTcp() const { return protocol == ENDPOINT_PROTOCOL_TCP; }
-} Endpoint_t;
+};
 
 typedef struct UDP_TUNNEL
 {
@@ -249,6 +261,7 @@ typedef struct UDP_TUNNEL
 
     Endpoint_t *north;
     Endpoint_t *south;
+    addrinfo *targetAddrs;
     void *tag;
     void *service;
 

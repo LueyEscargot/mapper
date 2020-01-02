@@ -34,6 +34,13 @@ public:
 
     static int compareAddr(const sockaddr *l, const sockaddr *r);
     static int compareAddr(const sockaddr_in *l, const sockaddr_in *r);
+
+    static std::string toStr(const sockaddr_in *addr);
+    static std::string toStr(const sockaddr_in &addr);
+    static std::string toStr(const IpTuple_t *tuple, bool reverse = true);
+    static std::string toStr(const IpTuple_t &tuple, bool reverse = true);
+    static std::string toStr(const Endpoint_t *endpoint, bool reverse = true);
+    static std::string toStr(const Endpoint_t &endpoint, bool reverse = true);
 };
 
 } // namespace link

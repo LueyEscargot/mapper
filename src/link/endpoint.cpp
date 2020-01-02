@@ -154,13 +154,13 @@ string Endpoint::toStr(const Tunnel_t *pTunnel)
     return ss.str();
 }
 
-Endpoint_t *Endpoint::getEndpoint()
+Endpoint_t *Endpoint::getEndpoint(Protocol_t protocol, Direction_t direction, Type_t type)
 {
     // TODO: use endpoint buffer
     Endpoint_t *pe = new Endpoint_t;
     if (pe)
     {
-        pe->init();
+        pe->init(protocol, direction, type);
     }
 
     return pe;

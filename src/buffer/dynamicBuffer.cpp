@@ -37,7 +37,7 @@ DynamicBuffer *DynamicBuffer::allocDynamicBuffer(uint32_t capacity)
 
     uint32_t allocSize = capacity + BUFBLK_HEAD_SIZE;
     spdlog::trace("[DynamicBuffer::allocDynamicBuffer] capacity: {}", allocSize);
-    pDynamicBuffer->mBuffer = static_cast<char *>(malloc(allocSize));
+    pDynamicBuffer->mBuffer = (char *)malloc(allocSize);
     if (pDynamicBuffer->mBuffer == nullptr)
     {
         spdlog::error("[DynamicBuffer::allocDynamicBuffer] malloc {} bytes fail.",
@@ -47,7 +47,7 @@ DynamicBuffer *DynamicBuffer::allocDynamicBuffer(uint32_t capacity)
     }
     else
     {
-        pDynamicBuffer->mpFreePos = static_cast<BufBlk_t *>(pDynamicBuffer->mBuffer);
+        pDynamicBuffer->mpFreePos = (BufBlk_t *)pDynamicBuffer->mBuffer;
         init(pDynamicBuffer->mpFreePos, capacity, nullptr, nullptr);
 
         return pDynamicBuffer;
@@ -90,7 +90,7 @@ void *DynamicBuffer::reserve(int size)
         else
         {
             // 2. 从头查找
-            p = static_cast<BufBlk_t *>(mBuffer);
+            p = (BufBlk_t *)mBuffer;
             while (p != mpFreePos && (p->inUse || (p->size < size)))
             {
                 // 因为 mpFreePos 是属于链表中的某一段
@@ -172,7 +172,7 @@ DynamicBuffer::BufBlk_t *DynamicBuffer::cut(uint32_t size)
         else
         {
             // 2. 从头查找
-            p = static_cast<BufBlk_t *>(mBuffer);
+            p = (BufBlk_t *)mBuffer;
             while (p != mpFreePos && p->inUse)
             {
                 // 因为 mpFreePos 是属于链表中的某一段

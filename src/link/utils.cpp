@@ -2,6 +2,7 @@
 #include <assert.h>
 #include <ifaddrs.h>
 #include <arpa/inet.h>
+#include <sstream>
 #include <spdlog/spdlog.h>
 
 using namespace std;
@@ -234,6 +235,65 @@ int Utils::compareAddr(const sockaddr *l, const sockaddr *r)
 int Utils::compareAddr(const sockaddr_in *l, const sockaddr_in *r)
 {
     return compareAddr((const sockaddr *)l, (const sockaddr *)r);
+}
+
+std::string Utils::toStr(const sockaddr_in *addr)
+{
+    assert(addr);
+    return toStr(*addr);
+}
+
+std::string Utils::toStr(const sockaddr_in &addr)
+{
+    // only support ipv4
+    assert(addr.sin_family == AF_INET || addr.sin_family == 0);
+
+    char buffer[32];
+    snprintf(buffer, 32, "%d.%d.%d.%d:%d",
+             addr.sin_addr.s_addr & 0xFF,
+             (addr.sin_addr.s_addr >> 8) & 0xFF,
+             (addr.sin_addr.s_addr >> 16) & 0xFF,
+             (addr.sin_addr.s_addr >> 24) & 0xFF,
+             ntohs(addr.sin_port));
+    return buffer;
+}
+
+std::string Utils::toStr(const IpTuple_t *tuple, bool reverse)
+{
+    assert(tuple);
+
+    const sockaddr_in *first = &tuple->l;
+    const sockaddr_in *second = &tuple->r;
+    if (!reverse)
+    {
+        first = second;
+        second = &tuple->l;
+    }
+
+    stringstream ss;
+
+    ss << toStr(first)
+       << (tuple->p == Protocol_t::TCP ? "-TCP-" : "-UDP-")
+       << toStr(second);
+
+    return ss.str();
+}
+
+std::string Utils::toStr(const IpTuple_t &tuple, bool reverse)
+{
+    return toStr(&tuple, reverse);
+}
+
+std::string Utils::toStr(const Endpoint_t *endpoint, bool reverse)
+{
+    assert(endpoint);
+
+    return toStr(endpoint->ipTuple, reverse);
+}
+
+std::string Utils::toStr(const Endpoint_t &endpoint, bool reverse)
+{
+    return toStr(endpoint.ipTuple, reverse);
 }
 
 } // namespace link

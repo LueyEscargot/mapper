@@ -311,7 +311,7 @@ void NetMgr::closeEnv()
 
 void NetMgr::onSoc(time_t curTime, epoll_event &event)
 {
-    link::EndpointBase_t *peb = static_cast<link::EndpointBase_t *>(event.data.ptr);
+    link::EndpointBase_t *peb = (link::EndpointBase_t *)event.data.ptr;
     // spdlog::trace("[NetMgr::onSoc] {}", pe->toStr());
 
     if (peb->protocol == link::Protocol_t::TCP)
@@ -337,7 +337,7 @@ void NetMgr::onSoc(time_t curTime, epoll_event &event)
             peb->valid = false;
             if (peb->type == link::Type_t::SERVICE)
             {
-                link::EndpointService_t *pes = static_cast<link::EndpointService_t *>(peb);
+                link::EndpointService_t *pes = (link::EndpointService_t *)peb;
                 spdlog::error("[NetMgr::onSoc] service endpoint[{}] broken",
                               link::Endpoint::toStr(pes));
                 ::close(pes->soc);
@@ -346,8 +346,8 @@ void NetMgr::onSoc(time_t curTime, epoll_event &event)
             else
             {
                 spdlog::trace("[NetMgr::onSoc] endpoint[{}] broken: {}", link::Endpoint::toStr(peb), ss.str());
-                link::EndpointRemote_t *per = static_cast<link::EndpointRemote_t *>(peb);
-                link::Tunnel_t *pt = static_cast<link::Tunnel_t *>(per->tunnel);
+                link::EndpointRemote_t *per = (link::EndpointRemote_t *)peb;
+                link::Tunnel_t *pt = (link::Tunnel_t *)per->tunnel;
                 mPostProcessList.insert(pt);
             }
 
@@ -359,7 +359,7 @@ void NetMgr::onSoc(time_t curTime, epoll_event &event)
             if (event.events & EPOLLIN)
             {
                 // accept client for TCP service endpoint
-                auto pes = static_cast<link::EndpointService_t *>(peb);
+                auto pes = (link::EndpointService_t *)peb;
                 acceptClient(curTime, pes);
             }
         }
@@ -367,9 +367,9 @@ void NetMgr::onSoc(time_t curTime, epoll_event &event)
         {
             bool retSend = true;
             bool retRecv = true;
-            auto per = static_cast<link::EndpointRemote_t *>(peb);
+            auto per = (link::EndpointRemote_t *)peb;
 
-            auto pt = static_cast<link::Tunnel_t *>(per->tunnel);
+            auto pt = (link::Tunnel_t *)per->tunnel;
 
             // TCP - send
             if (event.events & EPOLLOUT)
@@ -397,20 +397,20 @@ void NetMgr::onSoc(time_t curTime, epoll_event &event)
     else
     {
         // UDP
-        link::Endpoint_t *pe = static_cast<link::Endpoint_t *>(event.data.ptr);
-        link::Service *pService = static_cast<link::Service *>(pe->service);
+        link::Endpoint_t *pe = (link::Endpoint_t *)event.data.ptr;
+        link::Service *pService = (link::Service *)pe->service;
         pService->onSoc(curTime, event.events, pe);
         // if (peb->type == link::Type_t::SERVICE)
         // {
-        //     auto pes = static_cast<link::EndpointService_t *>(peb);
+        //     auto pes = (link::EndpointService_t *)peb;
         //     pes->udpService->onSouthSoc(curTime, event.events, pes);
         // }
         // else
         // {
         //     // TODO: ...
-        //     // link::EndpointRemote_t *per = static_cast<link::EndpointRemote_t *>(peb);
-        //     // link::UdpTunnel_t *put = static_cast<link::UdpTunnel_t *>(per->tunnel);
-        //     // link::EndpointService_t *pes = static_cast<link::EndpointService_t *>(put->service);
+        //     // link::EndpointRemote_t *per = (link::EndpointRemote_t *)peb;
+        //     // link::UdpTunnel_t *put = (link::UdpTunnel_t *)per->tunnel;
+        //     // link::EndpointService_t *pes = (link::EndpointService_t *)put->service;
         //     // pes->udpService->onNorthSoc(curTime, event.events, per);
         // }
     }
@@ -926,7 +926,7 @@ void NetMgr::timeoutCheck(time_t curTime)
                   const char *title) {
         for (auto p = mTimer.removeTimeout(type, curTime); p; p = p->next)
         {
-            auto pt = static_cast<link::Tunnel_t *>(p->tag);
+            auto pt = (link::Tunnel_t *)p->tag;
             spdlog::debug("[NetMgr::timeoutCheck] tunnel[{}]@{} timeout.", link::Tunnel::toStr(pt), title);
             link::Tunnel::setStatus(pt, link::TunnelState_t::BROKEN);
             onClose(pt);
@@ -935,10 +935,10 @@ void NetMgr::timeoutCheck(time_t curTime)
 
     for (int type = 0; type < timer::Container::Type_t::TYPE_COUNT; ++type)
     {
-        auto p = mTimer.removeTimeout(static_cast<timer::Container::Type_t>(type), curTime);
+        auto p = mTimer.removeTimeout((timer::Container::Type_t)type, curTime);
         for (; p; p = p->next)
         {
-            auto pt = static_cast<link::Tunnel_t *>(p->tag);
+            auto pt = (link::Tunnel_t *)p->tag;
             spdlog::debug("[NetMgr::timeoutCheck] tunnel[{}]@{} timeout.", link::Tunnel::toStr(pt), type);
             link::Tunnel::setStatus(pt, link::TunnelState_t::BROKEN);
             onClose(pt);

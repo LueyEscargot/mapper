@@ -58,7 +58,23 @@ protected:
     {
         inline bool operator()(const std::shared_ptr<Forward> &l, const std::shared_ptr<Forward> &r) const
         {
-            return l->service < r->service;
+            if (l->protocol != r->protocol)
+            {
+                return l->protocol < r->protocol;
+            }
+            else
+            {
+                if (l->interface != r->interface)
+                {
+                    return l->interface < r->interface;
+                }
+                else
+                {
+                    return l->service < r->service;
+                }
+            }
+
+            return false;
         }
     };
     using FORWARDS = std::map<std::string, std::set<std::shared_ptr<Forward>, ClassForwardCompare>>; // section - forward settings

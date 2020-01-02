@@ -31,7 +31,9 @@ public:
     static std::string toStr(const EndpointRemote_t *pEndpoint);
     static std::string toStr(const Tunnel_t *pEndpoint);
 
-    static Endpoint_t *getEndpoint();
+    static Endpoint_t *getEndpoint(Protocol_t protocol,
+                                   Direction_t direction,
+                                   Type_t type);
     static void releaseEndpoint(Endpoint_t *pe);
     static void appendToSendList(Endpoint_t *pe,
                                  buffer::DynamicBuffer::BufBlk_t *pBufBlk);

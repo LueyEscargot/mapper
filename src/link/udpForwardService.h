@@ -62,7 +62,6 @@ protected:
     void southWrite(link::Endpoint_t *pe);
     void northRead(link::Endpoint_t *pe);
     void northWrite(link::Endpoint_t *pe);
-    bool onTunnelData(Endpoint_t *pe, UdpTunnel_t *pt, buffer::DynamicBuffer::BufBlk_t *pBufBlk);
 
     std::shared_ptr<config::Forward> mForwardCmd;
     buffer::DynamicBuffer *mpDynamicBuffer;
@@ -76,6 +75,8 @@ protected:
         }
     };
     std::map<sockaddr_in, UdpTunnel_t *, cmpSockAddr> mAddr2Tunnel;
+    std::map<sockaddr_in, Endpoint_t *, cmpSockAddr> mAddr2Endpoint;
+    std::map<int, sockaddr_in> mNorthSoc2SouthRemoteAddr;
 
     // buffer::DynamicBuffer::BufBlk_t toSouthBufList; // 其中 next 指向链表中第一个元素；prev 指向最后一个。
 
