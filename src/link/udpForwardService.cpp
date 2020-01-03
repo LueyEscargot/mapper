@@ -172,7 +172,7 @@ void UdpForwardService::onServiceSoc(time_t curTime, uint32_t events, Endpoint_t
         // TODO: detect error by send data
         pe->valid = false;
         spdlog::error("[UdpForwardService::onServiceSoc] endpoint[{}] error: {}",
-                      Utils::toStr(pe),
+                      Utils::dumpEndpoint(pe),
                       ss.str());
         return;
     }
@@ -216,7 +216,7 @@ void UdpForwardService::onNorthSoc(time_t curTime, uint32_t events, Endpoint_t *
         }
 
         spdlog::error("[UdpForwardService::onNorthSoc] endpoint[{}]: {}",
-                      Utils::toStr(pe),
+                      Utils::dumpEndpoint(pe),
                       ss.str());
         pe->valid = false;
         return;
@@ -360,11 +360,9 @@ UdpTunnel_t *UdpForwardService::getTunnel(sockaddr_in *southRemoteAddr)
     mAddr2Endpoint[*southRemoteAddr] = north;
     mNorthSoc2SouthRemoteAddr[north->soc] = *southRemoteAddr;
 
-    spdlog::debug("[UdpForwardService::getTunnel] ({}-udp-{})=>({}-udp-{})",
-                  Utils::toStr(southRemoteAddr),
-                  Utils::toStr(mServiceEndpoint.ipTuple.l),
-                  Utils::toStr(north->ipTuple.l),
-                  Utils::toStr(north->ipTuple.r));
+    spdlog::debug("[UdpForwardService::getTunnel] {}==>{}",
+                  Utils::dumpServiceEndpoint(&mServiceEndpoint, southRemoteAddr),
+                  Utils::dumpEndpoint(north));
 
     return tunnel;
 }

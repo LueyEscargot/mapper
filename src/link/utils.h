@@ -35,12 +35,14 @@ public:
     static int compareAddr(const sockaddr *l, const sockaddr *r);
     static int compareAddr(const sockaddr_in *l, const sockaddr_in *r);
 
-    static std::string toStr(const sockaddr_in *addr);
-    static std::string toStr(const sockaddr_in &addr);
-    static std::string toStr(const IpTuple_t *tuple, bool reverse = true);
-    static std::string toStr(const IpTuple_t &tuple, bool reverse = true);
-    static std::string toStr(const Endpoint_t *endpoint, bool reverse = true);
-    static std::string toStr(const Endpoint_t &endpoint, bool reverse = true);
+    static std::string dumpSockAddr(const sockaddr_in *addr);
+    static std::string dumpSockAddr(const sockaddr_in &addr);
+    static std::string dumpIpTuple(const IpTuple_t *tuple, bool reverse = false);
+    static std::string dumpIpTuple(const IpTuple_t &tuple, bool reverse = false);
+    static std::string dumpEndpoint(const Endpoint_t *endpoint, bool reverse = false);
+    static std::string dumpEndpoint(const Endpoint_t &endpoint, bool reverse = false);
+    static std::string dumpServiceEndpoint(const Endpoint_t *serviceEndpoint, const sockaddr_in *clientAddr);
+    static std::string dumpServiceEndpoint(const Endpoint_t &serviceEndpoint, const sockaddr_in &clientAddr);
 };
 
 } // namespace link

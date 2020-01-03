@@ -237,13 +237,13 @@ int Utils::compareAddr(const sockaddr_in *l, const sockaddr_in *r)
     return compareAddr((const sockaddr *)l, (const sockaddr *)r);
 }
 
-std::string Utils::toStr(const sockaddr_in *addr)
+std::string Utils::dumpSockAddr(const sockaddr_in *addr)
 {
     assert(addr);
-    return toStr(*addr);
+    return dumpSockAddr(*addr);
 }
 
-std::string Utils::toStr(const sockaddr_in &addr)
+std::string Utils::dumpSockAddr(const sockaddr_in &addr)
 {
     // only support ipv4
     assert(addr.sin_family == AF_INET || addr.sin_family == 0);
@@ -258,13 +258,13 @@ std::string Utils::toStr(const sockaddr_in &addr)
     return buffer;
 }
 
-std::string Utils::toStr(const IpTuple_t *tuple, bool reverse)
+std::string Utils::dumpIpTuple(const IpTuple_t *tuple, bool reverse)
 {
     assert(tuple);
 
     const sockaddr_in *first = &tuple->l;
     const sockaddr_in *second = &tuple->r;
-    if (!reverse)
+    if (reverse)
     {
         first = second;
         second = &tuple->l;
@@ -272,28 +272,65 @@ std::string Utils::toStr(const IpTuple_t *tuple, bool reverse)
 
     stringstream ss;
 
-    ss << toStr(first)
-       << (tuple->p == Protocol_t::TCP ? "-TCP-" : "-UDP-")
-       << toStr(second);
+    ss << dumpSockAddr(first)
+       << (tuple->p == Protocol_t::TCP ? "-tcp-" : "-udp-")
+       << dumpSockAddr(second);
 
     return ss.str();
 }
 
-std::string Utils::toStr(const IpTuple_t &tuple, bool reverse)
+std::string Utils::dumpIpTuple(const IpTuple_t &tuple, bool reverse)
 {
-    return toStr(&tuple, reverse);
+    return dumpIpTuple(&tuple, reverse);
 }
 
-std::string Utils::toStr(const Endpoint_t *endpoint, bool reverse)
+std::string Utils::dumpEndpoint(const Endpoint_t *endpoint, bool reverse)
 {
-    assert(endpoint);
+    stringstream ss;
 
-    return toStr(endpoint->ipTuple, reverse);
+    if (reverse)
+    {
+        ss << "("
+           << dumpIpTuple(endpoint->ipTuple, reverse)
+           << ",soc["
+           << endpoint->soc
+           << "])";
+    }
+    else
+    {
+        ss << "(soc["
+           << endpoint->soc
+           << "],"
+           << dumpIpTuple(endpoint->ipTuple, reverse)
+           << ")";
+    }
+
+    return ss.str();
 }
 
-std::string Utils::toStr(const Endpoint_t &endpoint, bool reverse)
+std::string Utils::dumpEndpoint(const Endpoint_t &endpoint, bool reverse)
 {
-    return toStr(endpoint.ipTuple, reverse);
+    return dumpIpTuple(endpoint.ipTuple, reverse);
+}
+
+std::string Utils::dumpServiceEndpoint(const Endpoint_t *serviceEndpoint, const sockaddr_in *clientAddr)
+{
+    stringstream ss;
+
+    ss << "("
+       << dumpSockAddr(clientAddr)
+       << (serviceEndpoint->ipTuple.p == Protocol_t::TCP ? "-tcp-" : "-udp-")
+       << dumpSockAddr(serviceEndpoint->ipTuple.l)
+       << ",soc["
+       << serviceEndpoint->soc
+       << "])";
+
+    return ss.str();
+}
+
+std::string Utils::dumpServiceEndpoint(const Endpoint_t &serviceEndpoint, const sockaddr_in &clientAddr)
+{
+    return dumpServiceEndpoint(&serviceEndpoint, &clientAddr);
 }
 
 } // namespace link
