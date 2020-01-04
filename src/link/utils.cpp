@@ -1,6 +1,7 @@
 #include "utils.h"
 #include <assert.h>
 #include <ifaddrs.h>
+#include <string.h>
 #include <arpa/inet.h>
 #include <sstream>
 #include <spdlog/spdlog.h>
@@ -11,6 +12,21 @@ namespace mapper
 {
 namespace link
 {
+
+Protocol_t Utils::parseProtocol(const char *protocol)
+{
+    return strcasecmp(protocol, "tcp") == 0
+               ? link::Protocol_t::TCP
+               : strcasecmp(protocol, "udp") == 0
+                     ? link::Protocol_t::UDP
+                     : (assert(!"unsupported protocol"),
+                        link::Protocol_t::UNKNOWN_PROTOCOL);
+}
+
+Protocol_t Utils::parseProtocol(const std::string &protocol)
+{
+    return parseProtocol(protocol.c_str());
+}
 
 bool Utils::getIntfAddr(const char *intf, sockaddr_in &sa)
 {
@@ -67,12 +83,12 @@ bool Utils::getIntfAddr(const char *intf, sockaddr_in &sa)
 bool Utils::getAddrInfo(const char *host,
                         const char *service,
                         const Protocol_t protocol,
-                        struct addrinfo **ppAddrInfo)
+                        addrinfo **ppAddrInfo)
 {
     addrinfo hints;
 
     // init hints
-    memset(&hints, 0, sizeof(struct addrinfo));
+    memset(&hints, 0, sizeof(addrinfo));
     hints.ai_family = AF_INET;
     hints.ai_flags = 0;
     hints.ai_canonname = nullptr;
@@ -99,7 +115,7 @@ bool Utils::getAddrInfo(const char *host,
     return true;
 }
 
-void Utils::closeAddrInfo(struct addrinfo *pAddrInfo)
+void Utils::closeAddrInfo(addrinfo *pAddrInfo)
 {
     freeaddrinfo(pAddrInfo);
 }
@@ -122,7 +138,7 @@ int Utils::createServiceSoc(Protocol_t protocol, sockaddr_in *sa, socklen_t sale
                 return false;
             }
             // bind
-            if (bind(soc, (struct sockaddr *)sa, salen))
+            if (bind(soc, (sockaddr *)sa, salen))
             {
                 spdlog::error("[Utils::createServiceSoc] bind fail. {} - {}", errno, strerror(errno));
                 return false;
@@ -237,25 +253,61 @@ int Utils::compareAddr(const sockaddr_in *l, const sockaddr_in *r)
     return compareAddr((const sockaddr *)l, (const sockaddr *)r);
 }
 
+int Utils::compareAddr(const addrinfo *l, const addrinfo *r)
+{
+#define __MLCOMP__(Name)                   \
+    if (l->Name != r->Name)                \
+    {                                      \
+        return l->Name < r->Name ? -1 : 1; \
+    }
+
+    __MLCOMP__(ai_flags);                             // Input flags.
+    __MLCOMP__(ai_family);                            // Protocol family for socket.
+    __MLCOMP__(ai_socktype);                          // Socket type.
+    __MLCOMP__(ai_protocol);                          // Protocol for socket.
+    __MLCOMP__(ai_addrlen);                           // Length of socket address.
+    if (auto n = compareAddr(l->ai_addr, r->ai_addr)) // Socket address for socket.
+    {
+        return n;
+    }
+    if (auto n = strcmp(l->ai_canonname, r->ai_canonname)) // Canonical name for service location.
+    {
+        return n;
+    }
+
+    return 0;
+}
+
+std::string Utils::dumpSockAddr(const sockaddr *addr)
+{
+    return dumpSockAddr((const sockaddr_in *) addr);
+}
+
+std::string Utils::dumpSockAddr(const sockaddr &addr)
+{
+    return dumpSockAddr(&addr);
+}
+
 std::string Utils::dumpSockAddr(const sockaddr_in *addr)
 {
     assert(addr);
-    return dumpSockAddr(*addr);
+    // only support ipv4
+    assert(addr->sin_family == AF_INET || addr->sin_family == 0);
+
+    char buffer[32];
+    snprintf(buffer, 32, "%d.%d.%d.%d:%d",
+             addr->sin_addr.s_addr & 0xFF,
+             (addr->sin_addr.s_addr >> 8) & 0xFF,
+             (addr->sin_addr.s_addr >> 16) & 0xFF,
+             (addr->sin_addr.s_addr >> 24) & 0xFF,
+             ntohs(addr->sin_port));
+
+    return buffer;
 }
 
 std::string Utils::dumpSockAddr(const sockaddr_in &addr)
 {
-    // only support ipv4
-    assert(addr.sin_family == AF_INET || addr.sin_family == 0);
-
-    char buffer[32];
-    snprintf(buffer, 32, "%d.%d.%d.%d:%d",
-             addr.sin_addr.s_addr & 0xFF,
-             (addr.sin_addr.s_addr >> 8) & 0xFF,
-             (addr.sin_addr.s_addr >> 16) & 0xFF,
-             (addr.sin_addr.s_addr >> 24) & 0xFF,
-             ntohs(addr.sin_port));
-    return buffer;
+    return dumpSockAddr(&addr);
 }
 
 std::string Utils::dumpIpTuple(const IpTuple_t *tuple, bool reverse)
