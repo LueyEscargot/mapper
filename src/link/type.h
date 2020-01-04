@@ -41,7 +41,8 @@ enum Type_t
 enum Protocol_t
 {
     UDP,
-    TCP
+    TCP,
+    UNKNOWN_PROTOCOL
 };
 
 enum Direction_t
@@ -217,7 +218,6 @@ struct Endpoint_t : public ENDPOINT_BASE
 
     int soc;
     IpTuple_t ipTuple;
-    addrinfo *remoteAddrInfo;
 
     Endpoint_t *prev;
     Endpoint_t *next;
@@ -261,12 +261,10 @@ typedef struct UDP_TUNNEL
 
     Endpoint_t *north;
     Endpoint_t *south;
-    addrinfo *targetAddrs;
     void *tag;
     void *service;
 
     TunnelState_t status;
-    // addrinfo *curAddr;
 
     bool stopToNorthBufRecv;
     bool stopToSouthBufRecv;
