@@ -41,7 +41,8 @@ enum Type_t
 enum Protocol_t
 {
     UDP,
-    TCP
+    TCP,
+    UNKNOWN_PROTOCOL
 };
 
 enum Direction_t
@@ -200,15 +201,6 @@ struct IpTuple_t
     }
 };
 
-// static const bool ENDPOINT_DIRECTION_NORTH = false;
-// static const bool ENDPOINT_DIRECTION_SOUTH = true;
-// static const bool ENDPOINT_TYPE_SERVICE = false;
-static const bool ENDPOINT_TYPE_NORMAL = true;
-// static const bool ENDPOINT_INVALID = false;
-// static const bool ENDPOINT_VALID = true;
-// static const bool ENDPOINT_PROTOCOL_TCP = false;
-// static const bool ENDPOINT_PROTOCOL_UDP = true;
-
 struct Endpoint_t : public ENDPOINT_BASE
 {
     Direction_t direction;
@@ -217,7 +209,6 @@ struct Endpoint_t : public ENDPOINT_BASE
 
     int soc;
     IpTuple_t ipTuple;
-    addrinfo *remoteAddrInfo;
 
     Endpoint_t *prev;
     Endpoint_t *next;
@@ -255,37 +246,41 @@ struct Endpoint_t : public ENDPOINT_BASE
     }
 };
 
-typedef struct UDP_TUNNEL
+struct TunnelTimer_t
 {
     time_t lastActiveTime;
+    TunnelTimer_t *prev;
+    TunnelTimer_t *next;
+
+    void *tunnel;
+
+    void init(void *_tunnel)
+    {
+        lastActiveTime = 0;
+        prev = nullptr;
+        next = nullptr;
+
+        tunnel = _tunnel;
+    }
+};
+
+struct UdpTunnel_t
+{
+    TunnelTimer_t timer;
 
     Endpoint_t *north;
     Endpoint_t *south;
-    addrinfo *targetAddrs;
-    void *tag;
     void *service;
-
-    TunnelState_t status;
-    // addrinfo *curAddr;
-
-    bool stopToNorthBufRecv;
-    bool stopToSouthBufRecv;
 
     inline void init()
     {
-        lastActiveTime = 0;
+        timer.init(this);
 
         north = nullptr;
         south = nullptr;
-        tag = nullptr;
         service = nullptr;
-
-        status = TunnelState_t::INITIALIZED;
-
-        stopToNorthBufRecv = false;
-        stopToSouthBufRecv = false;
     }
-} UdpTunnel_t;
+};
 
 } // namespace link
 } // namespace mapper

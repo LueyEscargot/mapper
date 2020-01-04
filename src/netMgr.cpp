@@ -16,6 +16,7 @@
 #include "link/tunnel.h"
 #include "link/type.h"
 #include "link/udpForwardService.h"
+#include "link/utils.h"
 
 using namespace std;
 
@@ -201,10 +202,7 @@ bool NetMgr::initEnv()
     {
         spdlog::debug("[NetMgr::initEnv] process forward: {}", forward->toStr());
 
-        link::Protocol_t protocol =
-            strcasecmp(forward->protocol.c_str(), "tcp") == 0
-                ? link::Protocol_t::TCP
-                : link::Protocol_t::UDP;
+        link::Protocol_t protocol = link::Utils::parseProtocol(forward->protocol);
 
         if (protocol == link::Protocol_t::TCP)
         {
