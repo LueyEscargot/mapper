@@ -11,6 +11,7 @@
 #ifndef __MAPPER_LINK_UDPFORWARDSERVICE_H__
 #define __MAPPER_LINK_UDPFORWARDSERVICE_H__
 
+#include <set>
 #include "service.h"
 #include "targetMgr.h"
 #include "utils.h"
@@ -26,6 +27,7 @@ class UdpForwardService : public Service
 {
 protected:
     static const uint32_t MAX_UDP_BUFFER = 1 << 16;
+    static const uint32_t TIMEOUT_INTERVAL = 15;
     using Addr2TunIter = std::map<sockaddr_in, UdpTunnel_t *>::iterator;
 
     UdpForwardService(const UdpForwardService &) : Service(""){};
@@ -43,11 +45,10 @@ public:
 
     inline const Endpoint_t &getServiceEndpoint() const { return mServiceEndpoint; }
 
-    // UdpTunnel_t *allocTunnel();
-    // void freeTunnel(UdpTunnel_t *pt);
-
     void onServiceSoc(time_t curTime, uint32_t events, Endpoint_t *pe);
     void onNorthSoc(time_t curTime, uint32_t events, Endpoint_t *pe);
+
+    inline void setTimeout(const uint32_t interval) { mTimeoutInterval = interval; };
 
 protected:
     bool epollAddEndpoint(Endpoint_t *pe, bool read, bool write, bool edgeTriger);
@@ -57,25 +58,26 @@ protected:
     void northRead(time_t curTime, Endpoint_t *pe);
     void northWrite(time_t curTime, Endpoint_t *pe);
 
+    inline void addToCloseList(UdpTunnel_t *pt) { mCloseList.insert(pt); };
+    inline void addToCloseList(Endpoint_t *pe) { addToCloseList((UdpTunnel_t *)pe->container); }
+    void closeTunnels();
+    void addToTimer(time_t curTime, TunnelTimer_t *p);
+    void refreshTimer(time_t curTime, TunnelTimer_t *p);
+    void scanTimeout(time_t curTime);
+
     std::shared_ptr<config::Forward> mForwardCmd;
     buffer::DynamicBuffer *mpDynamicBuffer;
     Endpoint_t mServiceEndpoint;
     TargetManager mTargetManager;
 
+    time_t mLastActionTime;
+    uint32_t mTimeoutInterval;
+    TunnelTimer_t mTimer; // 其中 next 指向第一个元素； prev 指向最后一个元素
+    std::set<UdpTunnel_t *> mCloseList;
+
     std::map<sockaddr_in, UdpTunnel_t *, Utils::AddrCmp_t> mAddr2Tunnel;
     std::map<sockaddr_in, Endpoint_t *, Utils::AddrCmp_t> mAddr2Endpoint;
     std::map<int, sockaddr_in> mNorthSoc2SouthRemoteAddr;
-
-    // buffer::DynamicBuffer::BufBlk_t toSouthBufList; // 其中 next 指向链表中第一个元素；prev 指向最后一个。
-
-    // bool mToNorthStop;
-    // bool mToSouthStop;
-
-    // UdpTunnel_t *mpTunnels;
-    // uint32_t mTunnelCounts;
-    // std::list<UdpTunnel_t *> mFreeList;
-
-    // std::map<int, UdpTunnel *> mSoc2Tunnel;
 };
 
 } // namespace link

@@ -19,12 +19,16 @@ namespace link
 UdpForwardService::UdpForwardService()
     : Service("UdpForwardService"),
       mForwardCmd(nullptr),
-      mpDynamicBuffer(nullptr)
+      mpDynamicBuffer(nullptr),
+      mLastActionTime(0),
+      mTimeoutInterval(TIMEOUT_INTERVAL)
 {
+    mTimer.init(nullptr);
 }
 
 UdpForwardService::~UdpForwardService()
 {
+    closeTunnels();
 }
 
 bool UdpForwardService::init(int epollfd,
@@ -121,39 +125,26 @@ void UdpForwardService::onSoc(time_t curTime, uint32_t events, Endpoint_t *pe)
     {
         onNorthSoc(curTime, events, pe);
     }
+
+    if (mLastActionTime < curTime)
+    {
+        scanTimeout(curTime);
+        closeTunnels();
+
+        mLastActionTime = curTime;
+    }
 }
 
 void UdpForwardService::onServiceSoc(time_t curTime, uint32_t events, Endpoint_t *pe)
 {
-    if (events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR))
+    if (events & (EPOLLRDHUP | EPOLLERR))
     {
-        // connection broken
-        stringstream ss;
-        if (events & EPOLLIN)
-        {
-            ss << "in;";
-        }
-        if (events & EPOLLOUT)
-        {
-            ss << "out;";
-        }
-        if (events & EPOLLRDHUP)
-        {
-            ss << "closed by peer;";
-        }
-        if (events & EPOLLHUP)
-        {
-            ss << "hang up;";
-        }
-        if (events & EPOLLERR)
-        {
-            ss << "error;";
-        }
-        // TODO: detect error by send data
-        pe->valid = false;
-        spdlog::error("[UdpForwardService::onServiceSoc] endpoint[{}] error: {}",
+        spdlog::error("[UdpForwardService::onServiceSoc] endpoint[{}]: {}{}{}{}",
                       Utils::dumpEndpoint(pe),
-                      ss.str());
+                      events & EPOLLIN ? "r" : "",
+                      events & EPOLLOUT ? "w" : "",
+                      events & EPOLLRDHUP ? "R" : "",
+                      events & EPOLLERR ? "E" : "");
         return;
     }
 
@@ -171,33 +162,14 @@ void UdpForwardService::onServiceSoc(time_t curTime, uint32_t events, Endpoint_t
 
 void UdpForwardService::onNorthSoc(time_t curTime, uint32_t events, Endpoint_t *pe)
 {
-    if (events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR))
+    if (events & (EPOLLRDHUP | EPOLLERR))
     {
-        // connection broken
-        stringstream ss;
-        if (events & EPOLLRDHUP)
-        {
-            ss << "closed by peer;";
-        }
-        if (events & EPOLLHUP)
-        {
-            ss << "hang up;";
-        }
-        if (events & EPOLLERR)
-        {
-            if (events & EPOLLOUT)
-            {
-                ss << "error(connect fail?)";
-            }
-            else
-            {
-                ss << "error;";
-            }
-        }
-
-        spdlog::error("[UdpForwardService::onNorthSoc] endpoint[{}]: {}",
+        spdlog::error("[UdpForwardService::onNorthSoc] endpoint[{}]: {}{}{}{}",
                       Utils::dumpEndpoint(pe),
-                      ss.str());
+                      events & EPOLLIN ? "r" : "",
+                      events & EPOLLOUT ? "w" : "",
+                      events & EPOLLRDHUP ? "R" : "",
+                      events & EPOLLERR ? "E" : "");
         pe->valid = false;
         return;
     }
@@ -301,7 +273,7 @@ UdpTunnel_t *UdpForwardService::getTunnel(time_t curTime, sockaddr_in *southRemo
         // save ip-tuple info
         socklen_t socLen;
         getsockname(north->soc, (sockaddr *)&north->ipTuple.l, &socLen);
-        north->ipTuple.r = *(sockaddr_in*)&addrs->addr;
+        north->ipTuple.r = *(sockaddr_in *)&addrs->addr;
     }
 
     // create tunnel
@@ -316,8 +288,6 @@ UdpTunnel_t *UdpForwardService::getTunnel(time_t curTime, sockaddr_in *southRemo
     else
     {
         tunnel->service = this;
-        // TODO: Tunnel::setStatus()
-        tunnel->status = TunnelState_t::CONNECT;
     }
 
     // bind tunnel and endpoints
@@ -329,6 +299,9 @@ UdpTunnel_t *UdpForwardService::getTunnel(time_t curTime, sockaddr_in *southRemo
     mAddr2Tunnel[*southRemoteAddr] = tunnel;
     mAddr2Endpoint[*southRemoteAddr] = north;
     mNorthSoc2SouthRemoteAddr[north->soc] = *southRemoteAddr;
+
+    // add to timer
+    addToTimer(curTime, &tunnel->timer);
 
     spdlog::debug("[UdpForwardService::getTunnel] {}==>{}",
                   Utils::dumpServiceEndpoint(&mServiceEndpoint, southRemoteAddr),
@@ -477,6 +450,7 @@ void UdpForwardService::northRead(time_t curTime, Endpoint_t *pe)
             if (errno == EAGAIN)
             {
                 // 此次数据接收已完毕
+                refreshTimer(curTime, &((UdpTunnel_t *)pe->container)->timer);
             }
             else
             {
@@ -504,6 +478,7 @@ void UdpForwardService::northWrite(time_t curTime, Endpoint_t *pe)
             if (errno == EAGAIN)
             {
                 // 此次发送窗口已关闭
+                refreshTimer(curTime, &((UdpTunnel_t *)pe->container)->timer);
                 break;
             }
 
@@ -535,6 +510,116 @@ void UdpForwardService::northWrite(time_t curTime, Endpoint_t *pe)
     {
         // 还有待发送数据
         pe->sendListHead = p;
+    }
+}
+
+void UdpForwardService::closeTunnels()
+{
+    if (!mCloseList.empty())
+    {
+        for (auto pt : mCloseList)
+        {
+            spdlog::debug("[UdpForwardService::closeTunnels] remove endpoint[{}]",
+                          Utils::dumpEndpoint(pt->north));
+            // remove from maps
+            int northSoc = pt->north->soc;
+            auto &addr = mNorthSoc2SouthRemoteAddr[northSoc];
+            mAddr2Tunnel.erase(addr);
+            mAddr2Endpoint.erase(addr);
+            mNorthSoc2SouthRemoteAddr.erase(northSoc);
+
+            // close and release endpoint object
+            ::close(northSoc);
+            Endpoint::releaseEndpoint(pt->north);
+            // release tunnel object
+            Tunnel::releaseTunnel(pt);
+        }
+
+        mCloseList.clear();
+    }
+}
+
+void UdpForwardService::addToTimer(time_t curTime, TunnelTimer_t *p)
+{
+    p->lastActiveTime = curTime;
+    p->next = nullptr;
+
+    if (mTimer.next)
+    {
+        // 当前链表不为空
+        p->prev = mTimer.prev;
+        assert(mTimer.prev->next == nullptr);
+        mTimer.prev->next = p;
+        mTimer.prev = p;
+    }
+    else
+    {
+        // 当前链表为空
+        p->prev = nullptr;
+        mTimer.next = mTimer.prev = p;
+    }
+}
+
+void UdpForwardService::refreshTimer(time_t curTime, TunnelTimer_t *p)
+{
+    if (p->lastActiveTime == curTime ||
+        mTimer.prev->lastActiveTime == p->lastActiveTime)
+    {
+        return;
+    }
+
+    // remove from list
+    if (p->prev)
+    {
+        p->prev->next = p->next;
+    }
+    else
+    {
+        assert(mTimer.next == p);
+        mTimer.next = p->next;
+    }
+    assert(p->next);
+    p->next->prev = p->prev;
+
+    // append to tail
+    addToTimer(curTime, p);
+}
+
+void UdpForwardService::scanTimeout(time_t curTime)
+{
+    time_t timeoutTime = curTime - mTimeoutInterval;
+    if (mTimer.next == nullptr ||
+        mTimer.next->lastActiveTime > timeoutTime)
+    {
+        return;
+    }
+
+    // get timeout item list
+    auto h = mTimer.next;
+    auto t = h;
+    while (t->next && t->next->lastActiveTime < timeoutTime)
+    {
+        t = t->next;
+    }
+    // 将从 h --> t 的元素移除链表
+    if (t->next)
+    {
+        // 此时剩余链表中还有元素存在
+        t->next->prev = nullptr;
+        mTimer.next = t->next;
+        t->next = nullptr;
+    }
+    else
+    {
+        // 所有元素都已从链表中移除
+        mTimer.next = mTimer.prev = nullptr;
+    }
+
+    // 释放已超时 udp tunnel
+    while (h)
+    {
+        addToCloseList((UdpTunnel_t *)h->tunnel);
+        h = h->next;
     }
 }
 
