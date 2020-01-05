@@ -48,6 +48,7 @@ public:
     static void closeAddrInfo(addrinfo *pAddrInfo);
     static int createSoc(Protocol_t protocol, bool nonblock);
     static int createServiceSoc(Protocol_t protocol, sockaddr_in *sa, socklen_t salen);
+    static bool setSocAttr(int soc, bool nonblock, bool reuse);
 
     static int compareAddr(const sockaddr *l, const sockaddr *r);
     static int compareAddr(const sockaddr_in *l, const sockaddr_in *r);

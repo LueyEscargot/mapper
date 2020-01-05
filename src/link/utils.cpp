@@ -120,21 +120,45 @@ void Utils::closeAddrInfo(addrinfo *pAddrInfo)
     freeaddrinfo(pAddrInfo);
 }
 
-int Utils::createServiceSoc(Protocol_t protocol, sockaddr_in *sa, socklen_t salen)
+int Utils::createSoc(Protocol_t protocol, bool nonblock)
 {
     // create socket
-    int soc = createSoc(protocol, true);
+    int soc = socket(AF_INET,
+                     protocol == Protocol_t::TCP ? SOCK_STREAM : SOCK_DGRAM,
+                     0);
     if (soc <= 0)
     {
         spdlog::error("[Utils::createServiceSoc] create socket fail. {} - {}", errno, strerror(errno));
         return -1;
     }
+
+    // set to non-block
+    if (!setSocAttr(soc, true, false))
+    {
+        spdlog::error("[Utils::createServiceSoc] set to attr fail.");
+        close(soc);
+        return -1;
+    }
+
+    return soc;
+}
+
+int Utils::createServiceSoc(Protocol_t protocol, sockaddr_in *sa, socklen_t salen)
+{
+    // create socket
+    int soc = socket(AF_INET,
+                     protocol == Protocol_t::TCP ? SOCK_STREAM : SOCK_DGRAM,
+                     0);
+    if (soc <= 0)
+    {
+        spdlog::error("[Utils::createServiceSoc] create socket fail. {} - {}", errno, strerror(errno));
+        return -1;
+    }
+
     if ([&protocol, &sa, &salen, &soc]() -> bool {
-            // set reuse
-            int opt = 1;
-            if (setsockopt(soc, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt)))
+            if (!setSocAttr(soc, true, true))
             {
-                spdlog::error("[Utils::createServiceSoc] set reuse fail. {} - {}", errno, strerror(errno));
+                spdlog::error("[Utils::createServiceSoc] set soc attr fail.");
                 return false;
             }
             // bind
@@ -161,31 +185,33 @@ int Utils::createServiceSoc(Protocol_t protocol, sockaddr_in *sa, socklen_t sale
     }
 }
 
-int Utils::createSoc(Protocol_t protocol, bool nonblock)
+bool Utils::setSocAttr(int soc, bool nonblock, bool reuse)
 {
-    // create socket
-    int soc = socket(AF_INET,
-                     protocol == Protocol_t::TCP ? SOCK_STREAM : SOCK_DGRAM,
-                     0);
-    if (soc <= 0)
-    {
-        spdlog::error("[Utils::createServiceSoc] create socket fail. {} - {}", errno, strerror(errno));
-        return -1;
-    }
-
     // set to non-block
     if (nonblock)
     {
         int flags = fcntl(soc, F_GETFL);
         if (flags < 0 || fcntl(soc, F_SETFL, flags | O_NONBLOCK) < 0)
         {
-            spdlog::error("[Utils::createServiceSoc] set to non-block fail. {} - {}", errno, strerror(errno));
+            spdlog::error("[Utils::setSocAttr] set to non-block fail. {} - {}",
+                          errno, strerror(errno));
             close(soc);
-            return -1;
+            return false;
+        }
+    }
+    // set reuse
+    if (reuse)
+    {
+        int opt = 1;
+        if (setsockopt(soc, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt)))
+        {
+            spdlog::error("[Utils::setSocAttr] set reuse fail. {} - {}",
+                          errno, strerror(errno));
+            return false;
         }
     }
 
-    return soc;
+    return true;
 }
 
 int Utils::compareAddr(const sockaddr *l, const sockaddr *r)
@@ -280,7 +306,7 @@ int Utils::compareAddr(const addrinfo *l, const addrinfo *r)
 
 std::string Utils::dumpSockAddr(const sockaddr *addr)
 {
-    return dumpSockAddr((const sockaddr_in *) addr);
+    return dumpSockAddr((const sockaddr_in *)addr);
 }
 
 std::string Utils::dumpSockAddr(const sockaddr &addr)
