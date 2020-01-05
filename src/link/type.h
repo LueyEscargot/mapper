@@ -51,7 +51,7 @@ enum Direction_t
     DIR_SOUTH
 };
 
-typedef enum TUNNEL_STATE
+enum TunnelState_t
 {
     CLOSED = 0,
     ALLOCATED,
@@ -60,9 +60,9 @@ typedef enum TUNNEL_STATE
     ESTABLISHED,
     BROKEN,
     TUNNEL_STATE_COUNT
-} TunnelState_t;
+};
 
-typedef struct ENDPOINT_BASE
+struct EndpointBase_t
 {
     Protocol_t protocol;
     Type_t type;
@@ -90,9 +90,9 @@ typedef struct ENDPOINT_BASE
         }
         valid = false;
     }
-} EndpointBase_t;
+};
 
-typedef struct ENDPOINT_SERVICE : public EndpointBase_t
+struct EndpointService_t : public EndpointBase_t
 {
     char interface[MAX_INTERFACE_NAME_LENGTH];
     char service[MAX_PORT_STR_LENGTH];
@@ -117,9 +117,9 @@ typedef struct ENDPOINT_SERVICE : public EndpointBase_t
         udpService = nullptr;                                               // UDP tunnel manager
     }
     inline void close() {}
-} EndpointService_t;
+};
 
-typedef struct ENDPOINT_REMOTE : public EndpointBase_t
+struct EndpointRemote_t : public EndpointBase_t
 {
     void *tunnel;
 
@@ -139,9 +139,9 @@ typedef struct ENDPOINT_REMOTE : public EndpointBase_t
     {
         EndpointBase_t::close();
     }
-} EndpointRemote_t;
+};
 
-typedef struct TUNNEL
+struct Tunnel_t
 {
     timer::Container::Client_t timerClient;
     EndpointRemote_t south;
@@ -185,23 +185,39 @@ typedef struct TUNNEL
         south.close();
         north.close();
     }
-} Tunnel_t;
+};
 
 struct IpTuple_t
 {
-    Protocol_t p;  // protocol
-    sockaddr_in l; // local
-    sockaddr_in r; // remote
+    Protocol_t protocol;
+    sockaddr_in local;
+    socklen_t localLen;
+    sockaddr_in remote;
+    socklen_t remoteLen;
 
-    void init(Protocol_t protocol)
+    inline IpTuple_t() { init(Protocol_t::UNKNOWN_PROTOCOL); }
+    inline IpTuple_t(const IpTuple_t &src)
     {
-        p = protocol;
-        l = {0};
-        r = {0};
+        protocol = src.protocol;
+        local = src.local;
+        remote = src.remote;
+    }
+    inline void init(Protocol_t protocol)
+    {
+        protocol = protocol;
+        local = {0};
+        remote = {0};
+    }
+    inline IpTuple_t &operator=(const IpTuple_t &src)
+    {
+        protocol = src.protocol;
+        local = src.local;
+        remote = src.remote;
+        return *this;
     }
 };
 
-struct Endpoint_t : public ENDPOINT_BASE
+struct Endpoint_t : public EndpointBase_t
 {
     Direction_t direction;
     Type_t type;
@@ -219,13 +235,14 @@ struct Endpoint_t : public ENDPOINT_BASE
     void *sendListTail;
     void *tag;
 
+    Endpoint_t(){};
     inline void init(Protocol_t protocol,
                      Direction_t _direction,
                      Type_t _type)
     {
         //---------------------------------------------
         // TODO: remove this after refactory
-        ENDPOINT_BASE::init(protocol, _type, 0);
+        EndpointBase_t::init(protocol, _type, 0);
         //---------------------------------------------
 
         direction = _direction;
@@ -272,6 +289,8 @@ struct UdpTunnel_t
     Endpoint_t *south;
     void *service;
 
+    TunnelState_t stat;
+
     inline void init()
     {
         timer.init(this);
@@ -279,6 +298,8 @@ struct UdpTunnel_t
         north = nullptr;
         south = nullptr;
         service = nullptr;
+
+        stat = TunnelState_t::ALLOCATED;
     }
 };
 

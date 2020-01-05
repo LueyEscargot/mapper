@@ -340,18 +340,18 @@ std::string Utils::dumpIpTuple(const IpTuple_t *tuple, bool reverse)
 {
     assert(tuple);
 
-    const sockaddr_in *first = &tuple->l;
-    const sockaddr_in *second = &tuple->r;
+    const sockaddr_in *first = &tuple->local;
+    const sockaddr_in *second = &tuple->remote;
     if (reverse)
     {
         first = second;
-        second = &tuple->l;
+        second = &tuple->local;
     }
 
     stringstream ss;
 
     ss << dumpSockAddr(first)
-       << (tuple->p == Protocol_t::TCP ? "-tcp-" : "-udp-")
+       << (tuple->protocol == Protocol_t::TCP ? "-tcp-" : "-udp-")
        << dumpSockAddr(second);
 
     return ss.str();
@@ -397,8 +397,8 @@ std::string Utils::dumpServiceEndpoint(const Endpoint_t *serviceEndpoint, const 
 
     ss << "("
        << dumpSockAddr(clientAddr)
-       << (serviceEndpoint->ipTuple.p == Protocol_t::TCP ? "-tcp-" : "-udp-")
-       << dumpSockAddr(serviceEndpoint->ipTuple.l)
+       << (serviceEndpoint->ipTuple.protocol == Protocol_t::TCP ? "-tcp-" : "-udp-")
+       << dumpSockAddr(serviceEndpoint->ipTuple.local)
        << ",soc["
        << serviceEndpoint->soc
        << "])";

@@ -48,17 +48,17 @@ bool UdpForwardService::init(int epollfd,
     mServiceEndpoint.service = this;
 
     // get local address of specified interface
-    if (!Utils::getIntfAddr(forward->interface.c_str(), mServiceEndpoint.ipTuple.l))
+    if (!Utils::getIntfAddr(forward->interface.c_str(), mServiceEndpoint.ipTuple.local))
     {
         spdlog::error("[UdpForwardService::init] get address of interface[{}] fail.", forward->interface);
         return false;
     }
-    mServiceEndpoint.ipTuple.l.sin_port = htons(atoi(forward->service.c_str()));
+    mServiceEndpoint.ipTuple.local.sin_port = htons(atoi(forward->service.c_str()));
 
     // create server socket
     mServiceEndpoint.soc = Utils::createServiceSoc(Protocol_t::UDP,
-                                                   &mServiceEndpoint.ipTuple.l,
-                                                   sizeof(mServiceEndpoint.ipTuple.l));
+                                                   &mServiceEndpoint.ipTuple.local,
+                                                   sizeof(mServiceEndpoint.ipTuple.local));
     if (mServiceEndpoint.soc < 0)
     {
         spdlog::error("[UdpForwardService::init] create server socket fail.");
@@ -272,8 +272,8 @@ UdpTunnel_t *UdpForwardService::getTunnel(time_t curTime, sockaddr_in *southRemo
 
         // save ip-tuple info
         socklen_t socLen;
-        getsockname(north->soc, (sockaddr *)&north->ipTuple.l, &socLen);
-        north->ipTuple.r = *(sockaddr_in *)&addrs->addr;
+        getsockname(north->soc, (sockaddr *)&north->ipTuple.local, &socLen);
+        north->ipTuple.remote = *(sockaddr_in *)&addrs->addr;
     }
 
     // create tunnel
@@ -423,7 +423,7 @@ void UdpForwardService::northRead(time_t curTime, Endpoint_t *pe)
         if (nRet > 0)
         {
             // 判断数据包来源是否合法
-            if (Utils::compareAddr(&addr, &pe->ipTuple.r))
+            if (Utils::compareAddr(&addr, &pe->ipTuple.remote))
             {
                 // drop unknown incoming packet
                 spdlog::trace("[UdpForwardService::northRead] drop unknown incoming packet");

@@ -72,6 +72,7 @@ protected:
 
     std::vector<std::shared_ptr<mapper::config::Forward>> mForwards;
     std::vector<link::EndpointService_t *> mServices;
+    std::vector<link::Service *> mTcpServices;
     std::vector<link::Service *> mUdpServices;
 
     config::Config *mpCfg;

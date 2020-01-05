@@ -4,7 +4,7 @@ cmake_minimum_required (VERSION 3.5)
 # Project Infomation
 #------------------------------------------------------------------------------
 set (PROJECT_NAME Mapper)
-project(${PROJECT_NAME} LANGUAGES CXX VERSION 2.1.0)
+project(${PROJECT_NAME} LANGUAGES CXX VERSION 2.2.1)
 
 message("Project: " ${PROJECT_NAME})
 message("Working Directory: " ${PROJECT_SOURCE_DIR})
