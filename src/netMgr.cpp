@@ -24,7 +24,7 @@ using namespace std;
 namespace mapper
 {
 
-const int NetMgr::INTERVAL_EPOLL_RETRY = 100;
+const int NetMgr::INTERVAL_EPOLL_RETRY = 1000;
 const int NetMgr::INTERVAL_CONNECT_RETRY = 7;
 
 NetMgr::NetMgr()
@@ -235,7 +235,7 @@ bool NetMgr::initEnv()
                 spdlog::error("[NetMgr::initEnv] create instance of Tcp Forward Service fail");
                 return false;
             }
-            if (!pService->init(mEpollfd, forward, mpCfg->getLinkUdpBuffer()))
+            if (!pService->init(mEpollfd, forward, mpCfg->getLinkSharedBuffer()))
             {
                 spdlog::error("[NetMgr::initEnv] init instance of Tcp Forward Service fail");
                 delete pService;
@@ -271,12 +271,12 @@ bool NetMgr::initEnv()
         }
     }
 
-    // init tunnel manager
-    if (!mTunnelMgr.init(mpCfg))
-    {
-        spdlog::error("[NetMgr::initEnv] init tunnel manager fail");
-        return false;
-    }
+    // // init tunnel manager
+    // if (!mTunnelMgr.init(mpCfg))
+    // {
+    //     spdlog::error("[NetMgr::initEnv] init tunnel manager fail");
+    //     return false;
+    // }
 
     return true;
 }
@@ -334,9 +334,9 @@ void NetMgr::closeEnv()
         mEpollfd = 0;
     }
 
-    // close tunnel manager
-    spdlog::debug("[NetMgr::closeEnv] close tunnel manager");
-    mTunnelMgr.close();
+    // // close tunnel manager
+    // spdlog::debug("[NetMgr::closeEnv] close tunnel manager");
+    // mTunnelMgr.close();
 }
 
 void NetMgr::onSoc(time_t curTime, epoll_event &event)

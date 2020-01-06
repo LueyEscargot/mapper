@@ -290,6 +290,8 @@ struct UdpTunnel_t
     void *service;
 
     TunnelState_t stat;
+    bool stopNorthRecv;
+    bool stopSouthRecv;
 
     inline void init()
     {
@@ -300,6 +302,8 @@ struct UdpTunnel_t
         service = nullptr;
 
         stat = TunnelState_t::ALLOCATED;
+        stopNorthRecv = false;
+        stopSouthRecv = false;
     }
 };
 

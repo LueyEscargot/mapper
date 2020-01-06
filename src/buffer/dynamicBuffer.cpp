@@ -59,7 +59,7 @@ void DynamicBuffer::releaseDynamicBuffer(DynamicBuffer *pDynamicBuffer)
     delete pDynamicBuffer;
 }
 
-void *DynamicBuffer::reserve(int size)
+char *DynamicBuffer::reserve(int size)
 {
     if (mpFreePos == nullptr)
     {
@@ -69,6 +69,7 @@ void *DynamicBuffer::reserve(int size)
     else if (mpFreePos->size >= size)
     {
         // 从当前缓冲区中分配
+        mpFreePos->sent = 0;
         return mpFreePos->buffer;
     }
     else
@@ -85,6 +86,7 @@ void *DynamicBuffer::reserve(int size)
         {
             // 找到可用缓冲区
             mpFreePos = p;
+            mpFreePos->sent = 0;
             return mpFreePos->buffer;
         }
         else
@@ -102,6 +104,7 @@ void *DynamicBuffer::reserve(int size)
             {
                 // 找到可用缓冲区
                 mpFreePos = p;
+                mpFreePos->sent = 0;
                 return mpFreePos->buffer;
             }
             else
@@ -205,6 +208,7 @@ void DynamicBuffer::release(BufBlk_t *pBlk)
     {
         // 调整 mpFreePos
         mpFreePos = pBlk;
+        return;
     }
 
     // 向后合并
@@ -233,6 +237,8 @@ void DynamicBuffer::release(BufBlk_t *pBlk)
         prevItem->__innerNext = pBlk->__innerNext;
         if (prevItem->__innerNext)
         {
+            assert(prevItem->__innerNext->inUse);   // 否则之前向后合并时已被合并
+
             prevItem->__innerNext->__innerPrev = prevItem;
         }
 
@@ -255,6 +261,7 @@ void DynamicBuffer::init(DynamicBuffer::BufBlk_t *pBlk,
     pBlk->prev = nullptr;
     pBlk->next = nullptr;
     pBlk->size = size;
+    pBlk->sent = 0;
 }
 
 } // namespace buffer

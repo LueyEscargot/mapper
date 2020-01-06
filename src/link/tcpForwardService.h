@@ -26,7 +26,7 @@ namespace link
 class TcpForwardService : public Service
 {
 protected:
-    static const uint32_t DEFAULT_RECV_BUFFER = 1 << 16;
+    static const uint32_t DEFAULT_RECV_BUFFER = 1 << 20;
     static const uint32_t TIMEOUT_INTERVAL_CONN = 15;
     static const uint32_t TIMEOUT_INTERVAL_ESTB = 180;
     static const uint32_t TIMEOUT_INTERVAL_BROK = 15;
@@ -43,33 +43,32 @@ public:
               uint32_t sharedBufferCapacity);
     void setTimeout(TunnelState_t stat, const uint32_t interval);
 
+    void onPostProcess(time_t curTime);
+    void onScanTimeout(time_t curTime);
+
     inline const Endpoint_t &getServiceEndpoint() const { return mServiceEndpoint; }
 
     void close() override;
     void onSoc(time_t curTime, uint32_t events, Endpoint_t *pe) override;
 
-    void acceptClient(time_t curTime, Endpoint_t *pe);
-    void onServiceSoc(time_t curTime, uint32_t events, Endpoint_t *pe);
-    void onNorthSoc(time_t curTime, uint32_t events, Endpoint_t *pe);
-
 protected:
     static void setStatus(UdpTunnel_t *pt, TunnelState_t stat);
     UdpTunnel_t *getTunnel();
+    void acceptClient(time_t curTime, Endpoint_t *pe);
     bool connect(time_t curTime, UdpTunnel_t *pt);
 
     bool epollAddEndpoint(Endpoint_t *pe, bool read, bool write, bool edgeTriger);
-    UdpTunnel_t *getTunnel(time_t curTime, sockaddr_in *sa);
-    void southRead(time_t curTime, Endpoint_t *pe);
-    void southWrite(time_t curTime, Endpoint_t *pe);
-    void northRead(time_t curTime, Endpoint_t *pe);
-    void northWrite(time_t curTime, Endpoint_t *pe);
+    bool epollResetEndpointMode(Endpoint_t *pe, bool read, bool write, bool edgeTriger);
 
-    inline void addToCloseList(UdpTunnel_t *pt) { mCloseList.insert(pt); };
+    bool onRead(Endpoint_t *pe);
+    bool onWrite(Endpoint_t *pe);
+    void appendToSendList(Endpoint_t *pe, buffer::DynamicBuffer::BufBlk_t * pBlk);
+
+    inline void addToCloseList(UdpTunnel_t *pt) { mPostProcessList.insert(pt); };
     inline void addToCloseList(Endpoint_t *pe) { addToCloseList((UdpTunnel_t *)pe->container); }
-    void closeTunnels();
+
     void addToTimer(time_t curTime, TunnelTimer_t *p);
     void refreshTimer(time_t curTime, TunnelTimer_t *p);
-    void scanTimeout(time_t curTime);
 
     static const bool StateMaine[TUNNEL_STATE_COUNT][TUNNEL_STATE_COUNT];
 
@@ -78,13 +77,12 @@ protected:
     Endpoint_t mServiceEndpoint;
     TargetManager mTargetManager;
 
-    time_t mLastActionTime;
     uint32_t mTimeoutInterval_Conn;
     uint32_t mTimeoutInterval_Estb;
     uint32_t mTimeoutInterval_Brok;
     TunnelTimer_t mTimer; // 其中 next 指向第一个元素； prev 指向最后一个元素
     std::set<UdpTunnel_t *> mTunnelList;
-    std::set<UdpTunnel_t *> mCloseList;
+    std::set<UdpTunnel_t *> mPostProcessList;
 };
 
 } // namespace link

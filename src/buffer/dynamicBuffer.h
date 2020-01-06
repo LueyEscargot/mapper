@@ -36,6 +36,7 @@ public:
         sockaddr_in sockaddr;
         socklen_t sockaddr_len;
         uint32_t size;
+        uint32_t sent;
         char buffer[0];
     };
 
@@ -49,7 +50,7 @@ public:
     static DynamicBuffer *allocDynamicBuffer(uint32_t capacity);
     static void releaseDynamicBuffer(DynamicBuffer *pDynamicBuffer);
 
-    void *reserve(int size);
+    char *reserve(int size);
     BufBlk_t *cut(uint32_t size);
     void release(BufBlk_t *pBuffer);
 
