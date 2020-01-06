@@ -42,6 +42,8 @@ public:
               uint32_t sharedBufferCapacity);
     void close() override;
     void onSoc(time_t curTime, uint32_t events, Endpoint_t *pe) override;
+    void postProcess(time_t curTime) override;
+    void scanTimeout(time_t curTime) override;
 
     inline const Endpoint_t &getServiceEndpoint() const { return mServiceEndpoint; }
 
@@ -63,7 +65,6 @@ protected:
     void closeTunnels();
     void addToTimer(time_t curTime, TunnelTimer_t *p);
     void refreshTimer(time_t curTime, TunnelTimer_t *p);
-    void scanTimeout(time_t curTime);
 
     std::shared_ptr<config::Forward> mForwardCmd;
     buffer::DynamicBuffer *mpDynamicBuffer;

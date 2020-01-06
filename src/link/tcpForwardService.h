@@ -43,13 +43,12 @@ public:
               uint32_t sharedBufferCapacity);
     void setTimeout(TunnelState_t stat, const uint32_t interval);
 
-    void onPostProcess(time_t curTime);
-    void onScanTimeout(time_t curTime);
-
     inline const Endpoint_t &getServiceEndpoint() const { return mServiceEndpoint; }
 
     void close() override;
     void onSoc(time_t curTime, uint32_t events, Endpoint_t *pe) override;
+    void postProcess(time_t curTime) override;
+    void scanTimeout(time_t curTime) override;
 
 protected:
     static void setStatus(UdpTunnel_t *pt, TunnelState_t stat);
@@ -59,13 +58,16 @@ protected:
 
     bool epollAddEndpoint(Endpoint_t *pe, bool read, bool write, bool edgeTriger);
     bool epollResetEndpointMode(Endpoint_t *pe, bool read, bool write, bool edgeTriger);
+    void epollRemoveEndpoint(Endpoint_t *pe);
+    void epollRemoveTunnel(UdpTunnel_t *pt);
 
     bool onRead(Endpoint_t *pe);
     bool onWrite(Endpoint_t *pe);
-    void appendToSendList(Endpoint_t *pe, buffer::DynamicBuffer::BufBlk_t * pBlk);
+    void appendToSendList(Endpoint_t *pe, buffer::DynamicBuffer::BufBlk_t *pBlk);
 
     inline void addToCloseList(UdpTunnel_t *pt) { mPostProcessList.insert(pt); };
     inline void addToCloseList(Endpoint_t *pe) { addToCloseList((UdpTunnel_t *)pe->container); }
+    void closeTunnel(UdpTunnel_t *pt);
 
     void addToTimer(time_t curTime, TunnelTimer_t *p);
     void refreshTimer(time_t curTime, TunnelTimer_t *p);

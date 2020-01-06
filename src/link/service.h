@@ -32,6 +32,8 @@ public:
     bool init(int epollfd);
     virtual void close() = 0;
     virtual void onSoc(time_t curTime, uint32_t events, Endpoint_t *pe) = 0;
+    virtual void postProcess(time_t curTime) = 0;
+    virtual void scanTimeout(time_t curTime) = 0;
 
 protected:
     std::string mName;

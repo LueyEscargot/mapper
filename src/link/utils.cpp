@@ -411,5 +411,23 @@ std::string Utils::dumpServiceEndpoint(const Endpoint_t &serviceEndpoint, const 
     return dumpServiceEndpoint(&serviceEndpoint, &clientAddr);
 }
 
+std::string Utils::dumpTunnel(const UdpTunnel_t *pt, bool reverse)
+{
+    stringstream ss;
+
+    ss << "("
+       << dumpEndpoint(pt->south , true)
+       << "==>"
+       << dumpEndpoint(pt->north , false)
+       << ")";
+
+    return ss.str();
+}
+
+std::string Utils::dumpTunnel(const UdpTunnel_t &pt, bool reverse)
+{
+    return dumpTunnel(&pt, reverse);
+}
+
 } // namespace link
 } // namespace mapper

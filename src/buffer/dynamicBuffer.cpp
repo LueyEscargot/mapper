@@ -208,6 +208,9 @@ void DynamicBuffer::release(BufBlk_t *pBlk)
     {
         // 调整 mpFreePos
         mpFreePos = pBlk;
+
+        assert(mpFreePos->__innerNext == nullptr || mpFreePos->__innerNext->inUse);
+
         return;
     }
 
@@ -228,6 +231,8 @@ void DynamicBuffer::release(BufBlk_t *pBlk)
             mpFreePos = pBlk;
         }
     }
+    assert(pBlk->__innerNext == nullptr || pBlk->__innerNext->inUse);
+    assert(mpFreePos->__innerNext == nullptr || mpFreePos->__innerNext->inUse);
 
     // 向前合并
     BufBlk_t *prevItem = pBlk->__innerPrev;
@@ -237,7 +242,7 @@ void DynamicBuffer::release(BufBlk_t *pBlk)
         prevItem->__innerNext = pBlk->__innerNext;
         if (prevItem->__innerNext)
         {
-            assert(prevItem->__innerNext->inUse);   // 否则之前向后合并时已被合并
+            assert(prevItem->__innerNext->inUse); // 否则之前向后合并时已被合并
 
             prevItem->__innerNext->__innerPrev = prevItem;
         }
@@ -247,7 +252,10 @@ void DynamicBuffer::release(BufBlk_t *pBlk)
             // 调整 mpFreePos
             mpFreePos = prevItem;
         }
+        assert(mpFreePos->__innerNext == nullptr || mpFreePos->__innerNext->inUse);
     }
+    assert(mpFreePos->__innerPrev == nullptr || mpFreePos->__innerPrev->inUse);
+    assert(mpFreePos->__innerNext == nullptr || mpFreePos->__innerNext->inUse);
 }
 
 void DynamicBuffer::init(DynamicBuffer::BufBlk_t *pBlk,

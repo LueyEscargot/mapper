@@ -64,6 +64,8 @@ public:
     static std::string dumpEndpoint(const Endpoint_t &endpoint, bool reverse = false);
     static std::string dumpServiceEndpoint(const Endpoint_t *serviceEndpoint, const sockaddr_in *clientAddr);
     static std::string dumpServiceEndpoint(const Endpoint_t &serviceEndpoint, const sockaddr_in &clientAddr);
+    static std::string dumpTunnel(const UdpTunnel_t *Tunnel, bool reverse = false);
+    static std::string dumpTunnel(const UdpTunnel_t &Tunnel, bool reverse = false);
 };
 
 } // namespace link

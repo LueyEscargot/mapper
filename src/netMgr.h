@@ -40,7 +40,7 @@ class NetMgr
 public:
     static const int INTERVAL_EPOLL_RETRY;
     static const int INTERVAL_CONNECT_RETRY;
-    static const int EPOLL_MAX_EVENTS = 16;
+    static const int EPOLL_MAX_EVENTS = 128;
 
     NetMgr();
     virtual ~NetMgr();
@@ -55,7 +55,7 @@ protected:
     bool initEnv();
     void closeEnv();
 
-    void onSoc(time_t curTime, epoll_event &event);
+    // void onSoc(time_t curTime, epoll_event &event);
 
     void acceptClient(time_t curTime, link::EndpointService_t *pes);
     bool onSend(time_t curTime, link::EndpointRemote_t *per, link::Tunnel_t *pt);

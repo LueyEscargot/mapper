@@ -24,7 +24,7 @@ using namespace std;
 namespace mapper
 {
 
-const int NetMgr::INTERVAL_EPOLL_RETRY = 1000;
+const int NetMgr::INTERVAL_EPOLL_RETRY = 100;
 const int NetMgr::INTERVAL_CONNECT_RETRY = 7;
 
 NetMgr::NetMgr()
@@ -116,8 +116,9 @@ void NetMgr::threadFunc()
         try
         {
             time_t curTime;
-            struct epoll_event event;
+            time_t lastScanTime = 0;
             struct epoll_event events[EPOLL_MAX_EVENTS];
+            set<link::Service *> activeServices;
 
             while (!mStopFlag)
             {
@@ -144,12 +145,31 @@ void NetMgr::threadFunc()
                 {
                     for (int i = 0; i < nRet; ++i)
                     {
-                        onSoc(curTime, events[i]);
+                        link::Endpoint_t *pe = (link::Endpoint_t *)events[i].data.ptr;
+                        link::Service *ps = (link::Service *)pe->service;
+                        ps->onSoc(curTime, events[i].events, pe);
+
+                        activeServices.insert(ps);
                     }
+
+                    // post process
+                    for (auto s : activeServices)
+                    {
+                        s->postProcess(curTime);
+                    }
+                    activeServices.clear();
                 }
 
-                // post-process
-                postProcess(curTime);
+                // scan timeout
+                if (lastScanTime < curTime)
+                {
+                    for (auto s : mTcpServices)
+                    {
+                        s->scanTimeout(curTime);
+                    }
+
+                    lastScanTime = curTime;
+                }
             }
         }
         catch (const exception &e)
@@ -339,116 +359,116 @@ void NetMgr::closeEnv()
     // mTunnelMgr.close();
 }
 
-void NetMgr::onSoc(time_t curTime, epoll_event &event)
-{
-    link::Endpoint_t *pe = (link::Endpoint_t *)event.data.ptr;
-    link::Service *pService = (link::Service *)pe->service;
-    pService->onSoc(curTime, event.events, pe);
+// void NetMgr::onSoc(time_t curTime, epoll_event &event)
+// {
+//     link::Endpoint_t *pe = (link::Endpoint_t *)event.data.ptr;
+//     link::Service *pService = (link::Service *)pe->service;
+//     pService->onSoc(curTime, event.events, pe);
 
-    // link::EndpointBase_t *peb = (link::EndpointBase_t *)event.data.ptr;
-    // // spdlog::trace("[NetMgr::onSoc] {}", pe->toStr());
+//     // link::EndpointBase_t *peb = (link::EndpointBase_t *)event.data.ptr;
+//     // // spdlog::trace("[NetMgr::onSoc] {}", pe->toStr());
 
-    // if (peb->protocol == link::Protocol_t::TCP)
-    // {
-    //     // TCP
-    //     if (event.events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR))
-    //     {
-    //         // connection broken
-    //         stringstream ss;
-    //         if (event.events & EPOLLRDHUP)
-    //         {
-    //             ss << "closed by peer;";
-    //         }
-    //         if (event.events & EPOLLHUP)
-    //         {
-    //             ss << "hang up;";
-    //         }
-    //         if (event.events & EPOLLERR)
-    //         {
-    //             ss << "error;";
-    //         }
+//     // if (peb->protocol == link::Protocol_t::TCP)
+//     // {
+//     //     // TCP
+//     //     if (event.events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR))
+//     //     {
+//     //         // connection broken
+//     //         stringstream ss;
+//     //         if (event.events & EPOLLRDHUP)
+//     //         {
+//     //             ss << "closed by peer;";
+//     //         }
+//     //         if (event.events & EPOLLHUP)
+//     //         {
+//     //             ss << "hang up;";
+//     //         }
+//     //         if (event.events & EPOLLERR)
+//     //         {
+//     //             ss << "error;";
+//     //         }
 
-    //         peb->valid = false;
-    //         if (peb->type == link::Type_t::SERVICE)
-    //         {
-    //             link::EndpointService_t *pes = (link::EndpointService_t *)peb;
-    //             spdlog::error("[NetMgr::onSoc] service endpoint[{}] broken",
-    //                           link::Endpoint::toStr(pes));
-    //             ::close(pes->soc);
-    //             pes->soc = 0;
-    //         }
-    //         else
-    //         {
-    //             spdlog::trace("[NetMgr::onSoc] endpoint[{}] broken: {}", link::Endpoint::toStr(peb), ss.str());
-    //             link::EndpointRemote_t *per = (link::EndpointRemote_t *)peb;
-    //             link::Tunnel_t *pt = (link::Tunnel_t *)per->tunnel;
-    //             mPostProcessList.insert(pt);
-    //         }
+//     //         peb->valid = false;
+//     //         if (peb->type == link::Type_t::SERVICE)
+//     //         {
+//     //             link::EndpointService_t *pes = (link::EndpointService_t *)peb;
+//     //             spdlog::error("[NetMgr::onSoc] service endpoint[{}] broken",
+//     //                           link::Endpoint::toStr(pes));
+//     //             ::close(pes->soc);
+//     //             pes->soc = 0;
+//     //         }
+//     //         else
+//     //         {
+//     //             spdlog::trace("[NetMgr::onSoc] endpoint[{}] broken: {}", link::Endpoint::toStr(peb), ss.str());
+//     //             link::EndpointRemote_t *per = (link::EndpointRemote_t *)peb;
+//     //             link::Tunnel_t *pt = (link::Tunnel_t *)per->tunnel;
+//     //             mPostProcessList.insert(pt);
+//     //         }
 
-    //         return;
-    //     }
+//     //         return;
+//     //     }
 
-    //     if (peb->type == link::Type_t::SERVICE)
-    //     {
-    //         if (event.events & EPOLLIN)
-    //         {
-    //             // accept client for TCP service endpoint
-    //             auto pes = (link::EndpointService_t *)peb;
-    //             acceptClient(curTime, pes);
-    //         }
-    //     }
-    //     else
-    //     {
-    //         bool retSend = true;
-    //         bool retRecv = true;
-    //         auto per = (link::EndpointRemote_t *)peb;
+//     //     if (peb->type == link::Type_t::SERVICE)
+//     //     {
+//     //         if (event.events & EPOLLIN)
+//     //         {
+//     //             // accept client for TCP service endpoint
+//     //             auto pes = (link::EndpointService_t *)peb;
+//     //             acceptClient(curTime, pes);
+//     //         }
+//     //     }
+//     //     else
+//     //     {
+//     //         bool retSend = true;
+//     //         bool retRecv = true;
+//     //         auto per = (link::EndpointRemote_t *)peb;
 
-    //         auto pt = (link::Tunnel_t *)per->tunnel;
+//     //         auto pt = (link::Tunnel_t *)per->tunnel;
 
-    //         // TCP - send
-    //         if (event.events & EPOLLOUT)
-    //         {
-    //             retSend = onSend(curTime, per, pt);
-    //         }
+//     //         // TCP - send
+//     //         if (event.events & EPOLLOUT)
+//     //         {
+//     //             retSend = onSend(curTime, per, pt);
+//     //         }
 
-    //         // TCP - recv
-    //         if (event.events & EPOLLIN)
-    //         {
-    //             retRecv = onRecv(curTime, per, pt);
-    //         }
+//     //         // TCP - recv
+//     //         if (event.events & EPOLLIN)
+//     //         {
+//     //             retRecv = onRecv(curTime, per, pt);
+//     //         }
 
-    //         if (retSend && retRecv)
-    //         {
-    //             // 收发成功，更新时间戳
-    //             mTimer.refresh(curTime, &pt->timerClient);
-    //         }
-    //         else
-    //         {
-    //             mPostProcessList.insert(pt);
-    //         }
-    //     }
-    // }
-    // else
-    // {
-    //     // UDP
-    //     link::Endpoint_t *pe = (link::Endpoint_t *)event.data.ptr;
-    //     link::Service *pService = (link::Service *)pe->service;
-    //     pService->onSoc(curTime, event.events, pe);
-    //     // if (peb->type == link::Type_t::SERVICE)
-    //     // {
-    //     //     auto pes = (link::EndpointService_t *)peb;
-    //     //     pes->udpService->onSouthSoc(curTime, event.events, pes);
-    //     // }
-    //     // else
-    //     // {
-    //     //     // TODO: ...
-    //     //     // link::EndpointRemote_t *per = (link::EndpointRemote_t *)peb;
-    //     //     // link::UdpTunnel_t *put = (link::UdpTunnel_t *)per->tunnel;
-    //     //     // link::EndpointService_t *pes = (link::EndpointService_t *)put->service;
-    //     //     // pes->udpService->onNorthSoc(curTime, event.events, per);
-    //     // }
-    // }
-}
+//     //         if (retSend && retRecv)
+//     //         {
+//     //             // 收发成功，更新时间戳
+//     //             mTimer.refresh(curTime, &pt->timerClient);
+//     //         }
+//     //         else
+//     //         {
+//     //             mPostProcessList.insert(pt);
+//     //         }
+//     //     }
+//     // }
+//     // else
+//     // {
+//     //     // UDP
+//     //     link::Endpoint_t *pe = (link::Endpoint_t *)event.data.ptr;
+//     //     link::Service *pService = (link::Service *)pe->service;
+//     //     pService->onSoc(curTime, event.events, pe);
+//     //     // if (peb->type == link::Type_t::SERVICE)
+//     //     // {
+//     //     //     auto pes = (link::EndpointService_t *)peb;
+//     //     //     pes->udpService->onSouthSoc(curTime, event.events, pes);
+//     //     // }
+//     //     // else
+//     //     // {
+//     //     //     // TODO: ...
+//     //     //     // link::EndpointRemote_t *per = (link::EndpointRemote_t *)peb;
+//     //     //     // link::UdpTunnel_t *put = (link::UdpTunnel_t *)per->tunnel;
+//     //     //     // link::EndpointService_t *pes = (link::EndpointService_t *)put->service;
+//     //     //     // pes->udpService->onNorthSoc(curTime, event.events, per);
+//     //     // }
+//     // }
+// }
 
 void NetMgr::acceptClient(time_t curTime, link::EndpointService_t *pes)
 {

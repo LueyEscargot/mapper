@@ -135,6 +135,48 @@ void UdpForwardService::onSoc(time_t curTime, uint32_t events, Endpoint_t *pe)
     }
 }
 
+void UdpForwardService::postProcess(time_t curTime)
+{
+}
+
+void UdpForwardService::scanTimeout(time_t curTime)
+{
+    time_t timeoutTime = curTime - mTimeoutInterval;
+    if (mTimer.next == nullptr ||
+        mTimer.next->lastActiveTime > timeoutTime)
+    {
+        return;
+    }
+
+    // get timeout item list
+    auto h = mTimer.next;
+    auto t = h;
+    while (t->next && t->next->lastActiveTime < timeoutTime)
+    {
+        t = t->next;
+    }
+    // 将从 h --> t 的元素移除链表
+    if (t->next)
+    {
+        // 此时剩余链表中还有元素存在
+        t->next->prev = nullptr;
+        mTimer.next = t->next;
+        t->next = nullptr;
+    }
+    else
+    {
+        // 所有元素都已从链表中移除
+        mTimer.next = mTimer.prev = nullptr;
+    }
+
+    // 释放已超时 udp tunnel
+    while (h)
+    {
+        addToCloseList((UdpTunnel_t *)h->tunnel);
+        h = h->next;
+    }
+}
+
 void UdpForwardService::onServiceSoc(time_t curTime, uint32_t events, Endpoint_t *pe)
 {
     if (events & (EPOLLRDHUP | EPOLLERR))
@@ -583,44 +625,6 @@ void UdpForwardService::refreshTimer(time_t curTime, TunnelTimer_t *p)
 
     // append to tail
     addToTimer(curTime, p);
-}
-
-void UdpForwardService::scanTimeout(time_t curTime)
-{
-    time_t timeoutTime = curTime - mTimeoutInterval;
-    if (mTimer.next == nullptr ||
-        mTimer.next->lastActiveTime > timeoutTime)
-    {
-        return;
-    }
-
-    // get timeout item list
-    auto h = mTimer.next;
-    auto t = h;
-    while (t->next && t->next->lastActiveTime < timeoutTime)
-    {
-        t = t->next;
-    }
-    // 将从 h --> t 的元素移除链表
-    if (t->next)
-    {
-        // 此时剩余链表中还有元素存在
-        t->next->prev = nullptr;
-        mTimer.next = t->next;
-        t->next = nullptr;
-    }
-    else
-    {
-        // 所有元素都已从链表中移除
-        mTimer.next = mTimer.prev = nullptr;
-    }
-
-    // 释放已超时 udp tunnel
-    while (h)
-    {
-        addToCloseList((UdpTunnel_t *)h->tunnel);
-        h = h->next;
-    }
 }
 
 } // namespace link

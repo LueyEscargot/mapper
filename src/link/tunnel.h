@@ -31,7 +31,7 @@ public:
     static std::string toStr(Tunnel_t *pt);
 
     static UdpTunnel_t *getTunnel();
-    static void releaseTunnel(UdpTunnel_t *pe);
+    static void releaseTunnel(UdpTunnel_t *pt);
 
     static bool connect(Tunnel_t *pt);
     static bool northSocRecv(Tunnel_t *pt);
