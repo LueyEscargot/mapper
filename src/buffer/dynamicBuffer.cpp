@@ -11,7 +11,8 @@ namespace buffer
 
 DynamicBuffer::DynamicBuffer()
     : mBuffer(nullptr),
-      mpFreePos(0)
+      mpFreePos(nullptr),
+      mInUseCount(0)
 {
 }
 
@@ -48,7 +49,8 @@ DynamicBuffer *DynamicBuffer::allocDynamicBuffer(uint32_t capacity)
     else
     {
         pDynamicBuffer->mpFreePos = (BufBlk_t *)pDynamicBuffer->mBuffer;
-        init(pDynamicBuffer->mpFreePos, capacity, nullptr, nullptr);
+        pDynamicBuffer->mpFreePos->init();
+        pDynamicBuffer->mpFreePos->size = capacity;
 
         return pDynamicBuffer;
     }
@@ -57,6 +59,32 @@ DynamicBuffer *DynamicBuffer::allocDynamicBuffer(uint32_t capacity)
 void DynamicBuffer::releaseDynamicBuffer(DynamicBuffer *pDynamicBuffer)
 {
     delete pDynamicBuffer;
+}
+
+string DynamicBuffer::dumpBlk(BufBlk_t *p)
+{
+    if (p)
+    {
+        stringstream ss;
+
+        int a = 1
+                    ? 2
+                    : 3;
+
+        ss << "("
+           << (void *)p->__innerPrev << ":" << (p->__innerPrev ? (p->__innerPrev->inUse ? "U" : "F") : "-")
+           << ")<-("
+           << (void *)p << ":" << (p->inUse ? "U" : "F")
+           << ")->("
+           << (void *)p->__innerNext << ":" << (p->__innerNext ? (p->__innerNext->inUse ? "U" : "F") : "-")
+           << ")";
+
+        return ss.str();
+    }
+    else
+    {
+        return "(0:-)";
+    }
 }
 
 char *DynamicBuffer::reserve(int size)
@@ -120,15 +148,16 @@ DynamicBuffer::BufBlk_t *DynamicBuffer::cut(uint32_t size)
 {
     assert(mpFreePos && size <= mpFreePos->size && mpFreePos->inUse == false);
 
-    // 后一个缓冲区为空，或者已被分配（否则应该与当前缓冲区合并）
-    assert(mpFreePos->__innerNext == nullptr || mpFreePos->__innerNext->inUse);
+    // 相邻缓冲区为空，或者已被分配（否则应该与当前缓冲区合并）
+    assert((mpFreePos->__innerPrev == nullptr || mpFreePos->__innerPrev->inUse) ||
+           (mpFreePos->__innerNext == nullptr || mpFreePos->__innerNext->inUse));
 
-    DynamicBuffer::BufBlk_t *cutBlock = mpFreePos;
+    BufBlk_t *cutBlock = mpFreePos;
 
     // 如果剩余缓冲区大小 小于或等于 缓冲区结构体头部大小，
     // 则当前所有缓冲区都被分配出去。
 
-    // 被割取的不包含缓冲区结构体头部长度的大小
+    // 实际被割取的 不包含缓冲区结构体头部长度 的大小
     uint32_t cutSize = (mpFreePos->size - size) > BUFBLK_HEAD_SIZE
                            ? size
                            : mpFreePos->size;
@@ -139,18 +168,28 @@ DynamicBuffer::BufBlk_t *DynamicBuffer::cut(uint32_t size)
         assert(remainSize > BUFBLK_HEAD_SIZE);
 
         // 分割当前缓冲区
-        char *p = reinterpret_cast<char *>(mpFreePos);
-        BufBlk_t *nextBlk = reinterpret_cast<BufBlk_t *>(p +
-                                                         BUFBLK_HEAD_SIZE +
-                                                         cutSize);
-        init(nextBlk,
-             remainSize - BUFBLK_HEAD_SIZE,
-             mpFreePos,
-             mpFreePos->__innerNext);
-        mpFreePos->size = cutSize;
-        mpFreePos->__innerNext = nextBlk;
-        mpFreePos->inUse = true;
+        auto p = (char *)mpFreePos;
+        auto nextBlk = (BufBlk_t *)(p + BUFBLK_HEAD_SIZE + cutSize);
 
+        nextBlk->init();
+        nextBlk->size = remainSize - BUFBLK_HEAD_SIZE;
+        nextBlk->__innerPrev = mpFreePos;
+        nextBlk->__innerNext = mpFreePos->__innerNext;
+        // 前节点不为空时，其后指针指向新建节点
+        if (nextBlk->__innerPrev)
+        {
+            nextBlk->__innerPrev->__innerNext = nextBlk;
+        }
+        // 后节点不为空时，其前指针指向新建节点
+        if (nextBlk->__innerNext)
+        {
+            nextBlk->__innerNext->__innerPrev = nextBlk;
+        }
+
+        // 将前节点 mpFreePos（即未分割之前的节点，也是被割取的节点）的大小调整（缩小）为被割取大小
+        mpFreePos->size = cutSize;
+
+        // 将 mpFreePos 指针指向新建节点
         mpFreePos = nextBlk;
     }
     else
@@ -196,25 +235,39 @@ DynamicBuffer::BufBlk_t *DynamicBuffer::cut(uint32_t size)
         }
     }
 
+    ++mInUseCount;
+    // spdlog::debug("[DynamicBuffer::cut] mInUseCount[{}] - {}", mInUseCount, dumpBlk(cutBlock));
+
+    cutBlock->inUse = true;
     return cutBlock;
 }
 
 void DynamicBuffer::release(BufBlk_t *pBlk)
 {
-    assert(pBlk && pBlk->inUse);
+    --mInUseCount;
+    assert(mInUseCount >= 0 &&
+           pBlk && pBlk->inUse);
+
+    // assert(healthCheck());
+    // spdlog::debug("[DynamicBuffer::release] mInUseCount[{}]", mInUseCount);
+    // spdlog::debug("[DynamicBuffer::release] mpFreePos: {}", dumpBlk(mpFreePos));
+    // spdlog::debug("[DynamicBuffer::release] pBlk: {}", dumpBlk(pBlk));
+    // spdlog::debug("[DynamicBuffer::release] pBlk->prev: {}", dumpBlk(pBlk->__innerPrev));
+    // spdlog::debug("[DynamicBuffer::release] pBlk->next: {}", dumpBlk(pBlk->__innerNext));
+
+    static uint32_t count = 0;
 
     pBlk->inUse = false;
     if (mpFreePos == nullptr)
     {
         // 调整 mpFreePos
         mpFreePos = pBlk;
-
         assert(mpFreePos->__innerNext == nullptr || mpFreePos->__innerNext->inUse);
 
         return;
     }
 
-    // 向后合并
+    // 向后合并（即：释放后一个节点，将之合并到当前节点）
     BufBlk_t *nextItem = pBlk->__innerNext;
     if (nextItem && nextItem->inUse == false)
     {
@@ -231,10 +284,8 @@ void DynamicBuffer::release(BufBlk_t *pBlk)
             mpFreePos = pBlk;
         }
     }
-    assert(pBlk->__innerNext == nullptr || pBlk->__innerNext->inUse);
-    assert(mpFreePos->__innerNext == nullptr || mpFreePos->__innerNext->inUse);
 
-    // 向前合并
+    // 向前合并（即：释放当前节点，将之合并到前一个节点）
     BufBlk_t *prevItem = pBlk->__innerPrev;
     if (prevItem && prevItem->inUse == false)
     {
@@ -252,13 +303,31 @@ void DynamicBuffer::release(BufBlk_t *pBlk)
             // 调整 mpFreePos
             mpFreePos = prevItem;
         }
-        assert(mpFreePos->__innerNext == nullptr || mpFreePos->__innerNext->inUse);
     }
-    assert(mpFreePos->__innerPrev == nullptr || mpFreePos->__innerPrev->inUse);
-    assert(mpFreePos->__innerNext == nullptr || mpFreePos->__innerNext->inUse);
+
+    assert((mpFreePos->__innerPrev == nullptr || mpFreePos->__innerPrev->inUse) &&
+           (mpFreePos->__innerNext == nullptr || mpFreePos->__innerNext->inUse));
+    // assert(healthCheck());
 }
 
-void DynamicBuffer::init(DynamicBuffer::BufBlk_t *pBlk,
+bool DynamicBuffer::healthCheck()
+{
+    auto p = (BufBlk_t *)mBuffer;
+    while (p)
+    {
+        if (!p->inUse &&
+            p->__innerNext &&
+            !p->__innerNext->inUse)
+        {
+            spdlog::error("[DynamicBuffer::healthCheck] fail: {}", dumpBlk(p));
+            return false;
+        }
+        p = p->__innerNext;
+    }
+    return true;
+}
+
+void DynamicBuffer::init(BufBlk_t *pBlk,
                          uint32_t size,
                          BufBlk_t *innerlink_prev,
                          BufBlk_t *innerlink_next)

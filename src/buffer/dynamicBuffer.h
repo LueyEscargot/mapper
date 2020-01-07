@@ -15,8 +15,8 @@
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <list>
-#include <tuple>
 #include <string>
+#include <tuple>
 
 namespace mapper
 {
@@ -38,6 +38,19 @@ public:
         uint32_t size;
         uint32_t sent;
         char buffer[0];
+
+        inline void init()
+        {
+            __innerPrev = nullptr;
+            __innerNext = nullptr;
+            inUse = false;
+            prev = nullptr;
+            next = nullptr;
+            sockaddr = {0};
+            sockaddr_len = 0;
+            size = 0;
+            sent = 0;
+        }
     };
 
     static const uint32_t BUFBLK_HEAD_SIZE = sizeof(BufBlk_t);
@@ -49,19 +62,23 @@ protected:
 public:
     static DynamicBuffer *allocDynamicBuffer(uint32_t capacity);
     static void releaseDynamicBuffer(DynamicBuffer *pDynamicBuffer);
+    static std::string dumpBlk(BufBlk_t *p);
 
     char *reserve(int size);
     BufBlk_t *cut(uint32_t size);
     void release(BufBlk_t *pBuffer);
 
+    bool healthCheck();
+
 protected:
-    static void init(DynamicBuffer::BufBlk_t *pBlk,
+    static void init(BufBlk_t *pBlk,
                      uint32_t size,
                      BufBlk_t *innerlink_prev,
                      BufBlk_t *innerlink_next);
 
     void *mBuffer;
     BufBlk_t *mpFreePos;
+    int32_t mInUseCount;
 };
 
 } // namespace buffer
