@@ -24,23 +24,16 @@
 #include "config/forward.h"
 #include "link/service.h"
 #include "link/type.h"
-#include "link/tunnelMgr.h"
-#include "timer/container.h"
 
 namespace mapper
 {
 
 class NetMgr
 {
-    typedef union CONVERTER {
-        uint32_t u32;
-        void *ptr;
-    } Converter_t;
-
 public:
     static const int INTERVAL_EPOLL_RETRY;
     static const int INTERVAL_CONNECT_RETRY;
-    static const int EPOLL_MAX_EVENTS = 128;
+    static const int EPOLL_MAX_EVENTS;
 
     NetMgr();
     virtual ~NetMgr();
@@ -55,34 +48,13 @@ protected:
     bool initEnv();
     void closeEnv();
 
-    // void onSoc(time_t curTime, epoll_event &event);
-
-    void acceptClient(time_t curTime, link::EndpointService_t *pes);
-    bool onSend(time_t curTime, link::EndpointRemote_t *per, link::Tunnel_t *pt);
-    bool onRecv(time_t curTime, link::EndpointRemote_t *per, link::Tunnel_t *pt);
-    bool epollAddTunnel(link::Tunnel_t *pt);
-    void epollRemoveTunnel(link::Tunnel_t *pt);
-    bool epollAddEndpoint(link::EndpointBase_t *pe, bool read, bool write, bool edgeTriger);
-    void epollRemoveEndpoint(link::EndpointBase_t *pe);
-    bool epollResetEndpointMode(link::EndpointBase_t *pe, bool read, bool write, bool edgeTriger);
-    void postProcess(time_t curTime);
-    void onClose(link::Tunnel_t *pt);
-
-    void timeoutCheck(time_t curTime);
-
     std::vector<std::shared_ptr<mapper::config::Forward>> mForwards;
-    std::vector<link::EndpointService_t *> mServices;
-    std::vector<link::Service *> mTcpServices;
-    std::vector<link::Service *> mUdpServices;
+    std::vector<link::Service *> mServices;
 
     config::Config *mpCfg;
     int mEpollfd;
-    link::TunnelMgr mTunnelMgr;
     std::thread mMainRoutineThread;
     volatile bool mStopFlag;
-    std::set<link::Tunnel_t *> mPostProcessList;
-
-    timer::Container mTimer;
 };
 
 } // namespace mapper

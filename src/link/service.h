@@ -25,19 +25,21 @@ class Service
 {
 public:
     Service(std::string name);
-    virtual ~Service();
-
-    virtual std::string toStr();
+    virtual ~Service() {}
 
     bool init(int epollfd);
+    inline std::string &getName() { return mName; }
+    inline Endpoint_t &getServiceEndpoint() { return mServiceEndpoint; }
+
     virtual void close() = 0;
     virtual void onSoc(time_t curTime, uint32_t events, Endpoint_t *pe) = 0;
     virtual void postProcess(time_t curTime) = 0;
     virtual void scanTimeout(time_t curTime) = 0;
 
 protected:
-    std::string mName;
     int mEpollfd;
+    std::string mName;
+    Endpoint_t mServiceEndpoint;
 };
 
 } // namespace link

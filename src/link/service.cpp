@@ -13,15 +13,6 @@ Service::Service(std::string name)
 {
 }
 
-Service::~Service()
-{
-}
-
-std::string Service::toStr()
-{
-    string str = R"([")" + mName + R"("])";
-}
-
 bool Service::init(int epollfd)
 {
     mEpollfd = epollfd;

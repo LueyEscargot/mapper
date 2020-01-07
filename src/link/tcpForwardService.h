@@ -76,7 +76,6 @@ protected:
 
     std::shared_ptr<config::Forward> mForwardCmd;
     buffer::DynamicBuffer *mpDynamicBuffer;
-    Endpoint_t mServiceEndpoint;
     TargetManager mTargetManager;
 
     uint32_t mTimeoutInterval_Conn;
