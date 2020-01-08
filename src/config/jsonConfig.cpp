@@ -16,7 +16,6 @@ namespace config
 {
 
 const char *JsonConfig::DEFAULT_CONFIG_FILE = "config.json";
-const char *JsonConfig::DEFAULT_SCHEMA_FILE = "schema.json";
 
 bool JsonConfig::parse(int argc, char *argv[])
 {
@@ -25,15 +24,24 @@ bool JsonConfig::parse(int argc, char *argv[])
     string configFile = strlen(val = getArg(argv, argv + argc, "-c"))
                             ? val
                             : DEFAULT_CONFIG_FILE;
-    string schemaFile = strlen(val = getArg(argv, argv + argc, "-s"))
-                            ? val
-                            : DEFAULT_SCHEMA_FILE;
 
     // parse config file
-    return parse(configFile, schemaFile);
+    return parse(configFile);
 }
 
-bool JsonConfig::parse(string configFile, string schemaFile)
+bool JsonConfig::parse(int argc, char *argv[], stringstream &ss)
+{
+    // get config and schema file
+    const char *val;
+    string configFile = strlen(val = getArg(argv, argv + argc, "-c"))
+                            ? val
+                            : DEFAULT_CONFIG_FILE;
+
+    // parse config file
+    return parse(configFile, ss);
+}
+
+bool JsonConfig::parse(string configFile)
 {
     ifstream ifsConfig(configFile);
     if (ifsConfig)
@@ -49,7 +57,7 @@ bool JsonConfig::parse(string configFile, string schemaFile)
     return false;
 }
 
-bool JsonConfig::parse(string configFile, string schemaFile, std::stringstream &ss)
+bool JsonConfig::parse(string configFile, stringstream &ss)
 {
     ifstream ifsConfig(configFile);
     if (ifsConfig)
@@ -114,7 +122,7 @@ bool JsonConfig::validate(rapidjson::Document &doc, const char *schema)
     return false;
 }
 
-bool JsonConfig::validate(rapidjson::Document &doc, const char *schema, std::stringstream &ss)
+bool JsonConfig::validate(rapidjson::Document &doc, const char *schema, stringstream &ss)
 {
     Document d;
     ParseResult ok = d.Parse(schema);

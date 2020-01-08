@@ -26,14 +26,14 @@ class JsonConfig
 {
 protected:
     static const char *DEFAULT_CONFIG_FILE;
-    static const char *DEFAULT_SCHEMA_FILE;
 
 public:
     JsonConfig() {};
 
     bool parse(int argc, char *argv[]);
-    bool parse(std::string configFile, std::string schemaFile);
-    bool parse(std::string configFile, std::string schemaFile, std::stringstream & ss);
+    bool parse(int argc, char *argv[], std::stringstream & ss);
+    bool parse(std::string configFile);
+    bool parse(std::string configFile, std::stringstream & ss);
     std::string get(std::string path, std::string defaultValue = "");
     int32_t getAsInt32(std::string path, int32_t defaultValue = 0);
     uint32_t getAsUint32(std::string path, uint32_t defaultValue = 0);

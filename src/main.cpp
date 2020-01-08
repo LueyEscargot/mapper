@@ -5,7 +5,7 @@
  * @version 0.1
  * @date 2019-10-07
  * 
- * @copyright Copyright (c) 2019
+ * @copyright Copyright (c) 2019-2020
  * 
  */
 #include <stdlib.h>
@@ -13,12 +13,14 @@
 #include <signal.h>
 #include <algorithm>
 #include <exception>
+#include <sstream>
 #include <vector>
 #include <sys/sysinfo.h>
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include "config/config.h"
+#include "config/jsonConfig.h"
 #include "mapper.h"
 #include "project.h"
 
@@ -52,30 +54,38 @@ int main(int argc, char *argv[])
         return 0;
     }
 
-    // get log level from command line
-    std::string strLogLevel = getArg(argv, argv + argc, "-l");
-    strLogLevel = strLogLevel.empty() ? "info" : strLogLevel;
-    auto logLevel = spdlog::level::from_str(strLogLevel);
+    // parse config
+    std::stringstream ss;
+    mapper::config::JsonConfig jsonCfg;
+    if (!jsonCfg.parse(argc, argv, ss))
+    {
+        fprintf(stderr, "init config object fail:\n%s\n", ss.str().c_str());
+        std::exit(EXIT_FAILURE);
+    }
+
     // init log
-    auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
-    auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(LOG_FILE, true);
-    spdlog::set_default_logger(
-        std::make_shared<spdlog::logger>(
-            "mapper", spdlog::sinks_init_list({console_sink, file_sink})));
-    spdlog::set_level(logLevel);
-    spdlog::flush_on(logLevel);
+    auto sink = jsonCfg.get("/log/sink");
+    if (sink.compare("file") == 0)
+    {
+        auto file = jsonCfg.get("/log/file");
+        auto sinkPtr = std::make_shared<spdlog::sinks::basic_file_sink_mt>(file, true);
+        spdlog::set_default_logger(
+            std::make_shared<spdlog::logger>("mapper",
+                                             spdlog::sinks_init_list({sinkPtr})));
+    }
+    else
+    {
+        auto sinkPtr = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
+        spdlog::set_default_logger(
+            std::make_shared<spdlog::logger>("mapper",
+                                             spdlog::sinks_init_list({sinkPtr})));
+    }
+    auto level = spdlog::level::from_str(jsonCfg.get("/log/level"));
+    spdlog::set_level(level);
+    spdlog::flush_on(level);
 
     // init config object
     mapper::config::Config cfg(argc, argv);
-
-    // set log level by config file
-    strLogLevel = cfg.get("level", "log", "");
-    if (!strLogLevel.empty())
-    {
-        logLevel = spdlog::level::from_str(strLogLevel);
-        spdlog::set_level(logLevel);
-        spdlog::flush_on(logLevel);
-    }
 
     spdlog::trace("{}", projectDesc());
     spdlog::trace("Available Processors: {}", get_nprocs());
@@ -100,11 +110,10 @@ int main(int argc, char *argv[])
 void showSantax(char *argv[])
 {
     printf("\n");
-    printf("%s -c config -m mapData -s maxSessions -h\n", argv[0]);
-    printf("    -c config: config file, default is .\\config.ini\n");
-    printf("    -m mapData: sport:host:dport, for example: 8000:192.168.1.22:8000\n");
-    printf("    -s maxSession: max client sessions, default is 1024.\n");
-    printf("    -c concurrency: max concurrent forked-processes, default is 0 - as many as cpu cores.\n");
+    printf("%s -c config [-n config] [-s schema] -h\n", argv[0]);
+    printf("    -c config: config file, in JSON format, default is ./config.json\n");
+    printf("    -n config: create new empty config file\n");
+    printf("    -s schema: schema file, in JSON format, default is ./schema.json\n");
     printf("    -h show this help message.\n");
     printf("\n");
 }
