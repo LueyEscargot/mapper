@@ -1,0 +1,61 @@
+namespace mapper
+{
+namespace config
+{
+
+static const char *CONFIG_SCHEMA = R"(
+{
+  "type": "object",
+  "properties": {
+    "log": {
+      "type": "object",
+      "properties": {
+        "sink": {
+          "type": "string",
+          "enum": [
+            "console",
+            "file"
+          ]
+        },
+        "level": {
+          "type": "string",
+          "enum": [
+            "trace",
+            "debug",
+            "info",
+            "warn",
+            "err",
+            "critical",
+            "off"
+          ]
+        },
+        "file": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sink",
+        "level",
+        "file"
+      ]
+    },
+    "services": {
+      "type": "object",
+      "properties": {
+        "tcpForward": {
+          "type": "object"
+        },
+        "udpForward": {
+          "type": "object"
+        }
+      }
+    }
+  },
+  "required": [
+    "services"
+  ]
+}
+)";
+
+} // namespace config
+} // namespace mapper
