@@ -47,9 +47,6 @@ static const char *TCPFORWARD_SCHEMA = R"(
         "buffer": {
           "type": "object",
           "properties": {
-            "type": {
-              "type": "string"
-            },
             "size": {
               "type": "number"
             },
@@ -88,9 +85,6 @@ static const char *UDPFORWARD_SCHEMA = R"(
         "buffer": {
           "type": "object",
           "properties": {
-            "type": {
-              "type": "string"
-            },
             "size": {
               "type": "number"
             },

@@ -4,39 +4,23 @@
     "level": "info",
     "file": "mapper.log"
   },
-  "services1": {
-    "tcpForward": {
-      "forward": [
-        "8000:127.0.0.1:8080",
-        "any:8001:127.0.0.1:8081",
-        "lo:8002:127.0.0.1:8082"
-      ],
-      "settings": {
-        "timeout": {
-          "connect": 15,
-          "session": 180,
-          "release": 15
-        },
-        "buffer": {
-          "type": "dynamicBuffer",
-          "size": 1024,
-          "perSessionLimit": 1
-        }
-      }
-    },
-    "udpForward": {
-      "forward": [
-        "udp:lo:8003:localhost:8083"
-      ],
-      "settings": {
-        "timeout": {
-          "session": 3
-        },
-        "buffer": {
-          "type": "sharedBuffer",
-          "size": 1024,
-          "perSessionLimit": 1
-        }
+  "service": {
+    "forward": [
+      "8000:127.0.0.1:8080",
+      "any:8001:127.0.0.1:8081",
+      "lo:8002:127.0.0.1:8082",
+      "tcp:lo:8003:127.0.0.1:8083",
+      "udp:lo:8003:localhost:8083"
+    ],
+    "setting": {
+      "timeout": {
+        "connect": 15,
+        "session": 180,
+        "release": 15
+      },
+      "buffer": {
+        "size": 1024,
+        "perSessionLimit": 1
       }
     }
   }
