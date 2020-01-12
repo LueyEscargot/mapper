@@ -6,23 +6,23 @@
 #include <chrono>
 #include <exception>
 #include <spdlog/spdlog.h>
-#include "link/tcpForwardService.h"
-#include "link/udpForwardService.h"
-#include "link/utils.h"
+#include "utils/jsonUtils.h"
 
 using namespace std;
 
 namespace mapper
 {
 
-const int NetMgr::INTERVAL_EPOLL_RETRY = 100;
-const int NetMgr::INTERVAL_CONNECT_RETRY = 7;
-const int NetMgr::EPOLL_MAX_EVENTS = 128;
+const uint32_t NetMgr::INTERVAL_EPOLL_RETRY = 100;
+const uint32_t NetMgr::INTERVAL_CONNECT_RETRY = 7;
+const uint32_t NetMgr::EPOLL_MAX_EVENTS = 128;
+const char *NetMgr::SETTING_BUFFER_SIZE_PATH = "/service/setting/buffer/size";
 
 NetMgr::NetMgr()
     : mpCfg(nullptr),
       mEpollfd(0),
-      mStopFlag(true)
+      mStopFlag(true),
+      mpDynamicBuffer(nullptr)
 {
 }
 
@@ -31,13 +31,13 @@ NetMgr::~NetMgr()
     join();
 }
 
-bool NetMgr::start(config::Config &cfg)
+bool NetMgr::start(rapidjson::Document &cfg)
 {
     spdlog::debug("[NetMgr::start] start.");
 
     // read settings
     mpCfg = &cfg;
-    mForwards = move(mpCfg->getForwards("mapping"));
+    // mForwards = move(mpCfg->getForwards("mapping"));
 
     // start thread
     {
@@ -108,7 +108,7 @@ void NetMgr::threadFunc()
             time_t curTime;
             time_t lastScanTime = 0;
             struct epoll_event events[EPOLL_MAX_EVENTS];
-            set<link::Service *> activeServices;
+            set<link::Service *> activeService;
 
             while (!mStopFlag)
             {
@@ -133,27 +133,36 @@ void NetMgr::threadFunc()
                 }
                 else
                 {
+                    if (nRet)
+                    {
+                        printf("---start---\n");
+                    }
                     for (int i = 0; i < nRet; ++i)
                     {
                         link::Endpoint_t *pe = (link::Endpoint_t *)events[i].data.ptr;
                         link::Service *ps = (link::Service *)pe->service;
                         ps->onSoc(curTime, events[i].events, pe);
 
-                        activeServices.insert(ps);
+                        activeService.insert(ps);
                     }
 
                     // post process
-                    for (auto s : activeServices)
+                    if (!activeService.empty())
                     {
-                        s->postProcess(curTime);
+                        for (auto s : activeService)
+                        {
+                            printf("---service[%s]: %p ---\n", s->getName().c_str(), s);
+                            s->postProcess(curTime);
+                        }
+                        activeService.clear();
+                        printf("---end---\n");
                     }
-                    activeServices.clear();
                 }
 
                 // scan timeout
                 if (lastScanTime < curTime)
                 {
-                    for (auto s : mServices)
+                    for (auto s : mServiceList)
                     {
                         s->scanTimeout(curTime);
                     }
@@ -208,52 +217,23 @@ bool NetMgr::initEnv()
         return false;
     }
 
-    int index = 0;
-    for (auto forward : mForwards)
+    // alloc buffer
+    uint64_t bufferSize = utils::JsonUtils::getAsUint32(*mpCfg,
+                                                        SETTING_BUFFER_SIZE_PATH,
+                                                        DEFAULT_BUFFER_SIZE) *
+                          BUFFER_SIZE_UNIT;
+    mpDynamicBuffer = buffer::DynamicBuffer::allocDynamicBuffer(bufferSize);
+    if (!mpDynamicBuffer)
     {
-        spdlog::debug("[NetMgr::initEnv] process forward: {}", forward->toStr());
+        spdlog::error("[NetMgr::initEnv] alloc buffer fail");
+        return false;
+    }
 
-        link::Service *pService;
-        link::Protocol_t protocol = link::Utils::parseProtocol(forward->protocol);
-
-        if (protocol == link::Protocol_t::TCP)
-        {
-            pService = new link::TcpForwardService();
-            if (pService == nullptr)
-            {
-                spdlog::error("[NetMgr::initEnv] create instance of Tcp Forward Service fail");
-                return false;
-            }
-            if (!((link::TcpForwardService *)pService)
-                     ->init(mEpollfd, forward, mpCfg->getLinkSharedBuffer()))
-            {
-                spdlog::error("[NetMgr::initEnv] init instance of Tcp Forward Service fail");
-                delete pService;
-                return false;
-            }
-        }
-        else
-        {
-            pService = new link::UdpForwardService();
-            if (pService == nullptr)
-            {
-                spdlog::error("[NetMgr::initEnv] create instance of Udp Forward Service fail");
-                return false;
-            }
-            if (!((link::UdpForwardService *)pService)
-                     ->init(mEpollfd, forward, mpCfg->getLinkUdpBuffer()))
-            {
-                spdlog::error("[NetMgr::initEnv] init instance of Udp Forward Service fail");
-                delete pService;
-                return false;
-            }
-        }
-
-        mServices.push_back(pService);
-        spdlog::info("[NetMgr::initEnv] forward[{}] -- soc[{}] -- {}",
-                     index++,
-                     pService->getServiceEndpoint().soc,
-                     forward->toStr());
+    // create service
+    if (!link::Service::create(mEpollfd, mpDynamicBuffer, *mpCfg, mServiceList))
+    {
+        spdlog::error("[NetMgr::initEnv] create service fail");
+        return false;
     }
 
     return true;
@@ -261,14 +241,14 @@ bool NetMgr::initEnv()
 
 void NetMgr::closeEnv()
 {
-    if (!mServices.empty())
+    // close service
+    link::Service::release(mServiceList);
+
+    // release buffer
+    if (mpDynamicBuffer)
     {
-        for (auto ps : mServices)
-        {
-            ps->close();
-            delete ps;
-        }
-        mServices.clear();
+        buffer::DynamicBuffer::releaseDynamicBuffer(mpDynamicBuffer);
+        mpDynamicBuffer = nullptr;
     }
 
     // close epoll file descriptor

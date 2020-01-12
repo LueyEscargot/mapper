@@ -18,7 +18,6 @@ static const char *CONFIG_SCHEMA = R"(
           ]
         },
         "level": {
-          "type": "string",
           "enum": [
             "trace",
             "debug",
@@ -42,10 +41,10 @@ static const char *CONFIG_SCHEMA = R"(
     "services": {
       "type": "object",
       "properties": {
-        "tcpForward": {
+        "forward": {
           "type": "object"
         },
-        "udpForward": {
+        "setting": {
           "type": "object"
         }
       }

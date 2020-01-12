@@ -35,8 +35,8 @@ public:
         BufBlk_t *next;
         sockaddr_in sockaddr;
         socklen_t sockaddr_len;
-        uint32_t size;
-        uint32_t sent;
+        uint64_t size;
+        uint64_t sent;
         char buffer[0];
 
         inline void init()
@@ -53,26 +53,26 @@ public:
         }
     };
 
-    static const uint32_t BUFBLK_HEAD_SIZE = sizeof(BufBlk_t);
+    static const uint64_t BUFBLK_HEAD_SIZE = sizeof(BufBlk_t);
 
 protected:
     DynamicBuffer();
     virtual ~DynamicBuffer();
 
 public:
-    static DynamicBuffer *allocDynamicBuffer(uint32_t capacity);
+    static DynamicBuffer *allocDynamicBuffer(uint64_t capacity);
     static void releaseDynamicBuffer(DynamicBuffer *pDynamicBuffer);
     static std::string dumpBlk(BufBlk_t *p);
 
     char *reserve(int size);
-    BufBlk_t *cut(uint32_t size);
+    BufBlk_t *cut(uint64_t size);
     void release(BufBlk_t *pBuffer);
 
     bool healthCheck();
 
 protected:
     static void init(BufBlk_t *pBlk,
-                     uint32_t size,
+                     uint64_t size,
                      BufBlk_t *innerlink_prev,
                      BufBlk_t *innerlink_next);
 

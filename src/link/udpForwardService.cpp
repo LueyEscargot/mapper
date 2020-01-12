@@ -2,14 +2,19 @@
 #include <time.h>
 #include <sys/epoll.h>
 #include <sstream>
+#include <rapidjson/document.h>
 #include <spdlog/spdlog.h>
 #include "endpoint.h"
 #include "tunnel.h"
 #include "utils.h"
+#include "../utils/jsonUtils.h"
+
+#include "schema.def"
 
 using namespace std;
+using namespace rapidjson;
 using namespace mapper::buffer;
-using namespace mapper::config;
+using namespace mapper::utils;
 
 namespace mapper
 {
@@ -19,9 +24,7 @@ namespace link
 UdpForwardService::UdpForwardService()
     : Service("UdpForwardService"),
       mForwardCmd(nullptr),
-      mpDynamicBuffer(nullptr),
-      mLastActionTime(0),
-      mTimeoutInterval(TIMEOUT_INTERVAL)
+      mLastActionTime(0)
 {
     mTimer.init(nullptr);
 }
@@ -32,10 +35,13 @@ UdpForwardService::~UdpForwardService()
 }
 
 bool UdpForwardService::init(int epollfd,
-                             std::shared_ptr<config::Forward> forward,
-                             uint32_t sharedBufferCapacity)
+                             DynamicBuffer *pBuffer,
+                             shared_ptr<Forward> forward,
+                             Setting_t &setting)
 {
-    assert(Service::init(epollfd));
+    assert(Service::init(epollfd, pBuffer));
+
+    mSetting = setting;
 
     Protocol_t protocol = Utils::parseProtocol(forward->protocol);
     assert(protocol == Protocol_t::UDP);
@@ -48,17 +54,17 @@ bool UdpForwardService::init(int epollfd,
     mServiceEndpoint.service = this;
 
     // get local address of specified interface
-    if (!Utils::getIntfAddr(forward->interface.c_str(), mServiceEndpoint.ipTuple.local))
+    if (!Utils::getIntfAddr(forward->interface.c_str(), mServiceEndpoint.conn.localAddr))
     {
         spdlog::error("[UdpForwardService::init] get address of interface[{}] fail.", forward->interface);
         return false;
     }
-    mServiceEndpoint.ipTuple.local.sin_port = htons(atoi(forward->service.c_str()));
+    mServiceEndpoint.conn.localAddr.sin_port = htons(atoi(forward->service.c_str()));
 
     // create server socket
     mServiceEndpoint.soc = Utils::createServiceSoc(Protocol_t::UDP,
-                                                   &mServiceEndpoint.ipTuple.local,
-                                                   sizeof(mServiceEndpoint.ipTuple.local));
+                                                   &mServiceEndpoint.conn.localAddr,
+                                                   sizeof(mServiceEndpoint.conn.localAddr));
     if (mServiceEndpoint.soc < 0)
     {
         spdlog::error("[UdpForwardService::init] create server socket fail.");
@@ -84,16 +90,6 @@ bool UdpForwardService::init(int epollfd,
         return false;
     }
 
-    // alloc dynamic buffer
-    mpDynamicBuffer =
-        buffer::DynamicBuffer::allocDynamicBuffer(sharedBufferCapacity);
-    if (mpDynamicBuffer == nullptr)
-    {
-        spdlog::error("[UdpForwardService::init] alloc dynamic buffer fail.");
-        close();
-        return false;
-    }
-
     return true;
 }
 
@@ -104,14 +100,6 @@ void UdpForwardService::close()
     {
         ::close(mServiceEndpoint.soc);
         mServiceEndpoint.soc = 0;
-    }
-
-    // release dynamic buffer
-    if (mpDynamicBuffer)
-    {
-        spdlog::debug("[UdpForwardService::close] release dynamic buffer.");
-        buffer::DynamicBuffer::releaseDynamicBuffer(mpDynamicBuffer);
-        mpDynamicBuffer = nullptr;
     }
 }
 
@@ -141,7 +129,7 @@ void UdpForwardService::postProcess(time_t curTime)
 
 void UdpForwardService::scanTimeout(time_t curTime)
 {
-    time_t timeoutTime = curTime - mTimeoutInterval;
+    time_t timeoutTime = curTime - mSetting.sessionTimeout;
     if (mTimer.next == nullptr ||
         mTimer.next->lastActiveTime > timeoutTime)
     {
@@ -314,8 +302,8 @@ UdpTunnel_t *UdpForwardService::getTunnel(time_t curTime, sockaddr_in *southRemo
 
         // save ip-tuple info
         socklen_t socLen;
-        getsockname(north->soc, (sockaddr *)&north->ipTuple.local, &socLen);
-        north->ipTuple.remote = *(sockaddr_in *)&addrs->addr;
+        getsockname(north->soc, (sockaddr *)&north->conn.localAddr, &socLen);
+        north->conn.remoteAddr = *(sockaddr_in *)&addrs->addr;
     }
 
     // create tunnel
@@ -357,7 +345,7 @@ void UdpForwardService::southRead(time_t curTime, Endpoint_t *pe)
     while (true)
     {
         // 按最大 UDP 数据包预申请内存
-        void *pBuf = mpDynamicBuffer->reserve(MAX_UDP_BUFFER);
+        void *pBuf = mpBuffer->reserve(PREALLOC_RECV_BUFFER_SIZE);
         if (pBuf == nullptr)
         {
             // out of memory
@@ -367,14 +355,14 @@ void UdpForwardService::southRead(time_t curTime, Endpoint_t *pe)
 
         sockaddr_in addr;
         socklen_t addrLen = sizeof(sockaddr_in);
-        int nRet = recvfrom(mServiceEndpoint.soc, pBuf, MAX_UDP_BUFFER, 0, (sockaddr *)&addr, &addrLen);
+        int nRet = recvfrom(mServiceEndpoint.soc, pBuf, PREALLOC_RECV_BUFFER_SIZE, 0, (sockaddr *)&addr, &addrLen);
         if (nRet > 0)
         {
             // 查找/分配对应 UDP tunnel
             auto tunnel = getTunnel(curTime, &addr);
             if (tunnel && tunnel->north->valid)
             {
-                Endpoint::appendToSendList(tunnel->north, mpDynamicBuffer->cut(nRet));
+                Endpoint::appendToSendList(tunnel->north, mpBuffer->cut(nRet));
                 // 尝试发送
                 northWrite(curTime, tunnel->north);
             }
@@ -430,7 +418,7 @@ void UdpForwardService::southWrite(time_t curTime, Endpoint_t *pe)
             break;
         }
 
-        mpDynamicBuffer->release(p);
+        mpBuffer->release(p);
         p = p->next;
     }
 
@@ -451,7 +439,7 @@ void UdpForwardService::northRead(time_t curTime, Endpoint_t *pe)
     while (true)
     {
         // 按最大 UDP 数据包预申请内存
-        void *pBuf = mpDynamicBuffer->reserve(MAX_UDP_BUFFER);
+        void *pBuf = mpBuffer->reserve(PREALLOC_RECV_BUFFER_SIZE);
         if (pBuf == nullptr)
         {
             // out of memory
@@ -461,11 +449,11 @@ void UdpForwardService::northRead(time_t curTime, Endpoint_t *pe)
 
         sockaddr_in addr;
         socklen_t addrLen = sizeof(sockaddr_in);
-        int nRet = recvfrom(pe->soc, pBuf, MAX_UDP_BUFFER, 0, (sockaddr *)&addr, &addrLen);
+        int nRet = recvfrom(pe->soc, pBuf, PREALLOC_RECV_BUFFER_SIZE, 0, (sockaddr *)&addr, &addrLen);
         if (nRet > 0)
         {
             // 判断数据包来源是否合法
-            if (Utils::compareAddr(&addr, &pe->ipTuple.remote))
+            if (Utils::compareAddr(&addr, &pe->conn.remoteAddr))
             {
                 // drop unknown incoming packet
                 spdlog::trace("[UdpForwardService::northRead] drop unknown incoming packet");
@@ -480,7 +468,7 @@ void UdpForwardService::northRead(time_t curTime, Endpoint_t *pe)
                 continue;
             }
 
-            auto pBlk = mpDynamicBuffer->cut(nRet);
+            auto pBlk = mpBuffer->cut(nRet);
             pBlk->sockaddr = it->second;
 
             Endpoint::appendToSendList(&mServiceEndpoint, pBlk);
@@ -532,14 +520,14 @@ void UdpForwardService::northWrite(time_t curTime, Endpoint_t *pe)
             // clean send buffer
             while (p)
             {
-                mpDynamicBuffer->release(p);
+                mpBuffer->release(p);
                 p = p->next;
             }
 
             break;
         }
 
-        mpDynamicBuffer->release(p);
+        mpBuffer->release(p);
         p = p->next;
     }
 

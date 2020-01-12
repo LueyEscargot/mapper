@@ -2,7 +2,6 @@
 #include <assert.h>
 #include <ifaddrs.h>
 #include <string.h>
-#include <arpa/inet.h>
 #include <sstream>
 #include <spdlog/spdlog.h>
 
@@ -54,20 +53,10 @@ bool Utils::getIntfAddr(const char *intf, sockaddr_in &sa)
             {
                 continue;
             }
-
-            memcpy(&sa, ifa->ifa_addr, sizeof(sockaddr_in));
-
-            char ip[INET_ADDRSTRLEN];
-            if (inet_ntop(AF_INET, &sa, ip, INET_ADDRSTRLEN))
-            {
-                spdlog::debug("[Utils::getIntfAddr] IPv4 address of interface[{}]: {}", intf, ip);
-                return true;
-            }
             else
             {
-
-                spdlog::error("[Utils::getIntfAddr] get IPv4 address of interface[{}] fail", intf);
-                return false;
+                memcpy(&sa, ifa->ifa_addr, sizeof(sockaddr_in));
+                return true;
             }
         }
 
@@ -336,30 +325,30 @@ std::string Utils::dumpSockAddr(const sockaddr_in &addr)
     return dumpSockAddr(&addr);
 }
 
-std::string Utils::dumpIpTuple(const IpTuple_t *tuple, bool reverse)
+std::string Utils::dumpConnection(const Connection_t *conn, bool reverse)
 {
-    assert(tuple);
+    assert(conn);
 
-    const sockaddr_in *first = &tuple->local;
-    const sockaddr_in *second = &tuple->remote;
+    const sockaddr_in *first = &conn->localAddr;
+    const sockaddr_in *second = &conn->remoteAddr;
     if (reverse)
     {
         first = second;
-        second = &tuple->local;
+        second = &conn->localAddr;
     }
 
     stringstream ss;
 
     ss << dumpSockAddr(first)
-       << (tuple->protocol == Protocol_t::TCP ? "-tcp-" : "-udp-")
+       << (conn->protocol == Protocol_t::TCP ? "-tcp-" : "-udp-")
        << dumpSockAddr(second);
 
     return ss.str();
 }
 
-std::string Utils::dumpIpTuple(const IpTuple_t &tuple, bool reverse)
+std::string Utils::dumpConnection(const Connection_t &conn, bool reverse)
 {
-    return dumpIpTuple(&tuple, reverse);
+    return dumpConnection(&conn, reverse);
 }
 
 std::string Utils::dumpEndpoint(const Endpoint_t *endpoint, bool reverse)
@@ -369,7 +358,7 @@ std::string Utils::dumpEndpoint(const Endpoint_t *endpoint, bool reverse)
     if (reverse)
     {
         ss << "("
-           << dumpIpTuple(endpoint->ipTuple, reverse)
+           << dumpConnection(endpoint->conn, reverse)
            << ",soc["
            << endpoint->soc
            << "])";
@@ -379,7 +368,7 @@ std::string Utils::dumpEndpoint(const Endpoint_t *endpoint, bool reverse)
         ss << "(soc["
            << endpoint->soc
            << "],"
-           << dumpIpTuple(endpoint->ipTuple, reverse)
+           << dumpConnection(endpoint->conn, reverse)
            << ")";
     }
 
@@ -388,7 +377,7 @@ std::string Utils::dumpEndpoint(const Endpoint_t *endpoint, bool reverse)
 
 std::string Utils::dumpEndpoint(const Endpoint_t &endpoint, bool reverse)
 {
-    return dumpIpTuple(endpoint.ipTuple, reverse);
+    return dumpConnection(endpoint.conn, reverse);
 }
 
 std::string Utils::dumpServiceEndpoint(const Endpoint_t *serviceEndpoint, const sockaddr_in *clientAddr)
@@ -397,8 +386,8 @@ std::string Utils::dumpServiceEndpoint(const Endpoint_t *serviceEndpoint, const 
 
     ss << "("
        << dumpSockAddr(clientAddr)
-       << (serviceEndpoint->ipTuple.protocol == Protocol_t::TCP ? "-tcp-" : "-udp-")
-       << dumpSockAddr(serviceEndpoint->ipTuple.local)
+       << (serviceEndpoint->conn.protocol == Protocol_t::TCP ? "-tcp-" : "-udp-")
+       << dumpSockAddr(serviceEndpoint->conn.localAddr)
        << ",soc["
        << serviceEndpoint->soc
        << "])";
@@ -416,9 +405,9 @@ std::string Utils::dumpTunnel(const UdpTunnel_t *pt, bool reverse)
     stringstream ss;
 
     ss << "("
-       << dumpEndpoint(pt->south , true)
+       << dumpEndpoint(pt->south, true)
        << "==>"
-       << dumpEndpoint(pt->north , false)
+       << dumpEndpoint(pt->north, false)
        << ")";
 
     return ss.str();

@@ -76,6 +76,7 @@ add_subdirectory(buffer)
 add_subdirectory(config)
 add_subdirectory(link)
 add_subdirectory(timer)
+add_subdirectory(utils)
 
 #------------------------------------------------------------------------------
 # copy config file
@@ -98,6 +99,7 @@ target_link_libraries(mapper PUBLIC
     Lib_Config
     Lib_Link
     Lib_Timer
+    Lib_Utils
     )
 target_include_directories(mapper PUBLIC
     "${PROJECT_BINARY_DIR}"

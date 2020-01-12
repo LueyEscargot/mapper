@@ -19,34 +19,26 @@
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
-#include "config/config.h"
-#include "config/jsonConfig.h"
+#include "schema.def"
+#include "utils/jsonUtils.h"
 #include "mapper.h"
 #include "project.h"
 
-static const char *CONFIG_FILE = "config.ini";
+static const char *CONFIG_FILE = "config.json";
 static const char *LOG_FILE = "mapper.log";
 static const auto LOG_LEVEL = spdlog::level::debug;
 
 void showSantax(char *argv[]);
 bool hasArg(char **begin, char **end, const std::string &arg);
 const char *getArg(char **begin, char **end, const std::string &arg);
+bool loadCfg(rapidjson::Document &doc, int argc, char *argv[]);
 void onSigHandler(int s);
+void setSigHandler();
 
 mapper::Mapper *gpMapper = nullptr;
 
 int main(int argc, char *argv[])
 {
-    // disable signal: SIGPIPE
-    signal(SIGINT, SIG_IGN);
-    // handle signal: SIGINT
-    struct sigaction sigIntHandler;
-    sigIntHandler.sa_handler = onSigHandler;
-    sigemptyset(&sigIntHandler.sa_mask);
-    sigIntHandler.sa_flags = 0;
-    sigaction(SIGINT, &sigIntHandler, NULL);
-    sigaction(SIGPIPE, &sigIntHandler, NULL);
-
     // show santax
     if (hasArg(argv, argv + argc, "-h"))
     {
@@ -54,38 +46,40 @@ int main(int argc, char *argv[])
         return 0;
     }
 
-    // parse config
-    std::stringstream ss;
-    mapper::config::JsonConfig jsonCfg;
-    if (!jsonCfg.parse(argc, argv, ss))
+    // set signal handler
+    setSigHandler();
+
+    // load config
+    rapidjson::Document cfg;
+    if (!loadCfg(cfg, argc, argv))
     {
-        fprintf(stderr, "init config object fail:\n%s\n", ss.str().c_str());
+        fprintf(stderr, "load config fail\n");
         std::exit(EXIT_FAILURE);
     }
 
     // init log
-    auto sink = jsonCfg.get("/log/sink");
-    if (sink.compare("file") == 0)
+    auto sinkStr = mapper::utils::JsonUtils::get(cfg, "/log/sink");
+    if (sinkStr.compare("file") == 0)
     {
-        auto file = jsonCfg.get("/log/file");
-        auto sinkPtr = std::make_shared<spdlog::sinks::basic_file_sink_mt>(file, true);
+        auto file = mapper::utils::JsonUtils::get(cfg, "/log/file");
+        auto sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(file, true);
         spdlog::set_default_logger(
             std::make_shared<spdlog::logger>("mapper",
-                                             spdlog::sinks_init_list({sinkPtr})));
+                                             spdlog::sinks_init_list({sink})));
     }
     else
     {
-        auto sinkPtr = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
+        auto sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
         spdlog::set_default_logger(
             std::make_shared<spdlog::logger>("mapper",
-                                             spdlog::sinks_init_list({sinkPtr})));
+                                             spdlog::sinks_init_list({sink})));
     }
-    auto level = spdlog::level::from_str(jsonCfg.get("/log/level"));
+    auto level = spdlog::level::from_str(mapper::utils::JsonUtils::get(cfg, "/log/level"));
     spdlog::set_level(level);
     spdlog::flush_on(level);
 
     // init config object
-    mapper::config::Config cfg(argc, argv);
+    // mapper::config::Config cfg(argc, argv);
 
     spdlog::trace("{}", projectDesc());
     spdlog::trace("Available Processors: {}", get_nprocs());
@@ -145,5 +139,40 @@ void onSigHandler(int s)
         break;
     default:
         spdlog::warn("[main] receive signal[{}]. drop it", s);
+    }
+}
+
+void setSigHandler()
+{
+    // disable signal: SIGPIPE
+    signal(SIGINT, SIG_IGN);
+    // handle signal: SIGINT
+    struct sigaction sigIntHandler;
+    sigIntHandler.sa_handler = onSigHandler;
+    sigemptyset(&sigIntHandler.sa_mask);
+    sigIntHandler.sa_flags = 0;
+    sigaction(SIGINT, &sigIntHandler, NULL);
+    sigaction(SIGPIPE, &sigIntHandler, NULL);
+}
+
+bool loadCfg(rapidjson::Document &doc, int argc, char *argv[])
+{
+    std::string fileName = hasArg(argv, argv + argc, "-c")
+                               ? getArg(argv, argv + argc, "-c")
+                               : CONFIG_FILE;
+
+    // parse config
+    std::stringstream errmsg;
+    if (mapper::utils::JsonUtils::parse(doc,
+                                        fileName,
+                                        mapper::CONFIG_SCHEMA,
+                                        &errmsg))
+    {
+        return true;
+    }
+    else
+    {
+        fprintf(stderr, "load config fail:\n%s\n", errmsg.str().c_str());
+        return false;
     }
 }

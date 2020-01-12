@@ -13,8 +13,8 @@
 #define __MAPPER_MAPPER_H__
 
 #include <vector>
+#include <rapidjson/document.h>
 #include "netMgr.h"
-#include "config/config.h"
 
 namespace mapper
 {
@@ -25,7 +25,7 @@ public:
     Mapper();
     ~Mapper();
 
-    bool run(config::Config &cfg);
+    bool run(rapidjson::Document &cfg);
     void stop();
 
 protected:

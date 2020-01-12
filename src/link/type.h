@@ -187,32 +187,32 @@ struct Tunnel_t
     }
 };
 
-struct IpTuple_t
+struct Connection_t
 {
     Protocol_t protocol;
-    sockaddr_in local;
-    socklen_t localLen;
-    sockaddr_in remote;
-    socklen_t remoteLen;
+    sockaddr_in localAddr;
+    socklen_t localAddrLen;
+    sockaddr_in remoteAddr;
+    socklen_t remoteAddrLen;
 
-    inline IpTuple_t() { init(Protocol_t::UNKNOWN_PROTOCOL); }
-    inline IpTuple_t(const IpTuple_t &src)
+    inline Connection_t() { init(Protocol_t::UNKNOWN_PROTOCOL); }
+    inline Connection_t(const Connection_t &src)
     {
         protocol = src.protocol;
-        local = src.local;
-        remote = src.remote;
+        localAddr = src.localAddr;
+        remoteAddr = src.remoteAddr;
     }
     inline void init(Protocol_t protocol)
     {
         protocol = protocol;
-        local = {0};
-        remote = {0};
+        localAddr = {0};
+        remoteAddr = {0};
     }
-    inline IpTuple_t &operator=(const IpTuple_t &src)
+    inline Connection_t &operator=(const Connection_t &src)
     {
         protocol = src.protocol;
-        local = src.local;
-        remote = src.remote;
+        localAddr = src.localAddr;
+        remoteAddr = src.remoteAddr;
         return *this;
     }
 };
@@ -222,9 +222,14 @@ struct Endpoint_t : public EndpointBase_t
     Direction_t direction;
     Type_t type;
     bool valid;
+    bool stopRecv;
 
     int soc;
-    IpTuple_t ipTuple;
+    Connection_t conn;
+
+    Endpoint_t *waitBufferPrev;
+    Endpoint_t *waitBufferNext;
+    time_t waitBufferTime;
 
     Endpoint_t *prev;
     Endpoint_t *next;
@@ -233,6 +238,7 @@ struct Endpoint_t : public EndpointBase_t
     void *container;
     void *sendListHead;
     void *sendListTail;
+    int64_t sendListTotalSize;
     void *tag;
 
     Endpoint_t(){};
@@ -248,9 +254,14 @@ struct Endpoint_t : public EndpointBase_t
         direction = _direction;
         type = _type;
         valid = true;
+        stopRecv = false;
 
         soc = 0;
-        ipTuple.init(protocol);
+        conn.init(protocol);
+
+        waitBufferPrev = nullptr;
+        waitBufferNext = nullptr;
+        waitBufferTime = 0;
 
         prev = nullptr;
         next = nullptr;
@@ -259,6 +270,7 @@ struct Endpoint_t : public EndpointBase_t
         container = nullptr;
         sendListHead = nullptr;
         sendListTail = nullptr;
+        sendListTotalSize = 0;
         tag = nullptr;
     }
 };
@@ -290,8 +302,6 @@ struct UdpTunnel_t
     void *service;
 
     TunnelState_t stat;
-    bool stopNorthRecv;
-    bool stopSouthRecv;
 
     inline void init()
     {
@@ -302,8 +312,6 @@ struct UdpTunnel_t
         service = nullptr;
 
         stat = TunnelState_t::ALLOCATED;
-        stopNorthRecv = false;
-        stopSouthRecv = false;
     }
 };
 

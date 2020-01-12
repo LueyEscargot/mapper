@@ -11,12 +11,15 @@
 #ifndef __MAPPER_LINK_TCPFORWARDSERVICE_H__
 #define __MAPPER_LINK_TCPFORWARDSERVICE_H__
 
+#include <list>
+#include <memory>
 #include <set>
+#include <string>
+#include "forward.h"
 #include "service.h"
 #include "targetMgr.h"
 #include "utils.h"
 #include "../buffer/dynamicBuffer.h"
-#include "../config/forward.h"
 
 namespace mapper
 {
@@ -26,10 +29,7 @@ namespace link
 class TcpForwardService : public Service
 {
 protected:
-    static const uint32_t DEFAULT_RECV_BUFFER = 1 << 20;
-    static const uint32_t TIMEOUT_INTERVAL_CONN = 15;
-    static const uint32_t TIMEOUT_INTERVAL_ESTB = 180;
-    static const uint32_t TIMEOUT_INTERVAL_BROK = 15;
+    static const uint32_t PREALLOC_RECV_BUFFER_SIZE = 1 << 13;
 
     TcpForwardService(const TcpForwardService &) : Service(""){};
     TcpForwardService &operator=(const TcpForwardService &) { return *this; }
@@ -39,11 +39,10 @@ public:
     virtual ~TcpForwardService();
 
     bool init(int epollfd,
-              std::shared_ptr<config::Forward> forward,
-              uint32_t sharedBufferCapacity);
+              buffer::DynamicBuffer *pBuffer,
+              std::shared_ptr<Forward> forward,
+              Setting_t &setting);
     void setTimeout(TunnelState_t stat, const uint32_t interval);
-
-    inline const Endpoint_t &getServiceEndpoint() const { return mServiceEndpoint; }
 
     void close() override;
     void onSoc(time_t curTime, uint32_t events, Endpoint_t *pe) override;
@@ -58,11 +57,12 @@ protected:
 
     bool epollAddEndpoint(Endpoint_t *pe, bool read, bool write, bool edgeTriger);
     bool epollResetEndpointMode(Endpoint_t *pe, bool read, bool write, bool edgeTriger);
+    bool epollResetEndpointMode(UdpTunnel_t *pt, bool read, bool write, bool edgeTriger);
     void epollRemoveEndpoint(Endpoint_t *pe);
     void epollRemoveTunnel(UdpTunnel_t *pt);
 
-    bool onRead(Endpoint_t *pe);
-    bool onWrite(Endpoint_t *pe);
+    void onRead(time_t curTime, int events, Endpoint_t *pe);
+    void onWrite(time_t curTime, Endpoint_t *pe);
     void appendToSendList(Endpoint_t *pe, buffer::DynamicBuffer::BufBlk_t *pBlk);
 
     inline void addToCloseList(UdpTunnel_t *pt) { mPostProcessList.insert(pt); };
@@ -72,18 +72,26 @@ protected:
     void addToTimer(time_t curTime, TunnelTimer_t *p);
     void refreshTimer(time_t curTime, TunnelTimer_t *p);
 
+    void addToBufferWaitingList(time_t curTime, Endpoint_t *pe);
+    void removeFromWaitingList(Endpoint_t *pe);
+    void processBufferWaitingList();
+    inline bool isInBufferWaitingList(Endpoint_t *pe)
+    {
+        return pe->waitBufferPrev ||
+               pe->waitBufferNext ||
+               mBufferWaitList.waitBufferNext == pe;
+    }
+
     static const bool StateMaine[TUNNEL_STATE_COUNT][TUNNEL_STATE_COUNT];
 
-    std::shared_ptr<config::Forward> mForwardCmd;
-    buffer::DynamicBuffer *mpDynamicBuffer;
     TargetManager mTargetManager;
 
-    uint32_t mTimeoutInterval_Conn;
-    uint32_t mTimeoutInterval_Estb;
-    uint32_t mTimeoutInterval_Brok;
+    Setting_t mSetting;
     TunnelTimer_t mTimer; // 其中 next 指向第一个元素； prev 指向最后一个元素
     std::set<UdpTunnel_t *> mTunnelList;
     std::set<UdpTunnel_t *> mPostProcessList;
+
+    Endpoint_t mBufferWaitList; // 其中 waitBufferNext 指向第一个元素； waitBufferPrev 指向最后一个元素
 };
 
 } // namespace link

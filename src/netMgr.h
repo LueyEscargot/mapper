@@ -19,9 +19,8 @@
 #include <memory>
 #include <set>
 #include <thread>
-#include <vector>
-#include "config/config.h"
-#include "config/forward.h"
+#include <rapidjson/document.h>
+#include "buffer/dynamicBuffer.h"
 #include "link/service.h"
 #include "link/type.h"
 
@@ -31,14 +30,18 @@ namespace mapper
 class NetMgr
 {
 public:
-    static const int INTERVAL_EPOLL_RETRY;
-    static const int INTERVAL_CONNECT_RETRY;
-    static const int EPOLL_MAX_EVENTS;
+    static const uint32_t INTERVAL_EPOLL_RETRY;
+    static const uint32_t INTERVAL_CONNECT_RETRY;
+    static const uint32_t EPOLL_MAX_EVENTS;
+
+    static const uint32_t DEFAULT_BUFFER_SIZE = 128;
+    static const uint32_t BUFFER_SIZE_UNIT = 1048576;
+    static const char *SETTING_BUFFER_SIZE_PATH;
 
     NetMgr();
     virtual ~NetMgr();
 
-    bool start(config::Config &cfg);
+    bool start(rapidjson::Document &cfg);
     void stop();
 
     void join();
@@ -48,13 +51,14 @@ protected:
     bool initEnv();
     void closeEnv();
 
-    std::vector<std::shared_ptr<mapper::config::Forward>> mForwards;
-    std::vector<link::Service *> mServices;
+    std::list<link::Service *> mServiceList;
 
-    config::Config *mpCfg;
+    rapidjson::Document *mpCfg;
     int mEpollfd;
     std::thread mMainRoutineThread;
     volatile bool mStopFlag;
+
+    buffer::DynamicBuffer *mpDynamicBuffer;
 };
 
 } // namespace mapper

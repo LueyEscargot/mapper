@@ -90,19 +90,28 @@ bool JsonUtils::validate(Value *value, string schema, stringstream *errmsg)
 string JsonUtils::get(Document &doc, string path, string defaultValue)
 {
     auto value = Pointer(path.c_str()).Get(doc);
-    return value->IsString() ? value->GetString() : defaultValue;
+    return value ? (value->IsString()
+                        ? value->GetString()
+                        : defaultValue)
+                 : defaultValue;
 }
 
 int32_t JsonUtils::getAsInt32(Document &doc, string path, int32_t defaultValue)
 {
     auto value = Pointer(path.c_str()).Get(doc);
-    return value->IsInt() && !value->IsUint() ? value->GetInt() : defaultValue;
+    return value ? (value->IsInt() && !value->IsUint()
+                        ? value->GetInt()
+                        : defaultValue)
+                 : defaultValue;
 }
 
 uint32_t JsonUtils::getAsUint32(Document &doc, string path, uint32_t defaultValue)
 {
     auto value = Pointer(path.c_str()).Get(doc);
-    return value->IsInt() ? value->GetInt() : defaultValue;
+    return value ? (value->IsInt()
+                        ? value->GetInt()
+                        : defaultValue)
+                 : defaultValue;
 }
 
 Value *JsonUtils::getObj(Value *value, string path)
