@@ -133,10 +133,6 @@ void NetMgr::threadFunc()
                 }
                 else
                 {
-                    if (nRet)
-                    {
-                        printf("---start---\n");
-                    }
                     for (int i = 0; i < nRet; ++i)
                     {
                         link::Endpoint_t *pe = (link::Endpoint_t *)events[i].data.ptr;
@@ -151,11 +147,9 @@ void NetMgr::threadFunc()
                     {
                         for (auto s : activeService)
                         {
-                            printf("---service[%s]: %p ---\n", s->getName().c_str(), s);
                             s->postProcess(curTime);
                         }
                         activeService.clear();
-                        printf("---end---\n");
                     }
                 }
 

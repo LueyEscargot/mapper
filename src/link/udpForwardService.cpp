@@ -399,7 +399,7 @@ void UdpForwardService::southWrite(time_t curTime, Endpoint_t *pe)
     {
         int nRet = sendto(mServiceEndpoint.soc,
                           p->buffer,
-                          p->size,
+                          p->dataSize,
                           0,
                           (sockaddr *)&p->sockaddr,
                           sizeof(sockaddr_in));
@@ -502,7 +502,7 @@ void UdpForwardService::northWrite(time_t curTime, Endpoint_t *pe)
     auto p = (buffer::DynamicBuffer::BufBlk_t *)pe->sendListHead;
     while (p)
     {
-        int nRet = send(pe->soc, p->buffer, p->size, 0);
+        int nRet = send(pe->soc, p->buffer, p->dataSize, 0);
         if (nRet < 0)
         {
             if (errno == EAGAIN)

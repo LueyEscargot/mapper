@@ -23,8 +23,6 @@ BaseList::~BaseList()
 
 void BaseList::push_front(Entry_t *p)
 {
-    printf(">>> push front: %p\n", p);
-
     assert(!p->inList && !p->prev && !p->next);
 
     if (!mpHead)
@@ -48,8 +46,6 @@ void BaseList::push_front(Entry_t *p)
 
 void BaseList::push_back(Entry_t *p)
 {
-    printf(">>> append: %p\n", p);
-
     assert(!p->inList &&
            !p->prev &&
            !p->next);
@@ -75,8 +71,6 @@ void BaseList::push_back(Entry_t *p)
 
 void BaseList::erase(Entry_t *p)
 {
-    printf("<<< remove: %p\n", p);
-
     assert(p->inList);
 
     if (p->prev)

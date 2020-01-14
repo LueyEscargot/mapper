@@ -20,6 +20,7 @@
 #include "targetMgr.h"
 #include "utils.h"
 #include "../buffer/dynamicBuffer.h"
+#include "../utils/timerList.h"
 
 namespace mapper
 {
@@ -29,8 +30,6 @@ namespace link
 class TcpForwardService : public Service
 {
 protected:
-    static const uint32_t PREALLOC_RECV_BUFFER_SIZE = 1 << 13;
-
     TcpForwardService(const TcpForwardService &) : Service(""){};
     TcpForwardService &operator=(const TcpForwardService &) { return *this; }
 
@@ -72,15 +71,15 @@ protected:
     void addToTimer(time_t curTime, TunnelTimer_t *p);
     void refreshTimer(time_t curTime, TunnelTimer_t *p);
 
-    void addToBufferWaitingList(time_t curTime, Endpoint_t *pe);
-    void removeFromWaitingList(Endpoint_t *pe);
+    // void addToBufferWaitingList(time_t curTime, Endpoint_t *pe);
+    // void removeFromWaitingList(Endpoint_t *pe);
     void processBufferWaitingList();
-    inline bool isInBufferWaitingList(Endpoint_t *pe)
-    {
-        return pe->waitBufferPrev ||
-               pe->waitBufferNext ||
-               mBufferWaitList.waitBufferNext == pe;
-    }
+    // inline bool isInBufferWaitingList(Endpoint_t *pe)
+    // {
+    //     return pe->waitBufferPrev ||
+    //            pe->waitBufferNext ||
+    //            mBufferWaitList.waitBufferNext == pe;
+    // }
 
     static const bool StateMaine[TUNNEL_STATE_COUNT][TUNNEL_STATE_COUNT];
 
@@ -91,7 +90,7 @@ protected:
     std::set<UdpTunnel_t *> mTunnelList;
     std::set<UdpTunnel_t *> mPostProcessList;
 
-    Endpoint_t mBufferWaitList; // 其中 waitBufferNext 指向第一个元素； waitBufferPrev 指向最后一个元素
+    utils::TimerList mBufferWaitList;
 };
 
 } // namespace link

@@ -12,6 +12,7 @@
 using namespace std;
 using namespace rapidjson;
 using namespace mapper::buffer;
+using namespace mapper::utils;
 
 namespace mapper
 {
@@ -307,6 +308,7 @@ void TcpForwardService::postProcess(time_t curTime)
 
 void TcpForwardService::scanTimeout(time_t curTime)
 {
+    processBufferWaitingList();
     // time_t timeoutTime = curTime - mTimeoutInterval;
     // if (mTimer.next == nullptr ||
     //     mTimer.next->lastActiveTime > timeoutTime)
@@ -605,7 +607,7 @@ void TcpForwardService::epollRemoveTunnel(UdpTunnel_t *pt)
 
 void TcpForwardService::onRead(time_t curTime, int events, Endpoint_t *pe)
 {
-    if (isInBufferWaitingList(pe))
+    if (pe->bufWaitEntry.inList)
     {
         // 在等待缓存区队列中，此时不用处理
         return;
@@ -638,23 +640,21 @@ void TcpForwardService::onRead(time_t curTime, int events, Endpoint_t *pe)
     while (true)
     {
         // is buffer full
-        if (pe->peer->sendListTotalSize >= mSetting.bufferPerSessionLimit)
+        if (pe->peer->bufferFull)
         {
             // 缓冲区满
-            spdlog::trace("[TcpForwardService::onRead] soc[{}] buffer full",
-                          pe->soc);
             pe->stopRecv = true;
             break;
         }
 
-        // 按最大 TCP 数据包预申请内存
-        char *buf = mpBuffer->reserve(PREALLOC_RECV_BUFFER_SIZE);
-        if (buf == nullptr)
+        // 申请内存
+        auto pBufBlk = mpBuffer->getCurBufBlk();
+        if (pBufBlk == nullptr)
         {
             if (events & EPOLLRDHUP)
             {
                 // peer stop send
-                spdlog::debug("[TcpForwardService::onRead] soc[{}] peer stop send");
+                spdlog::debug("[TcpForwardService::onRead] close soc[{}] due to peer stop send");
                 pe->valid = false;
                 addToCloseList(pt);
             }
@@ -665,13 +665,12 @@ void TcpForwardService::onRead(time_t curTime, int events, Endpoint_t *pe)
                 pe->stopRecv = true;
 
                 // append into buffer waiting list
-                addToBufferWaitingList(curTime, pe);
-
-                break;
+                mBufferWaitList.push_back(curTime, &pe->bufWaitEntry);
             }
+            break;
         }
 
-        int nRet = recv(pe->soc, buf, PREALLOC_RECV_BUFFER_SIZE, 0);
+        int nRet = recv(pe->soc, pBufBlk->buffer, pBufBlk->getBufSize(), 0);
         if (nRet < 0)
         {
             if (errno == EAGAIN)
@@ -700,7 +699,6 @@ void TcpForwardService::onRead(time_t curTime, int events, Endpoint_t *pe)
         auto pBlk = mpBuffer->cut(nRet);
         // attach to peer's send list
         appendToSendList(pe->peer, pBlk);
-        pe->peer->sendListTotalSize += nRet;
     }
 
     return;
@@ -734,13 +732,12 @@ void TcpForwardService::onWrite(time_t curTime, Endpoint_t *pe)
     }
 
     bool pktReleased = false;
-    bool isCurrentBufFull = (pe->sendListTotalSize >= mSetting.bufferPerSessionLimit);
     auto pkt = (DynamicBuffer::BufBlk_t *)pe->sendListHead;
     while (pkt)
     {
         // send data
-        assert(pkt->size >= pkt->sent);
-        int nRet = send(pe->soc, pkt->buffer + pkt->sent, pkt->size - pkt->sent, 0);
+        assert(pkt->dataSize >= pkt->sent);
+        int nRet = send(pe->soc, pkt->buffer + pkt->sent, pkt->dataSize - pkt->sent, 0);
         if (nRet < 0)
         {
             if (errno == EAGAIN)
@@ -756,17 +753,20 @@ void TcpForwardService::onWrite(time_t curTime, Endpoint_t *pe)
             }
             break;
         }
-
-        pkt->sent += nRet;
-        pe->sendListTotalSize -= nRet;
-        assert(pe->sendListTotalSize >= 0);
-
-        if (pkt->size == pkt->sent)
+        else
         {
-            // 数据包发送完毕，可回收
-            auto next = pkt->next;
-            mpBuffer->release(pkt);
-            pkt = next;
+            pkt->sent += nRet;
+            pe->totalBufSize -= nRet;
+            assert(pe->totalBufSize >= 0);
+
+            if (pkt->dataSize == pkt->sent)
+            {
+                // 数据包发送完毕，可回收
+                auto next = pkt->next;
+                mpBuffer->release(pkt);
+                pkt = next;
+            }
+
             pktReleased = true;
         }
     }
@@ -774,24 +774,26 @@ void TcpForwardService::onWrite(time_t curTime, Endpoint_t *pe)
     {
         // 发送完毕
         pe->sendListHead = pe->sendListTail = nullptr;
-        assert(pe->sendListTotalSize == 0);
+        assert(pe->totalBufSize == 0);
     }
     else
     {
         // 还有数据需要发送
         pe->sendListHead = pkt;
-        assert(pe->sendListTotalSize > 0);
+        assert(pe->totalBufSize > 0);
     }
 
     // 是否有缓冲区对象被释放，已有能力接收从南向来的数据
     if (pktReleased &&
-        pe->valid &&                              // 此节点有能力发送
         pt->stat == TunnelState_t::ESTABLISHED && // 只在链路建立的状态下接收来自对端的数据
-        pe->peer->stopRecv &&                     // 对端正处于停止接收状态
-        isCurrentBufFull)                         // 是因为缓冲区满而停止
+        pe->valid &&                              // 此节点有能力发送
+        pe->bufferFull &&                         // 此节点当前缓冲区满
+        pe->peer->valid &&                        // 对端有能力接收
+        pe->peer->stopRecv)                       // 对端正处于停止接收状态
     {
         if (epollResetEndpointMode(pe->peer, true, true, true))
         {
+            pe->bufferFull = false;
             pe->peer->stopRecv = false;
         }
         else
@@ -826,6 +828,15 @@ void TcpForwardService::appendToSendList(Endpoint_t *pe, buffer::DynamicBuffer::
     }
 
     pe->sendListTail = pBlk;
+    pe->totalBufSize += pBlk->dataSize;
+
+    // is buffer full
+    if (pe->totalBufSize >= mSetting.bufferPerSessionLimit)
+    {
+        // 缓冲区满
+        // spdlog::trace("[TcpForwardService::onRead] soc[{}] buffer full", pe->soc);
+        pe->bufferFull = true;
+    }
 }
 
 void TcpForwardService::closeTunnel(UdpTunnel_t *pt)
@@ -841,15 +852,19 @@ void TcpForwardService::closeTunnel(UdpTunnel_t *pt)
                           pt->south->soc, pt->north->soc);
 
             // remove from waiting buffer list
-            if (isInBufferWaitingList(pt->north))
+            if (pt->north->bufWaitEntry.inList)
             {
-                printf("remove soc[%d] from buffer waiting list\n", pt->north->soc);
-                removeFromWaitingList(pt->north);
+                spdlog::trace("[TcpForwardService::closeTunnel] remove north soc[{}]"
+                              " from buffer waiting list",
+                              pt->north->soc);
+                mBufferWaitList.erase(&pt->north->bufWaitEntry);
             }
-            if (isInBufferWaitingList(pt->south))
+            if (pt->south->bufWaitEntry.inList)
             {
-                printf("remove soc[%d] from buffer waiting list\n", pt->south->soc);
-                removeFromWaitingList(pt->south);
+                spdlog::trace("[TcpForwardService::closeTunnel] remove south soc[{}]"
+                              " from buffer waiting list",
+                              pt->south->soc);
+                mBufferWaitList.erase(&pt->south->bufWaitEntry);
             }
 
             // TODO: remove from timer container
@@ -934,189 +949,171 @@ void TcpForwardService::closeTunnel(UdpTunnel_t *pt)
 
 void TcpForwardService::addToTimer(time_t curTime, TunnelTimer_t *p)
 {
-    p->lastActiveTime = curTime;
-    p->next = nullptr;
+    // p->lastActiveTime = curTime;
+    // p->next = nullptr;
 
-    if (mTimer.next)
-    {
-        // 当前链表不为空
-        p->prev = mTimer.prev;
-        assert(mTimer.prev->next == nullptr);
-        mTimer.prev->next = p;
-        mTimer.prev = p;
-    }
-    else
-    {
-        // 当前链表为空
-        p->prev = nullptr;
-        mTimer.next = mTimer.prev = p;
-    }
+    // if (mTimer.next)
+    // {
+    //     // 当前链表不为空
+    //     p->prev = mTimer.prev;
+    //     assert(mTimer.prev->next == nullptr);
+    //     mTimer.prev->next = p;
+    //     mTimer.prev = p;
+    // }
+    // else
+    // {
+    //     // 当前链表为空
+    //     p->prev = nullptr;
+    //     mTimer.next = mTimer.prev = p;
+    // }
 }
 
 void TcpForwardService::refreshTimer(time_t curTime, TunnelTimer_t *p)
 {
-    if (p->lastActiveTime == curTime ||
-        mTimer.prev->lastActiveTime == p->lastActiveTime)
-    {
-        return;
-    }
+    // if (p->lastActiveTime == curTime ||
+    //     mTimer.prev->lastActiveTime == p->lastActiveTime)
+    // {
+    //     return;
+    // }
 
-    // remove from list
-    if (p->prev)
-    {
-        p->prev->next = p->next;
-    }
-    else
-    {
-        assert(mTimer.next == p);
-        mTimer.next = p->next;
-    }
-    assert(p->next);
-    p->next->prev = p->prev;
+    // // remove from list
+    // if (p->prev)
+    // {
+    //     p->prev->next = p->next;
+    // }
+    // else
+    // {
+    //     assert(mTimer.next == p);
+    //     mTimer.next = p->next;
+    // }
+    // assert(p->next);
+    // p->next->prev = p->prev;
 
-    // append to tail
-    addToTimer(curTime, p);
+    // // append to tail
+    // addToTimer(curTime, p);
 }
 
-void TcpForwardService::addToBufferWaitingList(time_t curTime, Endpoint_t *pe)
-{
-    printf("[TcpForwardService::addToBufferWaitingList] add endpoint: %p\n", pe);
+// void TcpForwardService::addToBufferWaitingList(time_t curTime, Endpoint_t *pe)
+// {
+//     printf("[TcpForwardService::addToBufferWaitingList] add endpoint: %p\n", pe);
 
-    if (isInBufferWaitingList(pe))
-    {
-        // 已在队列中
-        return;
-    }
+//     if (isInBufferWaitingList(pe))
+//     {
+//         // 已在队列中
+//         return;
+//     }
 
-    pe->waitBufferTime = curTime;
-    if (mBufferWaitList.waitBufferPrev == nullptr)
-    {
-        // 当前等待链表为空
-        assert(mBufferWaitList.waitBufferNext == nullptr);
-        mBufferWaitList.waitBufferNext = mBufferWaitList.waitBufferPrev = pe;
-    }
-    else
-    {
-        // 将当前节点加入链表最后
-        assert(mBufferWaitList.waitBufferPrev->waitBufferNext == nullptr);
+//     pe->waitBufferTime = curTime;
+//     if (mBufferWaitList.waitBufferPrev == nullptr)
+//     {
+//         // 当前等待链表为空
+//         assert(mBufferWaitList.waitBufferNext == nullptr);
+//         mBufferWaitList.waitBufferNext = mBufferWaitList.waitBufferPrev = pe;
+//     }
+//     else
+//     {
+//         // 将当前节点加入链表最后
+//         assert(mBufferWaitList.waitBufferPrev->waitBufferNext == nullptr);
 
-        pe->waitBufferPrev = mBufferWaitList.waitBufferPrev;
-        mBufferWaitList.waitBufferPrev->waitBufferNext = pe;
-    }
-}
+//         pe->waitBufferPrev = mBufferWaitList.waitBufferPrev;
+//         mBufferWaitList.waitBufferPrev->waitBufferNext = pe;
+//         mBufferWaitList.waitBufferPrev = pe;
+//     }
+// }
 
-void TcpForwardService::removeFromWaitingList(Endpoint_t *pe)
-{
-    printf("[TcpForwardService::removeFromWaitingList] remove endpoint: %p\n", pe);
+// void TcpForwardService::removeFromWaitingList(Endpoint_t *pe)
+// {
+//     printf("[TcpForwardService::removeFromWaitingList] remove endpoint: %p\n", pe);
 
-    // 从链表中移除当前节点
-    if (pe->waitBufferPrev)
-    {
-        pe->waitBufferPrev->waitBufferNext = pe->waitBufferNext;
-        pe->waitBufferPrev = nullptr;
-    }
-    else
-    {
-        // 当前节点是链表中第一个节点，
-        // 调整 mBufferWaitList 中指向链表中第一个元素的指针
-        mBufferWaitList.waitBufferNext = pe->waitBufferNext;
-    }
+//     // 从链表中移除当前节点
+//     if (pe->waitBufferPrev)
+//     {
+//         pe->waitBufferPrev->waitBufferNext = pe->waitBufferNext;
+//         pe->waitBufferPrev = nullptr;
+//     }
+//     else
+//     {
+//         // 当前节点是链表中第一个节点，
+//         // 调整 mBufferWaitList 中指向链表中第一个元素的指针
+//         mBufferWaitList.waitBufferNext = pe->waitBufferNext;
+//     }
 
-    if (pe->waitBufferNext)
-    {
-        pe->waitBufferNext->waitBufferPrev = pe->waitBufferPrev;
-        pe->waitBufferNext = nullptr;
-    }
-    else
-    {
-        // 当前节点是链表中最后一个节点，
-        // 调整 mBufferWaitList 中指向链表中最后一个元素的指针
-        mBufferWaitList.waitBufferPrev = pe->waitBufferPrev;
-    }
-}
+//     if (pe->waitBufferNext)
+//     {
+//         pe->waitBufferNext->waitBufferPrev = pe->waitBufferPrev;
+//         pe->waitBufferNext = nullptr;
+//     }
+//     else
+//     {
+//         // 当前节点是链表中最后一个节点，
+//         // 调整 mBufferWaitList 中指向链表中最后一个元素的指针
+//         mBufferWaitList.waitBufferPrev = pe->waitBufferPrev;
+//     }
+// }
 
 void TcpForwardService::processBufferWaitingList()
 {
-    auto pe = mBufferWaitList.waitBufferNext;
-    while (pe)
+    if (mBufferWaitList.mpHead)
     {
-        printf("[TcpForwardService::processBufferWaitingList] process endpoint: %p\n", pe);
-
-        auto pBuf = mpBuffer->reserve(PREALLOC_RECV_BUFFER_SIZE);
-        if (pBuf == nullptr)
+        auto entry = mBufferWaitList.mpHead;
+        while (entry)
         {
-            // 已无空闲可用缓冲区
-            printf("[TcpForwardService::processBufferWaitingList] skip endpoint[%d]: %p\n",
-                   pe->soc, pe);
-
-            break;
-        }
-
-        int nRet = recv(pe->soc, pBuf, PREALLOC_RECV_BUFFER_SIZE, 0);
-        if (nRet < 0)
-        {
-            if (errno == EAGAIN)
+            auto pe = (Endpoint_t *)((TimerList::Entry_t *)entry)->container;
+            auto pBufBlk = mpBuffer->getCurBufBlk();
+            if (pBufBlk == nullptr)
             {
-                // 此端口在此次发送窗口已关闭
-                pe = pe->waitBufferNext;
+                // 已无空闲可用缓冲区
+                break;
+            }
+
+            int nRet = recv(pe->soc, pBufBlk->buffer, pBufBlk->getBufSize(), 0);
+            if (nRet < 0)
+            {
+                if (errno == EAGAIN) // 此端口的送窗口关闭 还是 有错误发生
+                {
+                    spdlog::debug("[TcpForwardService::processBufferWaitingList] soc[{}] EAGAIN", pe->soc);
+                }
+                else
+                {
+                    spdlog::debug("[TcpForwardService::processBufferWaitingList] soc[{}] recv fail: {} - [{}]",
+                                  pe->soc, errno, strerror(errno));
+                    pe->valid = false;
+                    addToCloseList(pe);
+                }
+            }
+            else if (nRet == 0)
+            {
+                // closed by peer
+                spdlog::debug("[TcpForwardService::processBufferWaitingList] soc[{}] closed by peer", pe->soc);
+                pe->valid = false;
+                addToCloseList(pe);
             }
             else
             {
-                spdlog::debug("[TcpForwardService::processBufferWaitingList] soc[{}] recv fail: {} - [{}]",
-                              pe->soc, errno, strerror(errno));
-                pe->valid = false;
-                addToCloseList(pe);
+                // cut buffer
+                auto pBlk = mpBuffer->cut(nRet);
+                // attach to peer's send list
+                appendToSendList(pe->peer, pBlk);
 
-                // 将当前节点从等待队列中移除
-                auto next = pe->waitBufferNext;
-                removeFromWaitingList(pe);
-                pe = next;
+                // 重置停止接收标志
+                pe->stopRecv = false;
 
-                printf("[TcpForwardService::processBufferWaitingList] remove 1 endpoint: %p\n", pe);
-            }
-        }
-        else if (nRet == 0)
-        {
-            // closed by peer
-            spdlog::debug("[TcpForwardService::processBufferWaitingList] soc[{}] closed by peer", pe->soc);
-            pe->valid = false;
-            addToCloseList(pe);
-
-            // 将当前节点从等待队列中移除
-            auto next = pe->waitBufferNext;
-            removeFromWaitingList(pe);
-            pe = next;
-
-            printf("[TcpForwardService::processBufferWaitingList] remove 2 endpoint: %p\n", pe);
-        }
-        else
-        {
-            // cut buffer
-            auto pBlk = mpBuffer->cut(nRet);
-            // attach to peer's send list
-            appendToSendList(pe->peer, pBlk);
-            pe->peer->sendListTotalSize += nRet;
-
-            // 重置停止接收标志
-            pe->stopRecv = false;
-
-            // 重置对应会话收发事件
-            if (!epollResetEndpointMode(pe, true, true, true) ||
-                !epollResetEndpointMode(pe->peer, true, true, true))
-            {
-                // closed by peer
-                spdlog::debug("[TcpForwardService::processBufferWaitingList] tunnel[{}:{}] reset fail",
-                              pe->soc, pe->peer->soc);
-                pe->valid = false;
-                addToCloseList(pe);
+                // 重置对应会话收发事件
+                if (!epollResetEndpointMode(pe, true, true, true) ||
+                    !epollResetEndpointMode(pe->peer, true, true, true))
+                {
+                    // closed by peer
+                    spdlog::debug("[TcpForwardService::processBufferWaitingList] soc[{}] reset fail",
+                                  pe->soc);
+                    pe->valid = false;
+                    addToCloseList(pe);
+                }
             }
 
-            printf("[TcpForwardService::processBufferWaitingList] remove 3 endpoint: %p\n", pe);
-
             // 将当前节点从等待队列中移除
-            auto next = pe->waitBufferNext;
-            removeFromWaitingList(pe);
-            pe = next;
+            auto next = entry->next;
+            mBufferWaitList.erase((TimerList::Entry_t *)entry);
+            entry = next;
         }
     }
 }

@@ -18,6 +18,7 @@
 #include "../buffer/buffer.h"
 #include "../buffer/dynamicBuffer.h"
 #include "../timer/container.h"
+#include "../utils/timerList.h"
 
 namespace mapper
 {
@@ -227,9 +228,7 @@ struct Endpoint_t : public EndpointBase_t
     int soc;
     Connection_t conn;
 
-    Endpoint_t *waitBufferPrev;
-    Endpoint_t *waitBufferNext;
-    time_t waitBufferTime;
+    utils::TimerList::Entry_t bufWaitEntry;
 
     Endpoint_t *prev;
     Endpoint_t *next;
@@ -238,8 +237,9 @@ struct Endpoint_t : public EndpointBase_t
     void *container;
     void *sendListHead;
     void *sendListTail;
-    int64_t sendListTotalSize;
-    void *tag;
+
+    int64_t totalBufSize;
+    bool bufferFull;
 
     Endpoint_t(){};
     inline void init(Protocol_t protocol,
@@ -259,9 +259,7 @@ struct Endpoint_t : public EndpointBase_t
         soc = 0;
         conn.init(protocol);
 
-        waitBufferPrev = nullptr;
-        waitBufferNext = nullptr;
-        waitBufferTime = 0;
+        bufWaitEntry.init(this);
 
         prev = nullptr;
         next = nullptr;
@@ -270,8 +268,9 @@ struct Endpoint_t : public EndpointBase_t
         container = nullptr;
         sendListHead = nullptr;
         sendListTail = nullptr;
-        sendListTotalSize = 0;
-        tag = nullptr;
+
+        totalBufSize = 0;
+        bufferFull = false;
     }
 };
 

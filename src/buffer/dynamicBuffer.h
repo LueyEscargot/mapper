@@ -26,16 +26,23 @@ namespace buffer
 class DynamicBuffer
 {
 public:
+    static const uint64_t BUFBLK_HEAD_SIZE;
+    static const uint32_t ALLOC_UNIT_SIZE;
+    static const uint32_t MIN_BLK_HEAD_BODY_LENGTH;
+    static const uint32_t MIN_BLK_BODY_LENGTH;
+
     struct BufBlk_t
     {
         BufBlk_t *__innerPrev;
         BufBlk_t *__innerNext;
+        uint64_t __innerBlockSize; // 整个数据体大小，包含头部及缓冲区大小
+
         bool inUse;
         BufBlk_t *prev;
         BufBlk_t *next;
         sockaddr_in sockaddr;
         socklen_t sockaddr_len;
-        uint64_t size;
+        uint64_t dataSize;
         uint64_t sent;
         char buffer[0];
 
@@ -43,17 +50,18 @@ public:
         {
             __innerPrev = nullptr;
             __innerNext = nullptr;
+            __innerBlockSize = 0;
+
             inUse = false;
             prev = nullptr;
             next = nullptr;
             sockaddr = {0};
             sockaddr_len = 0;
-            size = 0;
+            dataSize = 0;
             sent = 0;
         }
+        inline uint64_t getBufSize() { return __innerBlockSize - BUFBLK_HEAD_SIZE; }
     };
-
-    static const uint64_t BUFBLK_HEAD_SIZE = sizeof(BufBlk_t);
 
 protected:
     DynamicBuffer();
@@ -64,21 +72,20 @@ public:
     static void releaseDynamicBuffer(DynamicBuffer *pDynamicBuffer);
     static std::string dumpBlk(BufBlk_t *p);
 
+    inline BufBlk_t *getCurBufBlk() { return mpFreePos; }
     char *reserve(int size);
     BufBlk_t *cut(uint64_t size);
     void release(BufBlk_t *pBuffer);
 
-    bool healthCheck();
+    bool check();
 
 protected:
-    static void init(BufBlk_t *pBlk,
-                     uint64_t size,
-                     BufBlk_t *innerlink_prev,
-                     BufBlk_t *innerlink_next);
-
     void *mBuffer;
     BufBlk_t *mpFreePos;
+    int64_t mTotalBuffer;
     int32_t mInUseCount;
+    int64_t mTotalInUse;
+    int64_t mTotalFree;
 };
 
 } // namespace buffer
