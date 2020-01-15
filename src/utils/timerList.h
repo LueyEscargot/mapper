@@ -12,7 +12,9 @@
 #define __MAPPER_UTILS_TIMERLIST_H__
 
 #include "baseList.h"
+#include <assert.h>
 #include <time.h>
+#include <list>
 
 namespace mapper
 {
@@ -22,32 +24,42 @@ namespace utils
 class TimerList : public BaseList
 {
 public:
-    struct Entry_t : public BaseList::Entry_t
+    struct Entity_t : public BaseList::Entry_t
     {
         time_t time;
+        TimerList *timer;
 
         inline void init(void *container)
         {
             BaseList::Entry_t::init(container);
             time = 0;
+            timer = nullptr;
         }
     };
 
     TimerList() : mLastRefreshTime(0) {}
     virtual ~TimerList(){};
 
-    inline void push_front(time_t curTime, Entry_t *p)
+    inline void push_front(time_t curTime, Entity_t *p)
     {
         p->time = curTime;
         BaseList::push_front(p);
     }
-    inline void push_back(time_t curTime, Entry_t *p)
+    inline void push_back(time_t curTime, Entity_t *p)
     {
+        assert(!p->inList);
+
         p->time = curTime;
+        p->timer = this;
         BaseList::push_back(p);
     }
-    inline void erase(Entry_t *p) { BaseList::erase(p); }
-    void refresh(time_t curTime, Entry_t *p);
+    inline void erase(Entity_t *p)
+    {
+        assert(p->timer == this);
+        BaseList::erase(p);
+    }
+    void refresh(time_t curTime, Entity_t *p);
+    void removeTimeout(time_t timeoutTime, std::list<Entity_t *> &timeoutList);
 
 protected:
     time_t mLastRefreshTime;

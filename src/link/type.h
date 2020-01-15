@@ -228,7 +228,7 @@ struct Endpoint_t : public EndpointBase_t
     int soc;
     Connection_t conn;
 
-    utils::TimerList::Entry_t bufWaitEntry;
+    utils::TimerList::Entity_t bufWaitEntry;
 
     Endpoint_t *prev;
     Endpoint_t *next;
@@ -295,6 +295,7 @@ struct TunnelTimer_t
 struct UdpTunnel_t
 {
     TunnelTimer_t timer;
+    utils::TimerList::Entity_t  timerEntity;
 
     Endpoint_t *north;
     Endpoint_t *south;
@@ -305,6 +306,7 @@ struct UdpTunnel_t
     inline void init()
     {
         timer.init(this);
+        timerEntity.init(this);
 
         north = nullptr;
         south = nullptr;

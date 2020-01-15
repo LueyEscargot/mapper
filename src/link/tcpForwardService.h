@@ -68,29 +68,38 @@ protected:
     inline void addToCloseList(Endpoint_t *pe) { addToCloseList((UdpTunnel_t *)pe->container); }
     void closeTunnel(UdpTunnel_t *pt);
 
-    void addToTimer(time_t curTime, TunnelTimer_t *p);
-    void refreshTimer(time_t curTime, TunnelTimer_t *p);
+    inline void addToTimer(utils::TimerList &timer, time_t curTime, UdpTunnel_t *pt)
+    {
+        timer.push_back(curTime, &pt->timerEntity);
+    }
+    inline void removeFromTimer(utils::TimerList &timer, UdpTunnel_t *pt)
+    {
+        timer.erase(&pt->timerEntity);
+    }
+    inline void refreshTimer(utils::TimerList &timer, time_t curTime, UdpTunnel_t *pt)
+    {
+        timer.refresh(curTime, &pt->timerEntity);
+    }
+    inline void switchTimer(utils::TimerList &src, utils::TimerList &dst, time_t curTime, UdpTunnel_t *pt)
+    {
+        src.erase(&pt->timerEntity);
+        dst.push_back(curTime, &pt->timerEntity);
+    }
 
-    // void addToBufferWaitingList(time_t curTime, Endpoint_t *pe);
-    // void removeFromWaitingList(Endpoint_t *pe);
     void processBufferWaitingList();
-    // inline bool isInBufferWaitingList(Endpoint_t *pe)
-    // {
-    //     return pe->waitBufferPrev ||
-    //            pe->waitBufferNext ||
-    //            mBufferWaitList.waitBufferNext == pe;
-    // }
 
     static const bool StateMaine[TUNNEL_STATE_COUNT][TUNNEL_STATE_COUNT];
 
     TargetManager mTargetManager;
 
     Setting_t mSetting;
-    TunnelTimer_t mTimer; // 其中 next 指向第一个元素； prev 指向最后一个元素
     std::set<UdpTunnel_t *> mTunnelList;
     std::set<UdpTunnel_t *> mPostProcessList;
 
     utils::TimerList mBufferWaitList;
+    utils::TimerList mConnectTimer;
+    utils::TimerList mSessionTimer;
+    utils::TimerList mReleaseTimer;
 };
 
 } // namespace link

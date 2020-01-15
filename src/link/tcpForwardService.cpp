@@ -44,7 +44,6 @@ const bool TcpForwardService::StateMaine[TUNNEL_STATE_COUNT][TUNNEL_STATE_COUNT]
 TcpForwardService::TcpForwardService()
     : Service("TcpForwardService")
 {
-    mTimer.init(nullptr);
     mPostProcessList.clear();
 }
 
@@ -185,17 +184,6 @@ void TcpForwardService::onSoc(time_t curTime, uint32_t events, Endpoint_t *pe)
         {
             // to north socket
 
-            // Read
-            if (events & EPOLLIN && !pe->stopRecv)
-            {
-                onRead(curTime, events, pe);
-                // 尝试发送数据
-                if (pe->peer->sendListHead)
-                {
-                    onWrite(curTime, pe->peer);
-                }
-            }
-
             // Write
             if (events & EPOLLOUT)
             {
@@ -219,12 +207,8 @@ void TcpForwardService::onSoc(time_t curTime, uint32_t events, Endpoint_t *pe)
                             spdlog::debug("[TcpForwardService::onSoc] tunnel[{},{}] established.",
                                           pt->south->soc, pt->north->soc);
 
-                            // TODO: 切换定时器
-                            // mTimer.remove(&pt->timerClient);
-                            // // insert into established timer container
-                            // mTimer.insert(timer::Container::Type_t::TIMER_ESTABLISHED,
-                            //               curTime,
-                            //               &pt->timerClient);}
+                            // 切换定时器
+                            switchTimer(mConnectTimer, mSessionTimer, curTime, pt);
                         }
                         else
                         {
@@ -242,12 +226,6 @@ void TcpForwardService::onSoc(time_t curTime, uint32_t events, Endpoint_t *pe)
                     onWrite(curTime, pe);
                 }
             }
-        }
-        else
-        {
-            // to south socket
-
-            assert(pe->direction == Direction_t::DIR_SOUTH);
 
             // Read
             if (events & EPOLLIN && !pe->stopRecv)
@@ -259,11 +237,28 @@ void TcpForwardService::onSoc(time_t curTime, uint32_t events, Endpoint_t *pe)
                     onWrite(curTime, pe->peer);
                 }
             }
+        }
+        else
+        {
+            // to south socket
+
+            assert(pe->direction == Direction_t::DIR_SOUTH);
 
             // Write
             if ((events & EPOLLOUT) && pe->sendListHead)
             {
                 onWrite(curTime, pe);
+            }
+
+            // Read
+            if (events & EPOLLIN && !pe->stopRecv)
+            {
+                onRead(curTime, events, pe);
+                // 尝试发送数据
+                if (pe->peer->sendListHead)
+                {
+                    onWrite(curTime, pe->peer);
+                }
             }
         }
     }
@@ -282,12 +277,17 @@ void TcpForwardService::postProcess(time_t curTime)
             switch (pt->stat)
             {
             case TunnelState_t::CONNECT:
-            case TunnelState_t::ESTABLISHED:
-                spdlog::debug("[TcpForwardService::postProcess] remove tunnel[{}:{}]",
+                spdlog::debug("[TcpForwardService::postProcess] remove connecting tunnel[{}:{}]",
                               pt->south->soc, pt->north->soc);
-                // set tunnel status to broken
                 setStatus(pt, TunnelState_t::BROKEN);
-                // TODO: switch timeout container
+                switchTimer(mConnectTimer, mReleaseTimer, curTime, pt);
+                break;
+            case TunnelState_t::ESTABLISHED:
+                spdlog::debug("[TcpForwardService::postProcess] remove established tunnel[{}:{}]",
+                              pt->south->soc, pt->north->soc);
+                setStatus(pt, TunnelState_t::BROKEN);
+                // switch timeout container
+                switchTimer(mSessionTimer, mReleaseTimer, curTime, pt);
                 break;
             case TunnelState_t::INITIALIZED:
             case TunnelState_t::BROKEN:
@@ -308,41 +308,23 @@ void TcpForwardService::postProcess(time_t curTime)
 
 void TcpForwardService::scanTimeout(time_t curTime)
 {
-    processBufferWaitingList();
-    // time_t timeoutTime = curTime - mTimeoutInterval;
-    // if (mTimer.next == nullptr ||
-    //     mTimer.next->lastActiveTime > timeoutTime)
-    // {
-    //     return;
-    // }
+    // processBufferWaitingList();
 
-    // // get timeout item list
-    // auto h = mTimer.next;
-    // auto t = h;
-    // while (t->next && t->next->lastActiveTime < timeoutTime)
-    // {
-    //     t = t->next;
-    // }
-    // // 将从 h --> t 的元素移除链表
-    // if (t->next)
-    // {
-    //     // 此时剩余链表中还有元素存在
-    //     t->next->prev = nullptr;
-    //     mTimer.next = t->next;
-    //     t->next = nullptr;
-    // }
-    // else
-    // {
-    //     // 所有元素都已从链表中移除
-    //     mTimer.next = mTimer.prev = nullptr;
-    // }
-
-    // // 释放已超时 udp tunnel
-    // while (h)
-    // {
-    //     addToCloseList((UdpTunnel_t *)h->tunnel);
-    //     h = h->next;
-    // }
+    // remove timeout
+    auto f = [&](TimerList &timer, time_t timeoutTime) {
+        list<TimerList::Entity_t *> timeoutList;
+        timer.removeTimeout(timeoutTime, timeoutList);
+        for (auto entity : timeoutList)
+        {
+            auto pt = (UdpTunnel_t *)entity->container;
+            spdlog::debug("[TcpForwardService::scanTimeout] tunnel[{}:{}] timeout",
+                          pt->south->soc, pt->north->soc);
+            addToCloseList(pt);
+        }
+    };
+    f(mConnectTimer, curTime - mSetting.connectTimeout);
+    f(mSessionTimer, curTime - mSetting.sessionTimeout);
+    f(mReleaseTimer, curTime - mSetting.releaseTimeout);
 }
 
 void TcpForwardService::setStatus(UdpTunnel_t *pt, TunnelState_t stat)
@@ -498,8 +480,8 @@ void TcpForwardService::acceptClient(time_t curTime, Endpoint_t *pe)
             };
         }
 
-        // add into timeout timer
-        addToTimer(curTime, &pt->timer);
+        // add into connect timeout timer
+        addToTimer(mConnectTimer, curTime, pt);
 
         spdlog::debug("[TcpForwardService::acceptClient] create tunnel[{}:{}]",
                       pt->south->soc, pt->north->soc);
@@ -867,7 +849,8 @@ void TcpForwardService::closeTunnel(UdpTunnel_t *pt)
                 mBufferWaitList.erase(&pt->south->bufWaitEntry);
             }
 
-            // TODO: remove from timer container
+            // remove from timer
+            removeFromTimer(mReleaseTimer, pt);
 
             // release buffer
             if (pt->north->sendListHead)
@@ -947,52 +930,6 @@ void TcpForwardService::closeTunnel(UdpTunnel_t *pt)
     }
 }
 
-void TcpForwardService::addToTimer(time_t curTime, TunnelTimer_t *p)
-{
-    // p->lastActiveTime = curTime;
-    // p->next = nullptr;
-
-    // if (mTimer.next)
-    // {
-    //     // 当前链表不为空
-    //     p->prev = mTimer.prev;
-    //     assert(mTimer.prev->next == nullptr);
-    //     mTimer.prev->next = p;
-    //     mTimer.prev = p;
-    // }
-    // else
-    // {
-    //     // 当前链表为空
-    //     p->prev = nullptr;
-    //     mTimer.next = mTimer.prev = p;
-    // }
-}
-
-void TcpForwardService::refreshTimer(time_t curTime, TunnelTimer_t *p)
-{
-    // if (p->lastActiveTime == curTime ||
-    //     mTimer.prev->lastActiveTime == p->lastActiveTime)
-    // {
-    //     return;
-    // }
-
-    // // remove from list
-    // if (p->prev)
-    // {
-    //     p->prev->next = p->next;
-    // }
-    // else
-    // {
-    //     assert(mTimer.next == p);
-    //     mTimer.next = p->next;
-    // }
-    // assert(p->next);
-    // p->next->prev = p->prev;
-
-    // // append to tail
-    // addToTimer(curTime, p);
-}
-
 // void TcpForwardService::addToBufferWaitingList(time_t curTime, Endpoint_t *pe)
 // {
 //     printf("[TcpForwardService::addToBufferWaitingList] add endpoint: %p\n", pe);
@@ -1058,7 +995,7 @@ void TcpForwardService::processBufferWaitingList()
         auto entry = mBufferWaitList.mpHead;
         while (entry)
         {
-            auto pe = (Endpoint_t *)((TimerList::Entry_t *)entry)->container;
+            auto pe = (Endpoint_t *)((TimerList::Entity_t *)entry)->container;
             auto pBufBlk = mpBuffer->getCurBufBlk();
             if (pBufBlk == nullptr)
             {
@@ -1112,7 +1049,7 @@ void TcpForwardService::processBufferWaitingList()
 
             // 将当前节点从等待队列中移除
             auto next = entry->next;
-            mBufferWaitList.erase((TimerList::Entry_t *)entry);
+            mBufferWaitList.erase((TimerList::Entity_t *)entry);
             entry = next;
         }
     }
