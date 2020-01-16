@@ -105,7 +105,7 @@ Tunnel_t *TunnelMgr::allocTunnel()
     Tunnel_t *pt = mFreeList.front();
     mFreeList.pop_front();
 
-    Tunnel::setStatus(pt, TunnelState_t::ALLOCATED);
+    Tunnel::setStatus(pt, TunnelState_t::CLOSED);
 
     return pt;
 }

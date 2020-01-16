@@ -59,7 +59,7 @@ public:
         BaseList::erase(p);
     }
     void refresh(time_t curTime, Entity_t *p);
-    void removeTimeout(time_t timeoutTime, std::list<Entity_t *> &timeoutList);
+    void getTimeoutList(time_t timeoutTime, std::list<Entity_t *> &timeoutList);
 
 protected:
     time_t mLastRefreshTime;

@@ -32,44 +32,20 @@ void TimerList::refresh(time_t curTime, Entity_t *p)
     }
 }
 
-void TimerList::removeTimeout(time_t timeoutTime, list<Entity_t *> &timeoutList)
+void TimerList::getTimeoutList(time_t timeoutTime, list<Entity_t *> &timeoutList)
 {
-    while (mpHead)
-    {
-        auto entity = (TimerList::Entity_t *)mpHead;
-        mpHead = mpHead->next;
+    auto p = (TimerList::Entity_t *)mpHead;
 
-        if (entity->time <= timeoutTime)
-        {
-            // 当前元素超时
-            entity->inList = false;
-            entity->prev = entity->next = nullptr;
-            timeoutList.push_back(entity);
-        }
-        else
+    while (p)
+    {
+        if (p->time > timeoutTime)
         {
             break;
         }
-    }
 
-    if (mpHead)
-    {
-        // 当前链表不为空
-        if (mpHead->prev)
-        {
-            // 至少有一个元素超时
-            mpHead->prev = nullptr;
-        }
-        else
-        {
-            // 没有超时元素
-            assert(timeoutList.empty());
-        }
-    }
-    else
-    {
-        // 当前链表为空
-        mpTail = nullptr;
+        // 当前元素超时
+        timeoutList.push_back(p);
+        p = (TimerList::Entity_t *)p->next;
     }
 }
 

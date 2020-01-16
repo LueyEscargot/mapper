@@ -24,6 +24,8 @@ BaseList::~BaseList()
 void BaseList::push_front(Entry_t *p)
 {
     assert(!p->inList && !p->prev && !p->next);
+    spdlog::trace("[BaseList::push_front] [{}] push_front [{}]",
+                  (void *)this, (void *)p);
 
     if (!mpHead)
     {
@@ -49,6 +51,8 @@ void BaseList::push_back(Entry_t *p)
     assert(!p->inList &&
            !p->prev &&
            !p->next);
+    spdlog::trace("[BaseList::push_back] [{}] push_back [{}]",
+                  (void *)this, (void *)p);
 
     if (!mpHead)
     {
@@ -72,6 +76,8 @@ void BaseList::push_back(Entry_t *p)
 void BaseList::erase(Entry_t *p)
 {
     assert(p->inList);
+    spdlog::trace("[BaseList::erase] [{}] erase [{}]",
+                  (void *)this, (void *)p);
 
     if (p->prev)
     {

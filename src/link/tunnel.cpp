@@ -16,27 +16,26 @@ namespace link
 /**
  * tunnel state machine:
  * 
- *       CLOSED -----> ALLOCATED -----> INITIALIZED -----> CONNECT -----> ESTABLISHED
- *         A                                 |                |               |
- *         |                                 |                |               |
- *         |                                 *--------------->|<--------------*
- *         |                                                  |
- *         |                                                  V
- *         *---------------------------------------------- BROKEN
+ *       CLOSED -----> INITIALIZED -----> CONNECT -----> ESTABLISHED
+ *         A                |                |               |
+ *         |                |                |               |
+ *         |                *--------------->|<--------------*
+ *         |                                 |
+ *         |                                 V
+ *         *------------------------------ BROKEN
  */
 const bool Tunnel::StateMaine[TUNNEL_STATE_COUNT][TUNNEL_STATE_COUNT] = {
-    // CLOSED | ALLOCATED | INITIALIZED | CONNECT | ESTABLISHED | BROKEN
-    {1, 1, 0, 0, 0, 0}, // CLOSED
-    {0, 1, 1, 0, 0, 0}, // ALLOCATED
-    {0, 0, 1, 1, 0, 1}, // INITIALIZED
-    {0, 0, 0, 1, 1, 1}, // CONNECT
-    {0, 0, 0, 0, 1, 1}, // ESTABLISHED
-    {1, 0, 0, 0, 0, 1}, // BROKEN
+    // CLOSED | INITIALIZED | CONNECT | ESTABLISHED | BROKEN
+    {0, 1, 0, 0, 0}, // CLOSED
+    {0, 0, 1, 0, 1}, // INITIALIZED
+    {0, 0, 0, 1, 1}, // CONNECT
+    {0, 0, 0, 0, 1}, // ESTABLISHED
+    {1, 0, 0, 0, 0}, // BROKEN
 };
 
 bool Tunnel::init(Tunnel_t *pt, EndpointService_t *pes, int southSoc)
 {
-    assert(pt->status == TunnelState_t::ALLOCATED);
+    assert(pt->status == TunnelState_t::CLOSED);
 
     pt->setAddrInfo(pes->targetHostAddrs);
 

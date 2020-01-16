@@ -158,6 +158,7 @@ void NetMgr::threadFunc()
                 {
                     for (auto s : mServiceList)
                     {
+                        s->postProcess(curTime);
                         s->scanTimeout(curTime);
                     }
 
