@@ -27,9 +27,10 @@ namespace link
 class Service
 {
 protected:
-    static const uint32_t SEETING_TIMEOUT_CONNECT = 15;
+    static const uint32_t SEETING_TIMEOUT_CONNECT = 3;
     static const uint32_t SEETING_TIMEOUT_SESSION = 180;
-    static const uint32_t SEETING_TIMEOUT_RELEASE = 15;
+    static const uint32_t SEETING_TIMEOUT_RELEASE = 3;
+    static const uint32_t SEETING_TIMEOUT_UDP = 5;
     static const uint32_t SEETING_BUFFER_SIZE = 128;
     static const uint32_t SEETING_BUFFER_PERSESSIONLIMIT = 1;
     static const uint32_t SEETING_BUFFER_SIZE_UNIT = 1048576; // 1MB
@@ -42,6 +43,7 @@ protected:
         uint32_t connectTimeout;
         uint32_t sessionTimeout;
         uint32_t releaseTimeout;
+        uint32_t udpTimeout;
         // buffer
         uint32_t bufferSize;
         uint32_t bufferPerSessionLimit;

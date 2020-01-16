@@ -142,6 +142,10 @@ void Service::loadSetting(rapidjson::Document &cfg, Setting_t &setting)
         JsonUtils::getAsUint32(cfg,
                                CONFIG_BASE_PATH + "/setting/timeout/release",
                                SEETING_TIMEOUT_RELEASE);
+    setting.udpTimeout =
+        JsonUtils::getAsUint32(cfg,
+                               CONFIG_BASE_PATH + "/setting/timeout/udp",
+                               SEETING_TIMEOUT_UDP);
     // buffer
     setting.bufferSize =
         JsonUtils::getAsUint32(cfg,

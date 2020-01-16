@@ -129,7 +129,7 @@ void UdpForwardService::postProcess(time_t curTime)
 
 void UdpForwardService::scanTimeout(time_t curTime)
 {
-    time_t timeoutTime = curTime - mSetting.sessionTimeout;
+    time_t timeoutTime = curTime - mSetting.udpTimeout;
     if (mTimer.next == nullptr ||
         mTimer.next->lastActiveTime > timeoutTime)
     {

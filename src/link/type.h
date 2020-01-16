@@ -55,7 +55,6 @@ enum Direction_t
 enum TunnelState_t
 {
     CLOSED = 0,
-    ALLOCATED,
     INITIALIZED,
     CONNECT,
     ESTABLISHED,
@@ -312,7 +311,7 @@ struct UdpTunnel_t
         south = nullptr;
         service = nullptr;
 
-        stat = TunnelState_t::ALLOCATED;
+        stat = TunnelState_t::CLOSED;
     }
 };
 
