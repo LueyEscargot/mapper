@@ -14,9 +14,10 @@
     ],
     "setting": {
       "timeout": {
-        "connect": 15,
+        "connect": 3,
         "session": 180,
-        "release": 15
+        "release": 3,
+        "udp": 3
       },
       "buffer": {
         "size": 1024,
