@@ -623,6 +623,7 @@ void TcpForwardService::onRead(time_t curTime, int events, Endpoint_t *pe)
         return;
     }
 
+    bool isRead = false;
     while (true)
     {
         // is buffer full
@@ -685,9 +686,15 @@ void TcpForwardService::onRead(time_t curTime, int events, Endpoint_t *pe)
         auto pBlk = mpBuffer->cut(nRet);
         // attach to peer's send list
         appendToSendList(pe->peer, pBlk);
+
+        isRead = true;
     }
 
-    return;
+    if (isRead)
+    {
+        // refresh timer
+        refreshTimer(curTime, pt);
+    }
 }
 
 void TcpForwardService::onWrite(time_t curTime, Endpoint_t *pe)
@@ -769,25 +776,30 @@ void TcpForwardService::onWrite(time_t curTime, Endpoint_t *pe)
         assert(pe->totalBufSize > 0);
     }
 
-    // 是否有缓冲区对象被释放，已有能力接收从南向来的数据
-    if (pktReleased &&
-        pt->stat == TunnelState_t::ESTABLISHED && // 只在链路建立的状态下接收来自对端的数据
-        pe->valid &&                              // 此节点有能力发送
-        pe->bufferFull &&                         // 此节点当前缓冲区满
-        pe->peer->valid &&                        // 对端有能力接收
-        pe->peer->stopRecv)                       // 对端正处于停止接收状态
+    if (pktReleased)
     {
-        if (epollResetEndpointMode(pe->peer, true, true, true))
+        // refresh timer
+        refreshTimer(curTime, pt);
+
+        // 是否有缓冲区对象被释放，已有能力接收从南向来的数据
+        if (pt->stat == TunnelState_t::ESTABLISHED && // 只在链路建立的状态下接收来自对端的数据
+            pe->valid &&                              // 此节点有能力发送
+            pe->bufferFull &&                         // 此节点当前缓冲区满
+            pe->peer->valid &&                        // 对端有能力接收
+            pe->peer->stopRecv)                       // 对端正处于停止接收状态
         {
-            pe->bufferFull = false;
-            pe->peer->stopRecv = false;
-        }
-        else
-        {
-            spdlog::error("[TcpForwardService::onWrite] force peer soc[{}] read fail",
-                          pe->peer->soc);
-            pe->peer->valid = false;
-            addToCloseList(pt);
+            if (epollResetEndpointMode(pe->peer, true, true, true))
+            {
+                pe->bufferFull = false;
+                pe->peer->stopRecv = false;
+            }
+            else
+            {
+                spdlog::error("[TcpForwardService::onWrite] force peer soc[{}] read fail",
+                              pe->peer->soc);
+                pe->peer->valid = false;
+                addToCloseList(pt);
+            }
         }
     }
 }
@@ -938,6 +950,23 @@ void TcpForwardService::closeTunnel(UdpTunnel_t *pt)
         spdlog::critical("[TcpForwardService::closeTunnel] invalid tunnel status: {}", pt->stat);
         assert(false);
         break;
+    }
+}
+
+void TcpForwardService::refreshTimer(time_t curTime, UdpTunnel_t *pt)
+{
+    switch (pt->stat)
+    {
+    case TunnelState_t::ESTABLISHED:
+        refreshTimer(mSessionTimer, curTime, pt);
+        break;
+    case TunnelState_t::BROKEN:
+        refreshTimer(mReleaseTimer, curTime, pt);
+        return;
+    default:
+        spdlog::error("[TcpForwardService::refreshTimer] tunnel[{}:{}] with invalid tunnel status: {}",
+                      pt->south->soc, pt->north->soc, pt->stat);
+        assert(false);
     }
 }
 

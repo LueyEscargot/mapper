@@ -80,6 +80,7 @@ protected:
     {
         timer.refresh(curTime, &pt->timerEntity);
     }
+    void refreshTimer(time_t curTime, UdpTunnel_t *pt);
     inline void switchTimer(utils::TimerList &src, utils::TimerList &dst, time_t curTime, UdpTunnel_t *pt)
     {
         src.erase(&pt->timerEntity);
