@@ -49,28 +49,23 @@ TcpForwardService::TcpForwardService()
 
 TcpForwardService::~TcpForwardService()
 {
+    // close existed tunnels
     for (auto pt : mTunnelList)
     {
-        if (pt->north->soc)
-        {
-            ::close(pt->north->soc);
-            pt->north->valid = false;
-        }
-        if (pt->south->soc)
-        {
-            ::close(pt->south->soc);
-            pt->south->valid = false;
-        }
+        pt->north->valid = false;
+        pt->south->valid = false;
         if (pt->stat == TunnelState_t::ESTABLISHED ||
             pt->stat == TunnelState_t::CONNECT)
         {
             pt->stat = TunnelState_t::BROKEN;
         }
+        spdlog::trace("[TcpForwardService::closeTunnel] close existed tunnel[{}:{}]",
+                      pt->south->soc, pt->north->soc);
 
-        addToCloseList(pt);
+        // close tunnel
+        closeTunnel(pt);
     }
-
-    // TODO: close existed tunnels
+    mTunnelList.clear();
 }
 
 bool TcpForwardService::init(int epollfd,
@@ -127,25 +122,6 @@ bool TcpForwardService::init(int epollfd,
     }
 
     return true;
-}
-
-void TcpForwardService::setTimeout(TunnelState_t stat, const uint32_t interval)
-{
-    // switch (stat)
-    // {
-    // case TunnelState_t::CONNECT:
-    //     mTimeoutInterval_Conn = interval;
-    //     break;
-    // case TunnelState_t::ESTABLISHED:
-    //     mTimeoutInterval_Estb = interval;
-    //     break;
-    // case TunnelState_t::BROKEN:
-    //     mTimeoutInterval_Brok = interval;
-    //     break;
-    // default:
-    //     assert(!"invalid stat");
-    //     break;
-    // }
 }
 
 void TcpForwardService::close()

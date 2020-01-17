@@ -41,7 +41,6 @@ public:
               buffer::DynamicBuffer *pBuffer,
               std::shared_ptr<Forward> forward,
               Setting_t &setting);
-    void setTimeout(TunnelState_t stat, const uint32_t interval);
 
     void close() override;
     void onSoc(time_t curTime, uint32_t events, Endpoint_t *pe) override;
