@@ -310,7 +310,7 @@ void TcpForwardService::scanTimeout(time_t curTime)
 {
     // processBufferWaitingList();
 
-    // remove timeout
+    // check connecting/established tunnel timeout
     list<TimerList::Entity_t *> timeoutList;
     auto f = [&](TimerList &timer, time_t timeoutTime) {
         timeoutList.clear();

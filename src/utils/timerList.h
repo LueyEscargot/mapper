@@ -56,9 +56,11 @@ public:
     inline void erase(Entity_t *p)
     {
         assert(p->timer == this);
+        p->timer = nullptr;
         BaseList::erase(p);
     }
     void refresh(time_t curTime, Entity_t *p);
+    void removeTimeout(time_t timeoutTime, std::list<Entity_t *> &timeoutList);
     void getTimeoutList(time_t timeoutTime, std::list<Entity_t *> &timeoutList);
 
 protected:
