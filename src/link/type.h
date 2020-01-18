@@ -273,27 +273,8 @@ struct Endpoint_t : public EndpointBase_t
     }
 };
 
-struct TunnelTimer_t
-{
-    time_t lastActiveTime;
-    TunnelTimer_t *prev;
-    TunnelTimer_t *next;
-
-    void *tunnel;
-
-    void init(void *_tunnel)
-    {
-        lastActiveTime = 0;
-        prev = nullptr;
-        next = nullptr;
-
-        tunnel = _tunnel;
-    }
-};
-
 struct UdpTunnel_t
 {
-    TunnelTimer_t timer;
     utils::TimerList::Entity_t  timerEntity;
 
     Endpoint_t *north;
@@ -304,7 +285,6 @@ struct UdpTunnel_t
 
     inline void init()
     {
-        timer.init(this);
         timerEntity.init(this);
 
         north = nullptr;

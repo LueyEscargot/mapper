@@ -26,7 +26,6 @@ UdpForwardService::UdpForwardService()
       mForwardCmd(nullptr),
       mLastActionTime(0)
 {
-    mTimer.init(nullptr);
 }
 
 UdpForwardService::~UdpForwardService()
@@ -130,38 +129,10 @@ void UdpForwardService::postProcess(time_t curTime)
 void UdpForwardService::scanTimeout(time_t curTime)
 {
     time_t timeoutTime = curTime - mSetting.udpTimeout;
-    if (mTimer.next == nullptr ||
-        mTimer.next->lastActiveTime > timeoutTime)
-    {
-        return;
-    }
-
-    // get timeout item list
-    auto h = mTimer.next;
-    auto t = h;
-    while (t->next && t->next->lastActiveTime < timeoutTime)
-    {
-        t = t->next;
-    }
-    // 将从 h --> t 的元素移除链表
-    if (t->next)
-    {
-        // 此时剩余链表中还有元素存在
-        t->next->prev = nullptr;
-        mTimer.next = t->next;
-        t->next = nullptr;
-    }
-    else
-    {
-        // 所有元素都已从链表中移除
-        mTimer.next = mTimer.prev = nullptr;
-    }
-
-    // 释放已超时 udp tunnel
-    while (h)
-    {
-        addToCloseList((UdpTunnel_t *)h->tunnel);
-        h = h->next;
+    list<TimerList::Entity_t *> timeoutList;
+    mTimeoutTimer.removeTimeout(timeoutTime, timeoutList);
+    for (auto entity: timeoutList) {
+        addToCloseList((UdpTunnel_t *)entity->container);
     }
 }
 
@@ -331,7 +302,7 @@ UdpTunnel_t *UdpForwardService::getTunnel(time_t curTime, sockaddr_in *southRemo
     mNorthSoc2SouthRemoteAddr[north->soc] = *southRemoteAddr;
 
     // add to timer
-    addToTimer(curTime, &tunnel->timer);
+    mTimeoutTimer.push_back(curTime, &tunnel->timerEntity);
 
     spdlog::debug("[UdpForwardService::getTunnel] {}==>{}",
                   Utils::dumpServiceEndpoint(&mServiceEndpoint, southRemoteAddr),
@@ -480,7 +451,7 @@ void UdpForwardService::northRead(time_t curTime, Endpoint_t *pe)
             if (errno == EAGAIN)
             {
                 // 此次数据接收已完毕
-                refreshTimer(curTime, &((UdpTunnel_t *)pe->container)->timer);
+                mTimeoutTimer.refresh(curTime, &((UdpTunnel_t *)pe->container)->timerEntity);
             }
             else
             {
@@ -508,7 +479,7 @@ void UdpForwardService::northWrite(time_t curTime, Endpoint_t *pe)
             if (errno == EAGAIN)
             {
                 // 此次发送窗口已关闭
-                refreshTimer(curTime, &((UdpTunnel_t *)pe->container)->timer);
+                mTimeoutTimer.refresh(curTime, &((UdpTunnel_t *)pe->container)->timerEntity);
                 break;
             }
 
@@ -567,52 +538,6 @@ void UdpForwardService::closeTunnels()
 
         mCloseList.clear();
     }
-}
-
-void UdpForwardService::addToTimer(time_t curTime, TunnelTimer_t *p)
-{
-    p->lastActiveTime = curTime;
-    p->next = nullptr;
-
-    if (mTimer.next)
-    {
-        // 当前链表不为空
-        p->prev = mTimer.prev;
-        assert(mTimer.prev->next == nullptr);
-        mTimer.prev->next = p;
-        mTimer.prev = p;
-    }
-    else
-    {
-        // 当前链表为空
-        p->prev = nullptr;
-        mTimer.next = mTimer.prev = p;
-    }
-}
-
-void UdpForwardService::refreshTimer(time_t curTime, TunnelTimer_t *p)
-{
-    if (p->lastActiveTime == curTime ||
-        mTimer.prev->lastActiveTime == p->lastActiveTime)
-    {
-        return;
-    }
-
-    // remove from list
-    if (p->prev)
-    {
-        p->prev->next = p->next;
-    }
-    else
-    {
-        assert(mTimer.next == p);
-        mTimer.next = p->next;
-    }
-    assert(p->next);
-    p->next->prev = p->prev;
-
-    // append to tail
-    addToTimer(curTime, p);
 }
 
 } // namespace link

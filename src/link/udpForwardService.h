@@ -19,6 +19,7 @@
 #include "targetMgr.h"
 #include "utils.h"
 #include "../buffer/dynamicBuffer.h"
+#include "../utils/timerList.h"
 
 namespace mapper
 {
@@ -65,16 +66,14 @@ protected:
     inline void addToCloseList(UdpTunnel_t *pt) { mCloseList.insert(pt); };
     inline void addToCloseList(Endpoint_t *pe) { addToCloseList((UdpTunnel_t *)pe->container); }
     void closeTunnels();
-    void addToTimer(time_t curTime, TunnelTimer_t *p);
-    void refreshTimer(time_t curTime, TunnelTimer_t *p);
 
     std::shared_ptr<Forward> mForwardCmd;
     TargetManager mTargetManager;
 
     time_t mLastActionTime;
     Setting_t mSetting;
-    TunnelTimer_t mTimer; // 其中 next 指向第一个元素； prev 指向最后一个元素
     std::set<UdpTunnel_t *> mCloseList;
+    utils::TimerList mTimeoutTimer;
 
     std::map<sockaddr_in, UdpTunnel_t *, Utils::Comparator_t> mAddr2Tunnel;
     std::map<sockaddr_in, Endpoint_t *, Utils::Comparator_t> mAddr2Endpoint;
