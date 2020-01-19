@@ -45,7 +45,7 @@ void TimerList::removeTimeout(time_t timeoutTime, list<Entity_t *> &timeoutList)
             entity->inList = false;
             entity->prev = entity->next = nullptr;
             timeoutList.push_back(entity);
-            spdlog::trace("[TimerList::removeTimeout] get timeout entity[{}]", (void *)entity);
+            // spdlog::trace("[TimerList::removeTimeout] get timeout entity[{}]", (void *)entity);
         }
         else
         {

@@ -149,8 +149,7 @@ void TcpForwardService::onSoc(time_t curTime, uint32_t events, Endpoint_t *pe)
 
         if (!pe->valid)
         {
-            spdlog::debug("[TcpForwardService::onSoc] skip invalid soc[{}]", pe->soc);
-            addToCloseList(pt);
+            spdlog::trace("[TcpForwardService::onSoc] skip invalid soc[{}]", pe->soc);
             return;
         }
 
@@ -580,16 +579,15 @@ void TcpForwardService::onRead(time_t curTime, int events, Endpoint_t *pe)
         addToCloseList(pt);
         return;
     default:
-        spdlog::error("[TcpForwardService::onRead] soc[{}] with invalid tunnel status: {}",
-                      pe->soc, pt->stat);
+        spdlog::critical("[TcpForwardService::onRead] soc[{}] with invalid tunnel status: {}",
+                         pe->soc, pt->stat);
         assert(false);
     }
 
     if (!pe->valid || !pe->peer->valid)
     {
-        spdlog::error("[TcpForwardService::onRead] skip recv when tunnel[{}:{}] invalid",
+        spdlog::trace("[TcpForwardService::onRead] skip invalid tunnel[{}:{}]",
                       pe->soc, pe->peer->soc);
-        addToCloseList(pt);
         return;
     }
 
@@ -671,7 +669,14 @@ void TcpForwardService::onWrite(time_t curTime, Endpoint_t *pe)
 {
     if (!pe->valid)
     {
-        addToCloseList(pe);
+        auto pkt = (DynamicBuffer::BufBlk_t *)pe->sendListHead;
+        while (pkt)
+        {
+            auto next = pkt->next;
+            mpBuffer->release(pkt);
+            pkt = next;
+        }
+        pe->sendListHead = pe->sendListTail = nullptr;
         return;
     }
 
@@ -683,15 +688,9 @@ void TcpForwardService::onWrite(time_t curTime, Endpoint_t *pe)
     case TUNSTAT_BROKEN:
         break;
     default:
-        spdlog::error("[TcpForwardService::onWrite] soc[{}] with invalid tunnel status: {}",
-                      pe->soc, pt->stat);
+        spdlog::critical("[TcpForwardService::onWrite] soc[{}] with invalid tunnel status: {}",
+                         pe->soc, pt->stat);
         assert(false);
-    }
-
-    if (!pe->valid)
-    {
-        spdlog::debug("[TcpForwardService::onWrite] can't send on invalid soc[{}]", pe->soc);
-        return;
     }
 
     bool pktReleased = false;
