@@ -82,8 +82,8 @@ add_subdirectory(utils)
 # copy config file
 #------------------------------------------------------------------------------
 configure_file(
-    ${CMAKE_CURRENT_SOURCE_DIR}/config.ini
-    ${CMAKE_BINARY_DIR}/config.ini
+    ${CMAKE_CURRENT_SOURCE_DIR}/config.json
+    ${CMAKE_BINARY_DIR}/config.json
     COPYONLY
     )
 
