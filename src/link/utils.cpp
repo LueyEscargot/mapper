@@ -15,11 +15,11 @@ namespace link
 Protocol_t Utils::parseProtocol(const char *protocol)
 {
     return strcasecmp(protocol, "tcp") == 0
-               ? link::Protocol_t::TCP
+               ? link::PROTOCOL_TCP
                : strcasecmp(protocol, "udp") == 0
-                     ? link::Protocol_t::UDP
+                     ? link::PROTOCOL_UDP
                      : (assert(!"unsupported protocol"),
-                        link::Protocol_t::UNKNOWN_PROTOCOL);
+                        link::PROTOCOL_UNKNOWN);
 }
 
 Protocol_t Utils::parseProtocol(const std::string &protocol)
@@ -83,7 +83,7 @@ bool Utils::getAddrInfo(const char *host,
     hints.ai_canonname = nullptr;
     hints.ai_addr = nullptr;
     hints.ai_next = nullptr;
-    if (protocol == Protocol_t::TCP)
+    if (protocol == PROTOCOL_TCP)
     {
         hints.ai_socktype = SOCK_STREAM;
         hints.ai_protocol = IPPROTO_TCP;
@@ -113,7 +113,7 @@ int Utils::createSoc(Protocol_t protocol, bool nonblock)
 {
     // create socket
     int soc = socket(AF_INET,
-                     protocol == Protocol_t::TCP ? SOCK_STREAM : SOCK_DGRAM,
+                     protocol == PROTOCOL_TCP ? SOCK_STREAM : SOCK_DGRAM,
                      0);
     if (soc <= 0)
     {
@@ -135,9 +135,7 @@ int Utils::createSoc(Protocol_t protocol, bool nonblock)
 int Utils::createServiceSoc(Protocol_t protocol, sockaddr_in *sa, socklen_t salen)
 {
     // create socket
-    int soc = socket(AF_INET,
-                     protocol == Protocol_t::TCP ? SOCK_STREAM : SOCK_DGRAM,
-                     0);
+    int soc = socket(AF_INET, protocol == PROTOCOL_TCP ? SOCK_STREAM : SOCK_DGRAM, 0);
     if (soc <= 0)
     {
         spdlog::error("[Utils::createServiceSoc] create socket fail. {} - {}", errno, strerror(errno));
@@ -157,7 +155,7 @@ int Utils::createServiceSoc(Protocol_t protocol, sockaddr_in *sa, socklen_t sale
                 return false;
             }
             // listen
-            if (protocol == Protocol_t::TCP && listen(soc, SOMAXCONN << 1))
+            if (protocol == PROTOCOL_TCP && listen(soc, SOMAXCONN << 1))
             {
                 spdlog::error("[Utils::createServiceSoc] listen fail. {} - {}", errno, strerror(errno));
                 return false;
@@ -340,7 +338,7 @@ std::string Utils::dumpConnection(const Connection_t *conn, bool reverse)
     stringstream ss;
 
     ss << dumpSockAddr(first)
-       << (conn->protocol == Protocol_t::TCP ? "-tcp-" : "-udp-")
+       << (conn->protocol == PROTOCOL_TCP ? "-tcp-" : "-udp-")
        << dumpSockAddr(second);
 
     return ss.str();
@@ -386,7 +384,7 @@ std::string Utils::dumpServiceEndpoint(const Endpoint_t *serviceEndpoint, const 
 
     ss << "("
        << dumpSockAddr(clientAddr)
-       << (serviceEndpoint->conn.protocol == Protocol_t::TCP ? "-tcp-" : "-udp-")
+       << (serviceEndpoint->conn.protocol == PROTOCOL_TCP ? "-tcp-" : "-udp-")
        << dumpSockAddr(serviceEndpoint->conn.localAddr)
        << ",soc["
        << serviceEndpoint->soc
@@ -400,7 +398,7 @@ std::string Utils::dumpServiceEndpoint(const Endpoint_t &serviceEndpoint, const 
     return dumpServiceEndpoint(&serviceEndpoint, &clientAddr);
 }
 
-std::string Utils::dumpTunnel(const UdpTunnel_t *pt, bool reverse)
+std::string Utils::dumpTunnel(const Tunnel_t *pt, bool reverse)
 {
     stringstream ss;
 
@@ -413,7 +411,7 @@ std::string Utils::dumpTunnel(const UdpTunnel_t *pt, bool reverse)
     return ss.str();
 }
 
-std::string Utils::dumpTunnel(const UdpTunnel_t &pt, bool reverse)
+std::string Utils::dumpTunnel(const Tunnel_t &pt, bool reverse)
 {
     return dumpTunnel(&pt, reverse);
 }

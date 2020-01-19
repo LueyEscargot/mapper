@@ -26,20 +26,8 @@ protected:
     Tunnel &operator=(const Tunnel &) { return *this; }
 
 public:
-    static bool init(Tunnel_t *pt, EndpointService_t *pes, int southSoc);
-    static void setStatus(Tunnel_t *pt, TunnelState_t stat);
-    static std::string toStr(Tunnel_t *pt);
-
-    static UdpTunnel_t *getTunnel();
-    static void releaseTunnel(UdpTunnel_t *pt);
-
-    static bool connect(Tunnel_t *pt);
-    static bool northSocRecv(Tunnel_t *pt);
-    static bool northSocSend(Tunnel_t *pt);
-    static bool southSocRecv(Tunnel_t *pt);
-    static bool southSocSend(Tunnel_t *pt);
-
-    static const bool StateMaine[TUNNEL_STATE_COUNT][TUNNEL_STATE_COUNT];
+    static Tunnel_t *getTunnel();
+    static void releaseTunnel(Tunnel_t *pt);
 };
 
 } // namespace link

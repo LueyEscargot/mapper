@@ -30,7 +30,7 @@ class UdpForwardService : public Service
 {
 protected:
     static const uint32_t PREALLOC_RECV_BUFFER_SIZE = 1 << 16;
-    using Addr2TunIter = std::map<sockaddr_in, UdpTunnel_t *>::iterator;
+    using Addr2TunIter = std::map<sockaddr_in, Tunnel_t *>::iterator;
 
     UdpForwardService(const UdpForwardService &) : Service("UdpForwardService"){};
     UdpForwardService &operator=(const UdpForwardService &) { return *this; }
@@ -53,18 +53,16 @@ public:
     void onServiceSoc(time_t curTime, uint32_t events, Endpoint_t *pe);
     void onNorthSoc(time_t curTime, uint32_t events, Endpoint_t *pe);
 
-    // inline void setTimeout(const uint32_t interval) { mSetting.sessionTimeout = interval; };
-
 protected:
     bool epollAddEndpoint(Endpoint_t *pe, bool read, bool write, bool edgeTriger);
-    UdpTunnel_t *getTunnel(time_t curTime, sockaddr_in *pSAI);
+    Tunnel_t *getTunnel(time_t curTime, sockaddr_in *pSAI);
     void southRead(time_t curTime, Endpoint_t *pe);
     void southWrite(time_t curTime, Endpoint_t *pe);
     void northRead(time_t curTime, Endpoint_t *pe);
     void northWrite(time_t curTime, Endpoint_t *pe);
 
-    inline void addToCloseList(UdpTunnel_t *pt) { mCloseList.insert(pt); };
-    inline void addToCloseList(Endpoint_t *pe) { addToCloseList((UdpTunnel_t *)pe->container); }
+    inline void addToCloseList(Tunnel_t *pt) { mCloseList.insert(pt); };
+    inline void addToCloseList(Endpoint_t *pe) { addToCloseList((Tunnel_t *)pe->container); }
     void closeTunnels();
 
     std::shared_ptr<Forward> mForwardCmd;
@@ -72,10 +70,10 @@ protected:
 
     time_t mLastActionTime;
     Setting_t mSetting;
-    std::set<UdpTunnel_t *> mCloseList;
+    std::set<Tunnel_t *> mCloseList;
     utils::TimerList mTimeoutTimer;
 
-    std::map<sockaddr_in, UdpTunnel_t *, Utils::Comparator_t> mAddr2Tunnel;
+    std::map<sockaddr_in, Tunnel_t *, Utils::Comparator_t> mAddr2Tunnel;
     std::map<sockaddr_in, Endpoint_t *, Utils::Comparator_t> mAddr2Endpoint;
     std::map<int, sockaddr_in> mNorthSoc2SouthRemoteAddr;
 };

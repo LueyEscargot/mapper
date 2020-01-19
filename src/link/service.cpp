@@ -58,7 +58,7 @@ bool Service::create(int epollfd, DynamicBuffer *pBuffer, Document &cfg, list<Se
             if (forward)
             {
                 auto protocol = Utils::parseProtocol(forward->protocol);
-                if (protocol == Protocol_t::TCP)
+                if (protocol == PROTOCOL_TCP)
                 {
                     // TCP Forward service
                     auto pService = new TcpForwardService;
@@ -80,7 +80,7 @@ bool Service::create(int epollfd, DynamicBuffer *pBuffer, Document &cfg, list<Se
                         spdlog::error("[Service::create] create tcp forward service object fail");
                     }
                 }
-                else if (protocol == Protocol_t::UDP)
+                else if (protocol == PROTOCOL_UDP)
                 {
                     // UDP Forward service
                     auto pService = new UdpForwardService;
@@ -163,16 +163,11 @@ string Service::dumpSetting(Setting_t &setting)
 {
     stringstream ss;
 
-    ss << R"({"timeout": {"connect":)"
-       << setting.connectTimeout
-       << R"(,"session":)"
-       << setting.sessionTimeout
-       << R"(,"release":)"
-       << setting.releaseTimeout
-       << R"(},"buffer": {"size":)"
-       << setting.bufferSize
-       << R"(,"perSessionLimit":)"
-       << setting.bufferPerSessionLimit
+    ss << R"({"timeout": {"connect":)" << setting.connectTimeout
+       << R"(,"session":)" << setting.sessionTimeout
+       << R"(,"release":)" << setting.releaseTimeout
+       << R"(},"buffer": {"size":)" << setting.bufferSize
+       << R"(,"perSessionLimit":)" << setting.bufferPerSessionLimit
        << R"(}})";
 
     return ss.str();

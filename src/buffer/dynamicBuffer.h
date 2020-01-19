@@ -40,8 +40,7 @@ public:
         bool inUse;
         BufBlk_t *prev;
         BufBlk_t *next;
-        sockaddr_in sockaddr;
-        socklen_t sockaddr_len;
+        sockaddr_in destAddr;
         uint64_t dataSize;
         uint64_t sent;
         char buffer[0];
@@ -55,8 +54,7 @@ public:
             inUse = false;
             prev = nullptr;
             next = nullptr;
-            sockaddr = {0};
-            sockaddr_len = 0;
+            destAddr = {0};
             dataSize = 0;
             sent = 0;
         }

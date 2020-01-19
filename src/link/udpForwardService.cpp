@@ -43,13 +43,11 @@ bool UdpForwardService::init(int epollfd,
     mSetting = setting;
 
     Protocol_t protocol = Utils::parseProtocol(forward->protocol);
-    assert(protocol == Protocol_t::UDP);
+    assert(protocol == PROTOCOL_UDP);
 
     mForwardCmd = forward;
 
-    mServiceEndpoint.init(Protocol_t::UDP,
-                          Direction_t::DIR_SOUTH,
-                          Type_t::SERVICE);
+    mServiceEndpoint.init(PROTOCOL_UDP, TO_SOUTH, TYPE_SERVICE);
     mServiceEndpoint.service = this;
 
     // get local address of specified interface
@@ -61,7 +59,7 @@ bool UdpForwardService::init(int epollfd,
     mServiceEndpoint.conn.localAddr.sin_port = htons(atoi(forward->service.c_str()));
 
     // create server socket
-    mServiceEndpoint.soc = Utils::createServiceSoc(Protocol_t::UDP,
+    mServiceEndpoint.soc = Utils::createServiceSoc(PROTOCOL_UDP,
                                                    &mServiceEndpoint.conn.localAddr,
                                                    sizeof(mServiceEndpoint.conn.localAddr));
     if (mServiceEndpoint.soc < 0)
@@ -74,7 +72,7 @@ bool UdpForwardService::init(int epollfd,
     if (!mTargetManager.addTarget(time(nullptr),
                                   forward->targetHost.c_str(),
                                   forward->targetService.c_str(),
-                                  Protocol_t::UDP))
+                                  PROTOCOL_UDP))
     {
         spdlog::error("[UdpForwardService::init] ginit target manager fail");
         close();
@@ -104,7 +102,7 @@ void UdpForwardService::close()
 
 void UdpForwardService::onSoc(time_t curTime, uint32_t events, Endpoint_t *pe)
 {
-    if (pe->type == Type_t::SERVICE)
+    if (pe->type == TYPE_SERVICE)
     {
         onServiceSoc(curTime, events, pe);
     }
@@ -132,7 +130,7 @@ void UdpForwardService::scanTimeout(time_t curTime)
     list<TimerList::Entity_t *> timeoutList;
     mTimeoutTimer.removeTimeout(timeoutTime, timeoutList);
     for (auto entity: timeoutList) {
-        addToCloseList((UdpTunnel_t *)entity->container);
+        addToCloseList((Tunnel_t *)entity->container);
     }
 }
 
@@ -211,7 +209,7 @@ bool UdpForwardService::epollAddEndpoint(Endpoint_t *pe, bool read, bool write, 
     return true;
 }
 
-UdpTunnel_t *UdpForwardService::getTunnel(time_t curTime, sockaddr_in *southRemoteAddr)
+Tunnel_t *UdpForwardService::getTunnel(time_t curTime, sockaddr_in *southRemoteAddr)
 {
     auto it = mAddr2Tunnel.find(*southRemoteAddr);
     if (it != mAddr2Tunnel.end())
@@ -220,7 +218,7 @@ UdpTunnel_t *UdpForwardService::getTunnel(time_t curTime, sockaddr_in *southRemo
     }
 
     // create north endpoint
-    auto north = Endpoint::getEndpoint(Protocol_t::UDP, Direction_t::DIR_NORTH, Type_t::NORMAL);
+    auto north = Endpoint::getEndpoint(PROTOCOL_UDP, TO_NORTH, TYPE_NORMAL);
     if (north == nullptr)
     {
         spdlog::error("[UdpForwardService::getTunnel] create north endpoint fail");
@@ -233,7 +231,7 @@ UdpTunnel_t *UdpForwardService::getTunnel(time_t curTime, sockaddr_in *southRemo
         north->peer = &mServiceEndpoint;
 
         // create to north socket
-        north->soc = Utils::createSoc(Protocol_t::UDP, true);
+        north->soc = Utils::createSoc(PROTOCOL_UDP, true);
         if (north->soc <= 0)
         {
             spdlog::error("[UdpForwardService::getTunnel] create north socket fail.");
@@ -372,7 +370,7 @@ void UdpForwardService::southWrite(time_t curTime, Endpoint_t *pe)
                           p->buffer,
                           p->dataSize,
                           0,
-                          (sockaddr *)&p->sockaddr,
+                          (sockaddr *)&p->destAddr,
                           sizeof(sockaddr_in));
         if (nRet < 0)
         {
@@ -440,7 +438,7 @@ void UdpForwardService::northRead(time_t curTime, Endpoint_t *pe)
             }
 
             auto pBlk = mpBuffer->cut(nRet);
-            pBlk->sockaddr = it->second;
+            pBlk->destAddr = it->second;
 
             Endpoint::appendToSendList(&mServiceEndpoint, pBlk);
             // 尝试发送
@@ -451,7 +449,7 @@ void UdpForwardService::northRead(time_t curTime, Endpoint_t *pe)
             if (errno == EAGAIN)
             {
                 // 此次数据接收已完毕
-                mTimeoutTimer.refresh(curTime, &((UdpTunnel_t *)pe->container)->timerEntity);
+                mTimeoutTimer.refresh(curTime, &((Tunnel_t *)pe->container)->timerEntity);
             }
             else
             {
@@ -479,7 +477,7 @@ void UdpForwardService::northWrite(time_t curTime, Endpoint_t *pe)
             if (errno == EAGAIN)
             {
                 // 此次发送窗口已关闭
-                mTimeoutTimer.refresh(curTime, &((UdpTunnel_t *)pe->container)->timerEntity);
+                mTimeoutTimer.refresh(curTime, &((Tunnel_t *)pe->container)->timerEntity);
                 break;
             }
 

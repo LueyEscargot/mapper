@@ -48,39 +48,39 @@ public:
     void scanTimeout(time_t curTime) override;
 
 protected:
-    static void setStatus(UdpTunnel_t *pt, TunnelState_t stat);
-    UdpTunnel_t *getTunnel();
+    static void setStatus(Tunnel_t *pt, TunnelState_t stat);
+    Tunnel_t *getTunnel();
     void acceptClient(time_t curTime, Endpoint_t *pe);
-    bool connect(time_t curTime, UdpTunnel_t *pt);
+    bool connect(time_t curTime, Tunnel_t *pt);
 
     bool epollAddEndpoint(Endpoint_t *pe, bool read, bool write, bool edgeTriger);
     bool epollResetEndpointMode(Endpoint_t *pe, bool read, bool write, bool edgeTriger);
-    bool epollResetEndpointMode(UdpTunnel_t *pt, bool read, bool write, bool edgeTriger);
+    bool epollResetEndpointMode(Tunnel_t *pt, bool read, bool write, bool edgeTriger);
     void epollRemoveEndpoint(Endpoint_t *pe);
-    void epollRemoveTunnel(UdpTunnel_t *pt);
+    void epollRemoveTunnel(Tunnel_t *pt);
 
     void onRead(time_t curTime, int events, Endpoint_t *pe);
     void onWrite(time_t curTime, Endpoint_t *pe);
     void appendToSendList(Endpoint_t *pe, buffer::DynamicBuffer::BufBlk_t *pBlk);
 
-    inline void addToCloseList(UdpTunnel_t *pt) { mPostProcessList.insert(pt); };
-    inline void addToCloseList(Endpoint_t *pe) { addToCloseList((UdpTunnel_t *)pe->container); }
-    void closeTunnel(UdpTunnel_t *pt);
+    inline void addToCloseList(Tunnel_t *pt) { mPostProcessList.insert(pt); };
+    inline void addToCloseList(Endpoint_t *pe) { addToCloseList((Tunnel_t *)pe->container); }
+    void closeTunnel(Tunnel_t *pt);
 
-    inline void addToTimer(utils::TimerList &timer, time_t curTime, UdpTunnel_t *pt)
+    inline void addToTimer(utils::TimerList &timer, time_t curTime, Tunnel_t *pt)
     {
         timer.push_back(curTime, &pt->timerEntity);
     }
-    inline void removeFromTimer(utils::TimerList &timer, UdpTunnel_t *pt)
+    inline void removeFromTimer(utils::TimerList &timer, Tunnel_t *pt)
     {
         timer.erase(&pt->timerEntity);
     }
-    inline void refreshTimer(utils::TimerList &timer, time_t curTime, UdpTunnel_t *pt)
+    inline void refreshTimer(utils::TimerList &timer, time_t curTime, Tunnel_t *pt)
     {
         timer.refresh(curTime, &pt->timerEntity);
     }
-    void refreshTimer(time_t curTime, UdpTunnel_t *pt);
-    inline void switchTimer(utils::TimerList &src, utils::TimerList &dst, time_t curTime, UdpTunnel_t *pt)
+    void refreshTimer(time_t curTime, Tunnel_t *pt);
+    inline void switchTimer(utils::TimerList &src, utils::TimerList &dst, time_t curTime, Tunnel_t *pt)
     {
         src.erase(&pt->timerEntity);
         dst.push_back(curTime, &pt->timerEntity);
@@ -93,8 +93,8 @@ protected:
     TargetManager mTargetManager;
 
     Setting_t mSetting;
-    std::set<UdpTunnel_t *> mTunnelList;
-    std::set<UdpTunnel_t *> mPostProcessList;
+    std::set<Tunnel_t *> mTunnelList;
+    std::set<Tunnel_t *> mPostProcessList;
 
     utils::TimerList mBufferWaitList;
     utils::TimerList mConnectTimer;
