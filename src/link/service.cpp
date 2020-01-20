@@ -195,7 +195,10 @@ bool Service::epollAddEndpoint(Endpoint_t *pe, bool read, bool write, bool edgeT
                    (edgeTriger ? EPOLLET : 0); // use edge triger or level triger
     if (epoll_ctl(mEpollfd, EPOLL_CTL_ADD, pe->soc, &event))
     {
-        spdlog::error("[Service::epollAddEndpoint] events[{}]-soc[{}] join fail. Error {}: {}",
+        spdlog::error("[Service::epollAddEndpoint] events[EPOLLRDHUP{}{}{}]-soc[{}] join fail. Error {}: {}",
+                      event.events & EPOLLIN ? "|EPOLLIN" : "",
+                      event.events & EPOLLOUT ? "|EPOLLOUT" : "",
+                      event.events & EPOLLET ? "|EPOLLET" : "",
                       event.events, pe->soc, errno, strerror(errno));
         return false;
     }
@@ -219,8 +222,11 @@ bool Service::epollResetEndpointMode(Endpoint_t *pe, bool read, bool write, bool
                    (edgeTriger ? EPOLLET : 0); // use edge triger or level triger
     if (epoll_ctl(mEpollfd, EPOLL_CTL_MOD, pe->soc, &event))
     {
-        spdlog::error("[Service::epollResetEndpointMode] events[{}]-soc[{}] reset fail. Error {}: {}",
-                      event.events, pe->soc, errno, strerror(errno));
+        spdlog::error("[Service::epollResetEndpointMode] events[EPOLLRDHUP{}{}{}]-soc[{}] reset fail. Error {}: {}",
+                      event.events & EPOLLIN ? "|EPOLLIN" : "",
+                      event.events & EPOLLOUT ? "|EPOLLOUT" : "",
+                      event.events & EPOLLET ? "|EPOLLET" : "",
+                      pe->soc, errno, strerror(errno));
         return false;
     }
 
