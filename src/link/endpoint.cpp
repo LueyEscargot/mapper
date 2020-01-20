@@ -40,7 +40,7 @@ void Endpoint::appendToSendList(Endpoint_t *pe, DynamicBuffer::BufBlk_t *pBufBlk
     if (pe->sendListTail)
     {
         // 链表中有数据
-        auto pTail = static_cast<DynamicBuffer::BufBlk_t *>(pe->sendListHead);
+        auto pTail = static_cast<DynamicBuffer::BufBlk_t *>(pe->sendListTail);
 
         pBufBlk->prev = pTail;
         pBufBlk->next = nullptr;
@@ -57,7 +57,20 @@ void Endpoint::appendToSendList(Endpoint_t *pe, DynamicBuffer::BufBlk_t *pBufBlk
     }
 
     // 更新总发送数
-    pe->totalBufSize += pBufBlk->dataSize - pBufBlk->sent;
+    assert(pBufBlk->sent == 0);
+    pe->totalBufSize += pBufBlk->dataSize;
+}
+
+uint32_t Endpoint::sendListLength(const Endpoint_t *pe)
+{
+    uint32_t length = 0;
+    auto p = (DynamicBuffer::BufBlk_t *)pe->sendListHead;
+    while (p)
+    {
+        ++length;
+        p = p->next;
+    }
+    return length;
 }
 
 } // namespace link
