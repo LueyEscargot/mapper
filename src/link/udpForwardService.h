@@ -48,13 +48,7 @@ public:
     void postProcess(time_t curTime) override;
     void scanTimeout(time_t curTime) override;
 
-    inline const Endpoint_t &getServiceEndpoint() const { return mServiceEndpoint; }
-
-    void onServiceSoc(time_t curTime, uint32_t events, Endpoint_t *pe);
-    void onNorthSoc(time_t curTime, uint32_t events, Endpoint_t *pe);
-
 protected:
-    bool epollAddEndpoint(Endpoint_t *pe, bool read, bool write, bool edgeTriger);
     Tunnel_t *getTunnel(time_t curTime, sockaddr_in *pSAI);
     void southRead(time_t curTime, Endpoint_t *pe);
     void southWrite(time_t curTime, Endpoint_t *pe);
@@ -64,6 +58,7 @@ protected:
     inline void addToCloseList(Tunnel_t *pt) { mCloseList.insert(pt); };
     inline void addToCloseList(Endpoint_t *pe) { addToCloseList((Tunnel_t *)pe->container); }
     void closeTunnels();
+    void processBufferWaitingList();
 
     std::shared_ptr<Forward> mForwardCmd;
     TargetManager mTargetManager;
@@ -72,9 +67,9 @@ protected:
     Setting_t mSetting;
     std::set<Tunnel_t *> mCloseList;
     utils::TimerList mTimeoutTimer;
+    utils::BaseList mBufferWaitList;
 
     std::map<sockaddr_in, Tunnel_t *, Utils::Comparator_t> mAddr2Tunnel;
-    std::map<sockaddr_in, Endpoint_t *, Utils::Comparator_t> mAddr2Endpoint;
     std::map<int, sockaddr_in> mNorthSoc2SouthRemoteAddr;
 };
 

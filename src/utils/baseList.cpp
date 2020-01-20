@@ -21,7 +21,7 @@ BaseList::~BaseList()
     }
 }
 
-void BaseList::push_front(Entry_t *p)
+void BaseList::push_front(Entity_t *p)
 {
     assert(!p->inList && !p->prev && !p->next);
     // spdlog::trace("[BaseList::push_front] [{}] push_front [{}]",
@@ -46,7 +46,7 @@ void BaseList::push_front(Entry_t *p)
     p->inList = true;
 }
 
-void BaseList::push_back(Entry_t *p)
+void BaseList::push_back(Entity_t *p)
 {
     assert(!p->inList &&
            !p->prev &&
@@ -73,7 +73,7 @@ void BaseList::push_back(Entry_t *p)
     p->inList = true;
 }
 
-void BaseList::erase(Entry_t *p)
+void BaseList::erase(Entity_t *p)
 {
     assert(p->inList);
     // spdlog::trace("[BaseList::erase] [{}] erase [{}]",

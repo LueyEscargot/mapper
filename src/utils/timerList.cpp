@@ -24,6 +24,12 @@ void TimerList::refresh(time_t curTime, Entity_t *p)
             // 无需调整位置
             return;
         }
+        else if (((TimerList::Entity_t *)(p->next))->time == p->time) // p 非最后一个元素
+        {
+            // 在有序链表中，后面的元素的时间与当前元素更新后的时间一致，所以无需调整位置
+            assert(((TimerList::Entity_t *)mpTail)->time == p->time);
+            return;
+        }
         else
         {
             BaseList::erase(p);

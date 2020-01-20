@@ -71,6 +71,12 @@ public:
     virtual void scanTimeout(time_t curTime) = 0;
 
 protected:
+    bool epollAddEndpoint(Endpoint_t *pe, bool read, bool write, bool edgeTriger);
+    bool epollResetEndpointMode(Endpoint_t *pe, bool read, bool write, bool edgeTriger);
+    bool epollResetEndpointMode(Tunnel_t *pt, bool read, bool write, bool edgeTriger);
+    void epollRemoveEndpoint(Endpoint_t *pe);
+    void epollRemoveTunnel(Tunnel_t *pt);
+
     int mEpollfd;
     std::string mName;
     Endpoint_t mServiceEndpoint;

@@ -53,15 +53,8 @@ protected:
     void acceptClient(time_t curTime, Endpoint_t *pe);
     bool connect(time_t curTime, Tunnel_t *pt);
 
-    bool epollAddEndpoint(Endpoint_t *pe, bool read, bool write, bool edgeTriger);
-    bool epollResetEndpointMode(Endpoint_t *pe, bool read, bool write, bool edgeTriger);
-    bool epollResetEndpointMode(Tunnel_t *pt, bool read, bool write, bool edgeTriger);
-    void epollRemoveEndpoint(Endpoint_t *pe);
-    void epollRemoveTunnel(Tunnel_t *pt);
-
     void onRead(time_t curTime, int events, Endpoint_t *pe);
     void onWrite(time_t curTime, Endpoint_t *pe);
-    void appendToSendList(Endpoint_t *pe, buffer::DynamicBuffer::BufBlk_t *pBlk);
 
     inline void addToCloseList(Tunnel_t *pt) { mPostProcessList.insert(pt); };
     inline void addToCloseList(Endpoint_t *pe) { addToCloseList((Tunnel_t *)pe->container); }
@@ -96,7 +89,7 @@ protected:
     std::set<Tunnel_t *> mTunnelList;
     std::set<Tunnel_t *> mPostProcessList;
 
-    utils::TimerList mBufferWaitList;
+    utils::BaseList mBufferWaitList;
     utils::TimerList mConnectTimer;
     utils::TimerList mSessionTimer;
     utils::TimerList mReleaseTimer;

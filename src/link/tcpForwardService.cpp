@@ -144,7 +144,6 @@ void TcpForwardService::onSoc(time_t curTime, uint32_t events, Endpoint_t *pe)
     }
     else
     {
-        assert(pe->type == TYPE_NORMAL);
         auto pt = (Tunnel_t *)pe->container;
 
         if (!pe->valid)
@@ -490,76 +489,6 @@ bool TcpForwardService::connect(time_t curTime, Tunnel_t *pt)
     return true;
 }
 
-bool TcpForwardService::epollAddEndpoint(Endpoint_t *pe, bool read, bool write, bool edgeTriger)
-{
-    // spdlog::debug("[TcpForwardService::epollAddEndpoint] endpoint[{}], read[{}], write[{}]",
-    //               Utils::dumpEndpoint(pe), read, write);
-
-    struct epoll_event event;
-    event.data.ptr = pe;
-    event.events = EPOLLRDHUP |                // for peer close
-                   (read ? EPOLLIN : 0) |      // enable read
-                   (write ? EPOLLOUT : 0) |    // enable write
-                   (edgeTriger ? EPOLLET : 0); // use edge triger or level triger
-    if (epoll_ctl(mEpollfd, EPOLL_CTL_ADD, pe->soc, &event))
-    {
-        spdlog::error("[TcpForwardService::epollAddEndpoint] events[{}]-soc[{}] join fail. Error {}: {}",
-                      event.events, pe->soc, errno, strerror(errno));
-        return false;
-    }
-
-    // spdlog::debug("[TcpForwardService::epollAddEndpoint] endpoint[{}], event.events[0x{:X}]",
-    //               Utils::dumpEndpoint(pe), event.events);
-
-    return true;
-}
-
-bool TcpForwardService::epollResetEndpointMode(Endpoint_t *pe, bool read, bool write, bool edgeTriger)
-{
-    // spdlog::debug("[TcpForwardService::epollResetEndpointMode] endpoint[{}], read: {}, write: {}, edgeTriger: {}",
-    //               Utils::dumpEndpoint(pe), read, write, edgeTriger);
-
-    struct epoll_event event;
-    event.data.ptr = pe;
-    event.events = EPOLLRDHUP |                // for peer close
-                   (read ? EPOLLIN : 0) |      // enable read
-                   (write ? EPOLLOUT : 0) |    // enable write
-                   (edgeTriger ? EPOLLET : 0); // use edge triger or level triger
-    if (epoll_ctl(mEpollfd, EPOLL_CTL_MOD, pe->soc, &event))
-    {
-        spdlog::error("[TcpForwardService::epollResetEndpointMode] events[{}]-soc[{}] reset fail. Error {}: {}",
-                      event.events, pe->soc, errno, strerror(errno));
-        return false;
-    }
-
-    return true;
-}
-
-bool TcpForwardService::epollResetEndpointMode(Tunnel_t *pt, bool read, bool write, bool edgeTriger)
-{
-    return epollResetEndpointMode(pt->north, read, write, edgeTriger) &&
-           epollResetEndpointMode(pt->south, read, write, edgeTriger);
-}
-
-void TcpForwardService::epollRemoveEndpoint(Endpoint_t *pe)
-{
-    // spdlog::trace("[TcpForwardService::epollRemoveEndpoint] remove endpoint[{}]",
-    //               Utils::dumpEndpoint(pe));
-
-    // remove from epoll driver
-    if (epoll_ctl(mEpollfd, EPOLL_CTL_DEL, pe->soc, nullptr))
-    {
-        spdlog::error("[TcpForwardService::epollRemoveEndpoint] remove endpoint[{}] from epoll fail. {} - {}",
-                      Utils::dumpEndpoint(pe), errno, strerror(errno));
-    }
-}
-
-void TcpForwardService::epollRemoveTunnel(Tunnel_t *pt)
-{
-    epollRemoveEndpoint(pt->north);
-    epollRemoveEndpoint(pt->south);
-}
-
 void TcpForwardService::onRead(time_t curTime, int events, Endpoint_t *pe)
 {
     if (pe->bufWaitEntry.inList)
@@ -620,7 +549,7 @@ void TcpForwardService::onRead(time_t curTime, int events, Endpoint_t *pe)
                 pe->stopRecv = true;
 
                 // append into buffer waiting list
-                mBufferWaitList.push_back(curTime, &pe->bufWaitEntry);
+                mBufferWaitList.push_back(&pe->bufWaitEntry);
             }
             break;
         }
@@ -653,7 +582,7 @@ void TcpForwardService::onRead(time_t curTime, int events, Endpoint_t *pe)
         // cut buffer
         auto pBlk = mpBuffer->cut(nRet);
         // attach to peer's send list
-        appendToSendList(pe->peer, pBlk);
+        Endpoint::appendToSendList(pe->peer, pBlk);
 
         isRead = true;
     }
@@ -770,39 +699,6 @@ void TcpForwardService::onWrite(time_t curTime, Endpoint_t *pe)
                 addToCloseList(pt);
             }
         }
-    }
-}
-
-void TcpForwardService::appendToSendList(Endpoint_t *pe, DynamicBuffer::BufBlk_t *pBlk)
-{
-    pBlk->next = nullptr;
-
-    if (pe->sendListHead)
-    {
-        // 已有待发送数据包
-
-        // auto head = (DynamicBuffer::BufBlk_t *)pe->sendListHead;
-        auto tail = (DynamicBuffer::BufBlk_t *)pe->sendListTail;
-
-        pBlk->prev = tail;
-        tail->next = pBlk;
-    }
-    else
-    {
-        // 发送队列为空
-        pBlk->prev = nullptr;
-        pe->sendListHead = pBlk;
-    }
-
-    pe->sendListTail = pBlk;
-    pe->totalBufSize += pBlk->dataSize;
-
-    // is buffer full
-    if (pe->totalBufSize >= mSetting.bufferPerSessionLimit)
-    {
-        // 缓冲区满
-        // spdlog::trace("[TcpForwardService::onRead] soc[{}] buffer full", pe->soc);
-        pe->bufferFull = true;
     }
 }
 
@@ -946,7 +842,6 @@ void TcpForwardService::processBufferWaitingList()
         auto entry = mBufferWaitList.mpHead;
         while (entry)
         {
-            auto pe = (Endpoint_t *)((TimerList::Entity_t *)entry)->container;
             auto pBufBlk = mpBuffer->getCurBufBlk();
             if (pBufBlk == nullptr)
             {
@@ -954,6 +849,7 @@ void TcpForwardService::processBufferWaitingList()
                 break;
             }
 
+            auto pe = (Endpoint_t *)entry->container;
             int nRet = recv(pe->soc, pBufBlk->buffer, pBufBlk->getBufSize(), 0);
             if (nRet < 0)
             {
@@ -981,7 +877,7 @@ void TcpForwardService::processBufferWaitingList()
                 // cut buffer
                 auto pBlk = mpBuffer->cut(nRet);
                 // attach to peer's send list
-                appendToSendList(pe->peer, pBlk);
+                Endpoint::appendToSendList(pe->peer, pBlk);
 
                 // 重置停止接收标志
                 pe->stopRecv = false;
@@ -1000,7 +896,7 @@ void TcpForwardService::processBufferWaitingList()
 
             // 将当前节点从等待队列中移除
             auto next = entry->next;
-            mBufferWaitList.erase((TimerList::Entity_t *)entry);
+            mBufferWaitList.erase(entry);
             entry = next;
         }
     }

@@ -19,11 +19,11 @@ namespace utils
 class BaseList
 {
 public:
-    struct Entry_t
+    struct Entity_t
     {
         bool inList;
-        Entry_t *prev;
-        Entry_t *next;
+        Entity_t *prev;
+        Entity_t *next;
         void *container;
 
         inline void init(void *_container)
@@ -37,13 +37,13 @@ public:
     BaseList();
     virtual ~BaseList();
 
-    void push_front(Entry_t *p);
-    void push_back(Entry_t *p);
-    void erase(Entry_t *p);
+    void push_front(Entity_t *p);
+    void push_back(Entity_t *p);
+    void erase(Entity_t *p);
     bool check();
 
-    Entry_t *mpHead;
-    Entry_t *mpTail;
+    Entity_t *mpHead;
+    Entity_t *mpTail;
 };
 
 } // namespace utils

@@ -55,6 +55,9 @@ void Endpoint::appendToSendList(Endpoint_t *pe, DynamicBuffer::BufBlk_t *pBufBlk
         pBufBlk->prev = pBufBlk->next = nullptr;
         pe->sendListHead = pe->sendListTail = pBufBlk;
     }
+
+    // 更新总发送数
+    pe->totalBufSize += pBufBlk->dataSize - pBufBlk->sent;
 }
 
 } // namespace link

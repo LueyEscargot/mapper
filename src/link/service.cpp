@@ -1,5 +1,6 @@
 #include "service.h"
 #include <string.h>
+#include <sys/epoll.h>
 #include <sstream>
 #include <spdlog/spdlog.h>
 #include "tcpForwardService.h"
@@ -179,6 +180,76 @@ bool Service::init(int epollfd, DynamicBuffer *pBuffer)
     mpBuffer = pBuffer;
 
     return true;
+}
+
+bool Service::epollAddEndpoint(Endpoint_t *pe, bool read, bool write, bool edgeTriger)
+{
+    // spdlog::debug("[Service::epollAddEndpoint] endpoint[{}], read[{}], write[{}]",
+    //               Endpoint::toStr(pe), read, write);
+
+    struct epoll_event event;
+    event.data.ptr = pe;
+    event.events = EPOLLRDHUP |                // for peer close
+                   (read ? EPOLLIN : 0) |      // enable read
+                   (write ? EPOLLOUT : 0) |    // enable write
+                   (edgeTriger ? EPOLLET : 0); // use edge triger or level triger
+    if (epoll_ctl(mEpollfd, EPOLL_CTL_ADD, pe->soc, &event))
+    {
+        spdlog::error("[Service::epollAddEndpoint] events[{}]-soc[{}] join fail. Error {}: {}",
+                      event.events, pe->soc, errno, strerror(errno));
+        return false;
+    }
+
+    // spdlog::debug("[Service::epollAddEndpoint] endpoint[{}], event.events[0x{:X}]",
+    //               Endpoint::toStr(pe), event.events);
+
+    return true;
+}
+
+bool Service::epollResetEndpointMode(Endpoint_t *pe, bool read, bool write, bool edgeTriger)
+{
+    // spdlog::debug("[Service::epollResetEndpointMode] endpoint[{}], read: {}, write: {}, edgeTriger: {}",
+    //               Utils::dumpEndpoint(pe), read, write, edgeTriger);
+
+    struct epoll_event event;
+    event.data.ptr = pe;
+    event.events = EPOLLRDHUP |                // for peer close
+                   (read ? EPOLLIN : 0) |      // enable read
+                   (write ? EPOLLOUT : 0) |    // enable write
+                   (edgeTriger ? EPOLLET : 0); // use edge triger or level triger
+    if (epoll_ctl(mEpollfd, EPOLL_CTL_MOD, pe->soc, &event))
+    {
+        spdlog::error("[Service::epollResetEndpointMode] events[{}]-soc[{}] reset fail. Error {}: {}",
+                      event.events, pe->soc, errno, strerror(errno));
+        return false;
+    }
+
+    return true;
+}
+
+bool Service::epollResetEndpointMode(Tunnel_t *pt, bool read, bool write, bool edgeTriger)
+{
+    return epollResetEndpointMode(pt->north, read, write, edgeTriger) &&
+           epollResetEndpointMode(pt->south, read, write, edgeTriger);
+}
+
+void Service::epollRemoveEndpoint(Endpoint_t *pe)
+{
+    // spdlog::trace("[Service::epollRemoveEndpoint] remove endpoint[{}]",
+    //               Utils::dumpEndpoint(pe));
+
+    // remove from epoll driver
+    if (epoll_ctl(mEpollfd, EPOLL_CTL_DEL, pe->soc, nullptr))
+    {
+        spdlog::error("[Service::epollRemoveEndpoint] remove endpoint[{}] from epoll fail. {} - {}",
+                      Utils::dumpEndpoint(pe), errno, strerror(errno));
+    }
+}
+
+void Service::epollRemoveTunnel(Tunnel_t *pt)
+{
+    epollRemoveEndpoint(pt->north);
+    epollRemoveEndpoint(pt->south);
 }
 
 } // namespace link

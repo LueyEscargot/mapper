@@ -91,7 +91,7 @@ struct Endpoint_t
     int soc;
     Connection_t conn;
 
-    utils::TimerList::Entity_t bufWaitEntry;
+    utils::BaseList::Entity_t bufWaitEntry;
 
     Endpoint_t *prev;
     Endpoint_t *next;

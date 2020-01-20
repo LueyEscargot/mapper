@@ -24,14 +24,14 @@ namespace utils
 class TimerList : public BaseList
 {
 public:
-    struct Entity_t : public BaseList::Entry_t
+    struct Entity_t : public BaseList::Entity_t
     {
         time_t time;
         TimerList *timer;
 
         inline void init(void *container)
         {
-            BaseList::Entry_t::init(container);
+            BaseList::Entity_t::init(container);
             time = 0;
             timer = nullptr;
         }
