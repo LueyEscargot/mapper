@@ -51,14 +51,16 @@ public:
 protected:
     Tunnel_t *getTunnel(time_t curTime, sockaddr_in *pSAI);
     void southRead(time_t curTime, Endpoint_t *pe);
+    Tunnel_t *southRead(time_t curTime, Endpoint_t *pe, char *buffer);
     void southWrite(time_t curTime, Endpoint_t *pe);
     void northRead(time_t curTime, Endpoint_t *pe);
+    Tunnel_t *northRead(time_t curTime, Endpoint_t *pe, char *buffer);
     void northWrite(time_t curTime, Endpoint_t *pe);
 
     inline void addToCloseList(Tunnel_t *pt) { mCloseList.insert(pt); };
     inline void addToCloseList(Endpoint_t *pe) { addToCloseList((Tunnel_t *)pe->container); }
     void closeTunnels();
-    void processBufferWaitingList();
+    void processBufferWaitingList(time_t curTime);
 
     std::shared_ptr<Forward> mForwardCmd;
     TargetManager mTargetManager;
