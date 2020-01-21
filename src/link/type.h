@@ -91,7 +91,7 @@ struct Endpoint_t
     int soc;
     Connection_t conn;
 
-    utils::BaseList::Entity_t bufWaitEntry;
+    utils::BaseList::Entity_t bufWaitEntity;
 
     Endpoint_t *prev;
     Endpoint_t *next;
@@ -115,7 +115,7 @@ struct Endpoint_t
         soc = 0;
         conn.init(protocol);
 
-        bufWaitEntry.init(this);
+        bufWaitEntity.init(this);
 
         prev = nullptr;
         next = nullptr;

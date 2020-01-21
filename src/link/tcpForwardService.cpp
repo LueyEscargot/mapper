@@ -491,7 +491,7 @@ bool TcpForwardService::connect(time_t curTime, Tunnel_t *pt)
 
 void TcpForwardService::onRead(time_t curTime, int events, Endpoint_t *pe)
 {
-    if (pe->bufWaitEntry.inList)
+    if (pe->bufWaitEntity.inList)
     {
         // 在等待缓存区队列中，此时不用处理
         return;
@@ -549,7 +549,7 @@ void TcpForwardService::onRead(time_t curTime, int events, Endpoint_t *pe)
                 pe->stopRecv = true;
 
                 // append into buffer waiting list
-                mBufferWaitList.push_back(&pe->bufWaitEntry);
+                mBufferWaitList.push_back(&pe->bufWaitEntity);
             }
             break;
         }
@@ -738,19 +738,19 @@ void TcpForwardService::closeTunnel(Tunnel_t *pt)
                       pt->south->soc, pt->north->soc);
 
         // remove from waiting buffer list
-        if (pt->north->bufWaitEntry.inList)
+        if (pt->north->bufWaitEntity.inList)
         {
             spdlog::trace("[TcpForwardService::closeTunnel] remove north soc[{}]"
                           " from buffer waiting list",
                           pt->north->soc);
-            mBufferWaitList.erase(&pt->north->bufWaitEntry);
+            mBufferWaitList.erase(&pt->north->bufWaitEntity);
         }
-        if (pt->south->bufWaitEntry.inList)
+        if (pt->south->bufWaitEntity.inList)
         {
             spdlog::trace("[TcpForwardService::closeTunnel] remove south soc[{}]"
                           " from buffer waiting list",
                           pt->south->soc);
-            mBufferWaitList.erase(&pt->south->bufWaitEntry);
+            mBufferWaitList.erase(&pt->south->bufWaitEntity);
         }
 
         // remove from timer
