@@ -203,67 +203,52 @@ bool Utils::setSocAttr(int soc, bool nonblock, bool reuse)
 
 int Utils::compareAddr(const sockaddr *l, const sockaddr *r)
 {
-    // family
-    if (l->sa_family != r->sa_family)
-    {
-        return l->sa_family < r->sa_family ? -1 : 1;
-    }
-
-    // ipv4
-    if (l->sa_family == AF_INET)
-    {
-        auto l_addr = reinterpret_cast<const sockaddr_in *>(l);
-        auto r_addr = reinterpret_cast<const sockaddr_in *>(r);
-        // address
-        if (l_addr->sin_addr.s_addr != r_addr->sin_addr.s_addr)
-        {
-            return ntohl(l_addr->sin_addr.s_addr) < ntohl(r_addr->sin_addr.s_addr) ? -1 : 1;
-        }
-        // port
-        if (l_addr->sin_port != r_addr->sin_port)
-        {
-            return ntohs(l_addr->sin_port) < ntohs(r_addr->sin_port) ? -1 : 1;
-        }
-    }
-    else if (l->sa_family == AF_INET6)
-    {
-        auto l_addr = reinterpret_cast<const sockaddr_in6 *>(l);
-        auto r_addr = reinterpret_cast<const sockaddr_in6 *>(r);
-        // address
-        int r = memcmp(l_addr->sin6_addr.s6_addr,
-                       r_addr->sin6_addr.s6_addr,
-                       sizeof(l_addr->sin6_addr.s6_addr));
-        if (r)
-        {
-            return r;
-        }
-        // port
-        if (l_addr->sin6_port != r_addr->sin6_port)
-        {
-            return ntohs(l_addr->sin6_port) < ntohs(r_addr->sin6_port) ? -1 : 1;
-        }
-        // flowinfo
-        if (l_addr->sin6_flowinfo != r_addr->sin6_flowinfo)
-        {
-            return ntohl(l_addr->sin6_flowinfo) < ntohl(r_addr->sin6_flowinfo) ? -1 : 1;
-        }
-        // scop id
-        if (l_addr->sin6_scope_id != r_addr->sin6_scope_id)
-        {
-            return ntohl(l_addr->sin6_scope_id) < ntohl(r_addr->sin6_scope_id) ? -1 : 1;
-        }
-    }
-    else
-    {
-        assert(!"unknown sa_family");
-    }
-
-    return 0;
+    return (l->sa_family != r->sa_family) // family
+               ? (l->sa_family < r->sa_family
+                      ? -1
+                      : 1)
+               : (l->sa_family == AF_INET) // ipv4
+                     ? compareAddr((const sockaddr_in *)l, (const sockaddr_in *)r)
+                     : (l->sa_family == AF_INET6) // ipv6
+                           ? compareAddr((const sockaddr_in6 *)l, (const sockaddr_in6 *)r)
+                           : (assert(!"unknown sa_family"), 0);
 }
 
 int Utils::compareAddr(const sockaddr_in *l, const sockaddr_in *r)
 {
-    return compareAddr((const sockaddr *)l, (const sockaddr *)r);
+    return (l->sin_addr.s_addr != r->sin_addr.s_addr)
+               ? (ntohl(l->sin_addr.s_addr) < ntohl(r->sin_addr.s_addr)
+                      ? -1
+                      : 1)
+               : (l->sin_port != r->sin_port)
+                     ? (ntohs(l->sin_port) < ntohs(r->sin_port)
+                            ? -1
+                            : 1)
+                     : 0;
+}
+
+int Utils::compareAddr(const sockaddr_in6 *l, const sockaddr_in6 *r)
+{
+    // address
+    int addrCmpRet = memcmp(l->sin6_addr.s6_addr,
+                            r->sin6_addr.s6_addr,
+                            sizeof(l->sin6_addr.s6_addr));
+
+    return addrCmpRet
+               ? addrCmpRet
+               : (l->sin6_port != r->sin6_port)
+                     ? (ntohs(l->sin6_port) < ntohs(r->sin6_port)
+                            ? -1
+                            : 1)
+                     : (l->sin6_flowinfo != r->sin6_flowinfo)
+                           ? (ntohl(l->sin6_flowinfo) < ntohl(r->sin6_flowinfo)
+                                  ? -1
+                                  : 1)
+                           : (l->sin6_scope_id != r->sin6_scope_id)
+                                 ? (ntohl(l->sin6_scope_id) < ntohl(r->sin6_scope_id)
+                                        ? -1
+                                        : 1)
+                                 : 0;
 }
 
 int Utils::compareAddr(const addrinfo *l, const addrinfo *r)

@@ -54,6 +54,7 @@ public:
 
     static int compareAddr(const sockaddr *l, const sockaddr *r);
     static int compareAddr(const sockaddr_in *l, const sockaddr_in *r);
+    static int compareAddr(const sockaddr_in6 *l, const sockaddr_in6 *r);
     static int compareAddr(const addrinfo *l, const addrinfo *r);
 
     static std::string dumpSockAddr(const sockaddr *addr);
