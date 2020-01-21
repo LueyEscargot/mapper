@@ -17,12 +17,27 @@ namespace mapper
 namespace link
 {
 
+uint32_t Endpoint::gFreeCount = 0;
+uint32_t Endpoint::gInUseCount = 0;
+
+std::list<Endpoint_t *> Endpoint::gFreeList;
+
 Endpoint_t *Endpoint::getEndpoint(Protocol_t protocol, Direction_t direction, Type_t type)
 {
-    // TODO: use endpoint buffer
-    Endpoint_t *pe = new mapper::link::Endpoint_t;
+    if (gFreeList.empty())
+    {
+        batchAlloc(BATCH_ALLOC_COUNT);
+    }
+
+    Endpoint_t *pe = gFreeList.front();
     if (pe)
     {
+        gFreeList.pop_front();
+
+        --gFreeCount;
+        ++gInUseCount;
+        assert(gFreeCount >= 0);
+
         pe->init(protocol, direction, type);
     }
 
@@ -31,8 +46,26 @@ Endpoint_t *Endpoint::getEndpoint(Protocol_t protocol, Direction_t direction, Ty
 
 void Endpoint::releaseEndpoint(Endpoint_t *pe)
 {
-    // TODO: use endpoint buffer
-    delete pe;
+    assert(pe);
+
+    gFreeList.push_front(pe);
+
+    ++gFreeCount;
+    --gInUseCount;
+    assert(gInUseCount >= 0);
+
+    if (gFreeCount > RELEASE_THRESHOLD)
+    {
+        for (auto i = BUFFER_SIZE; i < RELEASE_THRESHOLD; ++i)
+        {
+            auto pe = gFreeList.front();
+            gFreeList.pop_front();
+            delete pe;
+            --gFreeCount;
+        }
+
+        assert(gFreeCount == BUFFER_SIZE);
+    }
 }
 
 void Endpoint::appendToSendList(Endpoint_t *pe, DynamicBuffer::BufBlk_t *pBufBlk)
@@ -71,6 +104,17 @@ uint32_t Endpoint::sendListLength(const Endpoint_t *pe)
         p = p->next;
     }
     return length;
+}
+
+void Endpoint::batchAlloc(const uint32_t count)
+{
+    for (auto i = 0; i < count; ++i) {
+        auto pe = new Endpoint_t;
+        if (pe) {
+            gFreeList.push_front(pe);
+            ++gFreeCount;
+        }
+    }
 }
 
 } // namespace link
