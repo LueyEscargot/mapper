@@ -47,6 +47,7 @@ public:
     void onSoc(time_t curTime, uint32_t events, Endpoint_t *pe) override;
     void postProcess(time_t curTime) override;
     void scanTimeout(time_t curTime) override;
+    void processBufferWaitingList(time_t curTime) override;
 
 protected:
     Tunnel_t *getTunnel(time_t curTime, sockaddr_in *pSAI);
@@ -60,7 +61,6 @@ protected:
     inline void addToCloseList(Tunnel_t *pt) { mCloseList.insert(pt); };
     inline void addToCloseList(Endpoint_t *pe) { addToCloseList((Tunnel_t *)pe->container); }
     void closeTunnels();
-    void processBufferWaitingList(time_t curTime);
 
     std::shared_ptr<Forward> mForwardCmd;
     TargetManager mTargetManager;

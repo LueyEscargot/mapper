@@ -70,6 +70,7 @@ public:
     static void releaseDynamicBuffer(DynamicBuffer *pDynamicBuffer);
     static std::string dumpBlk(BufBlk_t *p);
 
+    inline bool empty() { return mpFreePos; }
     inline BufBlk_t *getCurBufBlk() { return mpFreePos; }
     char *reserve(int size);
     BufBlk_t *cut(uint64_t size);

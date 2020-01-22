@@ -46,6 +46,7 @@ public:
     void onSoc(time_t curTime, uint32_t events, Endpoint_t *pe) override;
     void postProcess(time_t curTime) override;
     void scanTimeout(time_t curTime) override;
+    void processBufferWaitingList(time_t curTime) override;
 
 protected:
     static void setStatus(Tunnel_t *pt, TunnelState_t stat);
@@ -78,8 +79,6 @@ protected:
         src.erase(&pt->timerEntity);
         dst.push_back(curTime, &pt->timerEntity);
     }
-
-    void processBufferWaitingList();
 
     static const bool StateMaine[TUNNEL_STATE_COUNT][TUNNEL_STATE_COUNT];
 

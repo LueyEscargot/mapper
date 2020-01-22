@@ -238,9 +238,6 @@ void TcpForwardService::onSoc(time_t curTime, uint32_t events, Endpoint_t *pe)
 
 void TcpForwardService::postProcess(time_t curTime)
 {
-    // 处理缓冲区等待队列
-    processBufferWaitingList();
-
     if (!mPostProcessList.empty())
     {
         for (auto pt : mPostProcessList)
@@ -280,8 +277,6 @@ void TcpForwardService::postProcess(time_t curTime)
 
 void TcpForwardService::scanTimeout(time_t curTime)
 {
-    // processBufferWaitingList();
-
     // check connecting/established tunnel timeout
     list<TimerList::Entity_t *> timeoutList;
     auto f = [&](TimerList &timer, time_t timeoutTime) {
@@ -308,6 +303,73 @@ void TcpForwardService::scanTimeout(time_t curTime)
                       pt->south->soc, pt->north->soc);
         setStatus(pt, TUNSTAT_CLOSED);
         closeTunnel(pt);
+    }
+}
+
+void TcpForwardService::processBufferWaitingList(time_t curTime)
+{
+    if (!mpBuffer->empty() && mBufferWaitList.mpHead)
+    {
+        auto entry = mBufferWaitList.mpHead;
+        while (entry)
+        {
+            auto pBufBlk = mpBuffer->getCurBufBlk();
+            if (pBufBlk == nullptr)
+            {
+                // 已无空闲可用缓冲区
+                break;
+            }
+
+            auto pe = (Endpoint_t *)entry->container;
+            int nRet = recv(pe->soc, pBufBlk->buffer, pBufBlk->getBufSize(), 0);
+            if (nRet < 0)
+            {
+                if (errno == EAGAIN) // 此端口的送窗口关闭 还是 有错误发生
+                {
+                    spdlog::debug("[TcpForwardService::processBufferWaitingList] soc[{}] EAGAIN", pe->soc);
+                }
+                else
+                {
+                    spdlog::debug("[TcpForwardService::processBufferWaitingList] soc[{}] recv fail: {} - [{}]",
+                                  pe->soc, errno, strerror(errno));
+                    pe->valid = false;
+                    addToCloseList(pe);
+                }
+            }
+            else if (nRet == 0)
+            {
+                // closed by peer
+                spdlog::debug("[TcpForwardService::processBufferWaitingList] soc[{}] closed by peer", pe->soc);
+                pe->valid = false;
+                addToCloseList(pe);
+            }
+            else
+            {
+                // cut buffer
+                auto pBlk = mpBuffer->cut(nRet);
+                // attach to peer's send list
+                Endpoint::appendToSendList(pe->peer, pBlk);
+
+                // 重置停止接收标志
+                pe->stopRecv = false;
+
+                // 重置对应会话收发事件
+                if (!epollResetEndpointMode(pe, true, true, true) ||
+                    !epollResetEndpointMode(pe->peer, true, true, true))
+                {
+                    // closed by peer
+                    spdlog::debug("[TcpForwardService::processBufferWaitingList] soc[{}] reset fail",
+                                  pe->soc);
+                    pe->valid = false;
+                    addToCloseList(pe);
+                }
+            }
+
+            // 将当前节点从等待队列中移除
+            auto next = entry->next;
+            mBufferWaitList.erase(entry);
+            entry = next;
+        }
     }
 }
 
@@ -832,73 +894,6 @@ void TcpForwardService::refreshTimer(time_t curTime, Tunnel_t *pt)
         spdlog::error("[TcpForwardService::refreshTimer] tunnel[{}:{}] with invalid tunnel status: {}",
                       pt->south->soc, pt->north->soc, pt->stat);
         assert(false);
-    }
-}
-
-void TcpForwardService::processBufferWaitingList()
-{
-    if (mBufferWaitList.mpHead)
-    {
-        auto entry = mBufferWaitList.mpHead;
-        while (entry)
-        {
-            auto pBufBlk = mpBuffer->getCurBufBlk();
-            if (pBufBlk == nullptr)
-            {
-                // 已无空闲可用缓冲区
-                break;
-            }
-
-            auto pe = (Endpoint_t *)entry->container;
-            int nRet = recv(pe->soc, pBufBlk->buffer, pBufBlk->getBufSize(), 0);
-            if (nRet < 0)
-            {
-                if (errno == EAGAIN) // 此端口的送窗口关闭 还是 有错误发生
-                {
-                    spdlog::debug("[TcpForwardService::processBufferWaitingList] soc[{}] EAGAIN", pe->soc);
-                }
-                else
-                {
-                    spdlog::debug("[TcpForwardService::processBufferWaitingList] soc[{}] recv fail: {} - [{}]",
-                                  pe->soc, errno, strerror(errno));
-                    pe->valid = false;
-                    addToCloseList(pe);
-                }
-            }
-            else if (nRet == 0)
-            {
-                // closed by peer
-                spdlog::debug("[TcpForwardService::processBufferWaitingList] soc[{}] closed by peer", pe->soc);
-                pe->valid = false;
-                addToCloseList(pe);
-            }
-            else
-            {
-                // cut buffer
-                auto pBlk = mpBuffer->cut(nRet);
-                // attach to peer's send list
-                Endpoint::appendToSendList(pe->peer, pBlk);
-
-                // 重置停止接收标志
-                pe->stopRecv = false;
-
-                // 重置对应会话收发事件
-                if (!epollResetEndpointMode(pe, true, true, true) ||
-                    !epollResetEndpointMode(pe->peer, true, true, true))
-                {
-                    // closed by peer
-                    spdlog::debug("[TcpForwardService::processBufferWaitingList] soc[{}] reset fail",
-                                  pe->soc);
-                    pe->valid = false;
-                    addToCloseList(pe);
-                }
-            }
-
-            // 将当前节点从等待队列中移除
-            auto next = entry->next;
-            mBufferWaitList.erase(entry);
-            entry = next;
-        }
     }
 }
 

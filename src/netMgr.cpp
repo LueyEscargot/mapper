@@ -153,6 +153,12 @@ void NetMgr::threadFunc()
                     }
                 }
 
+                // 处理缓冲区等待队列
+                for (auto s : mServiceList)
+                {
+                    s->processBufferWaitingList(curTime);
+                }
+
                 // scan timeout
                 if (lastScanTime < curTime)
                 {

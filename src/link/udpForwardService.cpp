@@ -129,9 +129,6 @@ void UdpForwardService::onSoc(time_t curTime, uint32_t events, Endpoint_t *pe)
 
 void UdpForwardService::postProcess(time_t curTime)
 {
-    // 处理缓冲区等待队列
-    processBufferWaitingList(curTime);
-
     // clean useless tunnels
     closeTunnels();
 }
@@ -146,6 +143,54 @@ void UdpForwardService::scanTimeout(time_t curTime)
         auto pt = (Tunnel_t *)entity;
         spdlog::trace("[UdpForwardService::scanTimeout] tunnel[{}] timeout", pt->north->soc);
         addToCloseList(pt);
+    }
+}
+
+void UdpForwardService::processBufferWaitingList(time_t curTime)
+{
+    if (!mpBuffer->empty() && mBufferWaitList.mpHead)
+    {
+        set<Endpoint_t *> peList;
+        auto entity = mBufferWaitList.mpHead;
+        auto pe = (Endpoint_t *)entity->container;
+        while (entity)
+        {
+            auto pBuf = mpBuffer->reserve(PREALLOC_RECV_BUFFER_SIZE);
+            if (pBuf == nullptr)
+            {
+                // 已无空闲可用缓冲区
+                break;
+            }
+
+            if (pe->type == TYPE_SERVICE)
+            {
+                auto pt = southRead(curTime, pe, pBuf);
+                peList.insert(pt->north);
+                peList.insert(&mServiceEndpoint);
+            }
+            else
+            {
+                assert(pe->type == TYPE_NORMAL);
+
+                auto pt = southRead(curTime, pe, pBuf);
+                peList.insert(pt->north);
+                peList.insert(&mServiceEndpoint);
+            }
+
+            // 将当前节点从等待队列中移除
+            auto next = entity->next;
+            mBufferWaitList.erase(entity);
+            entity = next;
+        }
+
+        for (auto pe : peList)
+        {
+            // reset epoll mode
+            if (pe->valid)
+            {
+                epollResetEndpointMode(pe, true, true, true);
+            }
+        }
     }
 }
 
@@ -661,54 +706,6 @@ void UdpForwardService::closeTunnels()
         }
 
         mCloseList.clear();
-    }
-}
-
-void UdpForwardService::processBufferWaitingList(time_t curTime)
-{
-    if (mBufferWaitList.mpHead)
-    {
-        set<Endpoint_t *> peList;
-        auto entity = mBufferWaitList.mpHead;
-        auto pe = (Endpoint_t *)entity->container;
-        while (entity)
-        {
-            auto pBuf = mpBuffer->reserve(PREALLOC_RECV_BUFFER_SIZE);
-            if (pBuf == nullptr)
-            {
-                // 已无空闲可用缓冲区
-                break;
-            }
-
-            if (pe->type == TYPE_SERVICE)
-            {
-                auto pt = southRead(curTime, pe, pBuf);
-                peList.insert(pt->north);
-                peList.insert(&mServiceEndpoint);
-            }
-            else
-            {
-                assert(pe->type == TYPE_NORMAL);
-
-                auto pt = southRead(curTime, pe, pBuf);
-                peList.insert(pt->north);
-                peList.insert(&mServiceEndpoint);
-            }
-
-            // 将当前节点从等待队列中移除
-            auto next = entity->next;
-            mBufferWaitList.erase(entity);
-            entity = next;
-        }
-
-        for (auto pe : peList)
-        {
-            // reset epoll mode
-            if (pe->valid)
-            {
-                epollResetEndpointMode(pe, true, true, true);
-            }
-        }
     }
 }
 
