@@ -4,7 +4,7 @@ cmake_minimum_required (VERSION 3.5)
 # Project Infomation
 #------------------------------------------------------------------------------
 set (PROJECT_NAME Mapper)
-project(${PROJECT_NAME} LANGUAGES CXX VERSION 2.1.0)
+project(${PROJECT_NAME} LANGUAGES CXX VERSION 2.2.1)
 
 message("Project: " ${PROJECT_NAME})
 message("Working Directory: " ${PROJECT_SOURCE_DIR})
@@ -76,13 +76,14 @@ add_subdirectory(buffer)
 add_subdirectory(config)
 add_subdirectory(link)
 add_subdirectory(timer)
+add_subdirectory(utils)
 
 #------------------------------------------------------------------------------
 # copy config file
 #------------------------------------------------------------------------------
 configure_file(
-    ${CMAKE_CURRENT_SOURCE_DIR}/config.ini
-    ${CMAKE_BINARY_DIR}/config.ini
+    ${CMAKE_CURRENT_SOURCE_DIR}/config.json
+    ${CMAKE_BINARY_DIR}/config.json
     COPYONLY
     )
 
@@ -98,6 +99,7 @@ target_link_libraries(mapper PUBLIC
     Lib_Config
     Lib_Link
     Lib_Timer
+    Lib_Utils
     )
 target_include_directories(mapper PUBLIC
     "${PROJECT_BINARY_DIR}"

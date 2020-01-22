@@ -35,7 +35,7 @@ bool Container::StateMachine[TYPE_COUNT][TYPE_COUNT] = {
 
 Container::Container()
 {
-    for (int type = 0; type < Type_t::TYPE_COUNT; ++type)
+    for (int type = 0; type < TYPE_COUNT; ++type)
     {
         mHead[type] = mTail[type] = nullptr;
     }
@@ -43,7 +43,7 @@ Container::Container()
 
 Container::~Container()
 {
-    for (int type = 0; type < Type_t::TYPE_COUNT; ++type)
+    for (int type = 0; type < TYPE_COUNT; ++type)
     {
         if (!empty(static_cast<Type_t>(type)))
         {
@@ -175,7 +175,7 @@ Container::Client_t *Container::removeTimeout(Type_t type, time_t curTime)
 
     assert(p->prev == nullptr);
     p->inTimer = false;
-    p->type = Type_t::TYPE_INVALID;
+    p->type = TYPE_INVALID;
 
     Client_t *list = p;
     Client_t *last = p;
@@ -183,7 +183,7 @@ Container::Client_t *Container::removeTimeout(Type_t type, time_t curTime)
     while (p && p->time <= timeoutTime)
     {
         p->inTimer = false;
-        p->type = Type_t::TYPE_INVALID;
+        p->type = TYPE_INVALID;
 
         last = p;
         p = p->next;

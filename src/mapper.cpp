@@ -18,7 +18,7 @@ Mapper::~Mapper()
 {
 }
 
-bool Mapper::run(config::Config &cfg)
+bool Mapper::run(rapidjson::Document &cfg)
 {
     spdlog::info("[Mapper::run]");
 

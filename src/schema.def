@@ -1,0 +1,32 @@
+namespace mapper
+{
+
+static const char *CONFIG_SCHEMA = R"(
+{
+  "type": "object",
+  "properties": {
+    "log": {
+      "type": "object",
+      "properties": {
+        "sink": {
+          "type": "string"
+        },
+        "level": {
+          "type": "string"
+        },
+        "file": {
+          "type": "string"
+        }
+      }
+    },
+    "service": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "service"
+  ]
+}
+)";
+
+} // namespace mapper

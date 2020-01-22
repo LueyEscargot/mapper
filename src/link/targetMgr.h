@@ -67,7 +67,7 @@ protected:
 
     AddrItem_t *mpAddrsHead;
     AddrItem_t *mpCurAddr;
-    std::map<sockaddr, AddrItem_t *, Utils::AddrCmp_t> mAddr2Item;
+    std::map<sockaddr, AddrItem_t *, Utils::Comparator_t> mAddr2Item;
 };
 
 } // namespace link

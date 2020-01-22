@@ -2,14 +2,19 @@
 #include <time.h>
 #include <sys/epoll.h>
 #include <sstream>
+#include <rapidjson/document.h>
 #include <spdlog/spdlog.h>
 #include "endpoint.h"
 #include "tunnel.h"
 #include "utils.h"
+#include "../utils/jsonUtils.h"
+
+#include "schema.def"
 
 using namespace std;
+using namespace rapidjson;
 using namespace mapper::buffer;
-using namespace mapper::config;
+using namespace mapper::utils;
 
 namespace mapper
 {
@@ -19,11 +24,8 @@ namespace link
 UdpForwardService::UdpForwardService()
     : Service("UdpForwardService"),
       mForwardCmd(nullptr),
-      mpDynamicBuffer(nullptr),
-      mLastActionTime(0),
-      mTimeoutInterval(TIMEOUT_INTERVAL)
+      mLastActionTime(0)
 {
-    mTimer.init(nullptr);
 }
 
 UdpForwardService::~UdpForwardService()
@@ -32,33 +34,31 @@ UdpForwardService::~UdpForwardService()
 }
 
 bool UdpForwardService::init(int epollfd,
-                             std::shared_ptr<config::Forward> forward,
-                             uint32_t sharedBufferCapacity)
+                             DynamicBuffer *pBuffer,
+                             shared_ptr<Forward> forward,
+                             Setting_t &setting)
 {
-    assert(Service::init(epollfd));
+    assert(Service::init(epollfd, pBuffer));
 
-    Protocol_t protocol = Utils::parseProtocol(forward->protocol);
-    assert(protocol == Protocol_t::UDP);
+    mSetting = setting;
 
     mForwardCmd = forward;
 
-    mServiceEndpoint.init(Protocol_t::UDP,
-                          Direction_t::DIR_SOUTH,
-                          Type_t::SERVICE);
+    mServiceEndpoint.init(PROTOCOL_UDP, TO_SOUTH, TYPE_SERVICE);
     mServiceEndpoint.service = this;
 
     // get local address of specified interface
-    if (!Utils::getIntfAddr(forward->interface.c_str(), mServiceEndpoint.ipTuple.l))
+    if (!Utils::getIntfAddr(forward->interface.c_str(), mServiceEndpoint.conn.localAddr))
     {
         spdlog::error("[UdpForwardService::init] get address of interface[{}] fail.", forward->interface);
         return false;
     }
-    mServiceEndpoint.ipTuple.l.sin_port = htons(atoi(forward->service.c_str()));
+    mServiceEndpoint.conn.localAddr.sin_port = htons(atoi(forward->service.c_str()));
 
     // create server socket
-    mServiceEndpoint.soc = Utils::createServiceSoc(Protocol_t::UDP,
-                                                   &mServiceEndpoint.ipTuple.l,
-                                                   sizeof(mServiceEndpoint.ipTuple.l));
+    mServiceEndpoint.soc = Utils::createServiceSoc(PROTOCOL_UDP,
+                                                   &mServiceEndpoint.conn.localAddr,
+                                                   sizeof(mServiceEndpoint.conn.localAddr));
     if (mServiceEndpoint.soc < 0)
     {
         spdlog::error("[UdpForwardService::init] create server socket fail.");
@@ -69,7 +69,7 @@ bool UdpForwardService::init(int epollfd,
     if (!mTargetManager.addTarget(time(nullptr),
                                   forward->targetHost.c_str(),
                                   forward->targetService.c_str(),
-                                  Protocol_t::UDP))
+                                  PROTOCOL_UDP))
     {
         spdlog::error("[UdpForwardService::init] ginit target manager fail");
         close();
@@ -80,16 +80,6 @@ bool UdpForwardService::init(int epollfd,
     if (!epollAddEndpoint(&mServiceEndpoint, true, true, true))
     {
         spdlog::error("[UdpForwardService::init] add service endpoint[{}] into epoll fail.", forward->toStr());
-        close();
-        return false;
-    }
-
-    // alloc dynamic buffer
-    mpDynamicBuffer =
-        buffer::DynamicBuffer::allocDynamicBuffer(sharedBufferCapacity);
-    if (mpDynamicBuffer == nullptr)
-    {
-        spdlog::error("[UdpForwardService::init] alloc dynamic buffer fail.");
         close();
         return false;
     }
@@ -105,113 +95,63 @@ void UdpForwardService::close()
         ::close(mServiceEndpoint.soc);
         mServiceEndpoint.soc = 0;
     }
-
-    // release dynamic buffer
-    if (mpDynamicBuffer)
-    {
-        spdlog::debug("[UdpForwardService::close] release dynamic buffer.");
-        buffer::DynamicBuffer::releaseDynamicBuffer(mpDynamicBuffer);
-        mpDynamicBuffer = nullptr;
-    }
 }
 
 void UdpForwardService::onSoc(time_t curTime, uint32_t events, Endpoint_t *pe)
 {
-    if (pe->type == Type_t::SERVICE)
+    if (pe->type == TYPE_SERVICE)
     {
-        onServiceSoc(curTime, events, pe);
+        // Write
+        if (events & EPOLLOUT)
+        {
+            southWrite(curTime, pe);
+        }
+        // Read
+        if (events & EPOLLIN)
+        {
+            southRead(curTime, pe);
+        }
     }
     else
     {
-        onNorthSoc(curTime, events, pe);
-    }
-
-    if (mLastActionTime < curTime)
-    {
-        scanTimeout(curTime);
-        closeTunnels();
-
-        mLastActionTime = curTime;
-    }
-}
-
-void UdpForwardService::onServiceSoc(time_t curTime, uint32_t events, Endpoint_t *pe)
-{
-    if (events & (EPOLLRDHUP | EPOLLERR))
-    {
-        spdlog::error("[UdpForwardService::onServiceSoc] endpoint[{}]: {}{}{}{}",
-                      Utils::dumpEndpoint(pe),
-                      events & EPOLLIN ? "r" : "",
-                      events & EPOLLOUT ? "w" : "",
-                      events & EPOLLRDHUP ? "R" : "",
-                      events & EPOLLERR ? "E" : "");
-        return;
-    }
-
-    // Read
-    if (events & EPOLLIN)
-    {
-        southRead(curTime, pe);
-    }
-    // Write
-    if (events & EPOLLOUT)
-    {
-        southWrite(curTime, pe);
+        // Write
+        if (events & EPOLLOUT)
+        {
+            northWrite(curTime, pe);
+        }
+        // Read
+        if (events & EPOLLIN)
+        {
+            northRead(curTime, pe);
+        }
     }
 }
 
-void UdpForwardService::onNorthSoc(time_t curTime, uint32_t events, Endpoint_t *pe)
+void UdpForwardService::postProcess(time_t curTime)
 {
-    if (events & (EPOLLRDHUP | EPOLLERR))
-    {
-        spdlog::error("[UdpForwardService::onNorthSoc] endpoint[{}]: {}{}{}{}",
-                      Utils::dumpEndpoint(pe),
-                      events & EPOLLIN ? "r" : "",
-                      events & EPOLLOUT ? "w" : "",
-                      events & EPOLLRDHUP ? "R" : "",
-                      events & EPOLLERR ? "E" : "");
-        pe->valid = false;
-        return;
-    }
+    // 处理缓冲区等待队列
+    processBufferWaitingList(curTime);
 
-    // Read
-    if (events & EPOLLIN)
+    // clean useless tunnels
+    closeTunnels();
+}
+
+void UdpForwardService::scanTimeout(time_t curTime)
+{
+    time_t timeoutTime = curTime - mSetting.udpTimeout;
+    list<TimerList::Entity_t *> timeoutList;
+    mTimeoutTimer.getTimeoutList(timeoutTime, timeoutList);
+    for (auto entity : timeoutList)
     {
-        northRead(curTime, pe);
-    }
-    // Write
-    if (events & EPOLLOUT)
-    {
-        northWrite(curTime, pe);
+        auto pt = (Tunnel_t *)entity;
+        spdlog::trace("[UdpForwardService::scanTimeout] tunnel[{}] timeout", pt->north->soc);
+        addToCloseList(pt);
     }
 }
 
-bool UdpForwardService::epollAddEndpoint(Endpoint_t *pe, bool read, bool write, bool edgeTriger)
+Tunnel_t *UdpForwardService::getTunnel(time_t curTime, sockaddr_in *southRemoteAddr)
 {
-    // spdlog::debug("[UdpForwardService::epollAddEndpoint] endpoint[{}], read[{}], write[{}]",
-    //               Endpoint::toStr(pe), read, write);
-
-    struct epoll_event event;
-    event.data.ptr = pe;
-    event.events = EPOLLRDHUP |                // for peer close
-                   (read ? EPOLLIN : 0) |      // enable read
-                   (write ? EPOLLOUT : 0) |    // enable write
-                   (edgeTriger ? EPOLLET : 0); // use edge triger or level triger
-    if (epoll_ctl(mEpollfd, EPOLL_CTL_ADD, pe->soc, &event))
-    {
-        spdlog::error("[UdpForwardService::epollAddEndpoint] events[{}]-soc[{}] join fail. Error {}: {}",
-                      event.events, pe->soc, errno, strerror(errno));
-        return false;
-    }
-
-    // spdlog::debug("[UdpForwardService::epollAddEndpoint] endpoint[{}], event.events[0x{:X}]",
-    //               Endpoint::toStr(pe), event.events);
-
-    return true;
-}
-
-UdpTunnel_t *UdpForwardService::getTunnel(time_t curTime, sockaddr_in *southRemoteAddr)
-{
+    // 从已缓存 tunnel 中查找
     auto it = mAddr2Tunnel.find(*southRemoteAddr);
     if (it != mAddr2Tunnel.end())
     {
@@ -219,7 +159,7 @@ UdpTunnel_t *UdpForwardService::getTunnel(time_t curTime, sockaddr_in *southRemo
     }
 
     // create north endpoint
-    auto north = Endpoint::getEndpoint(Protocol_t::UDP, Direction_t::DIR_NORTH, Type_t::NORMAL);
+    auto north = Endpoint::getEndpoint(PROTOCOL_UDP, TO_NORTH, TYPE_NORMAL);
     if (north == nullptr)
     {
         spdlog::error("[UdpForwardService::getTunnel] create north endpoint fail");
@@ -227,58 +167,62 @@ UdpTunnel_t *UdpForwardService::getTunnel(time_t curTime, sockaddr_in *southRemo
     }
     else
     {
-        // north->valid = ENDPOINT_VALID;
         north->service = this;
         north->peer = &mServiceEndpoint;
 
         // create to north socket
-        north->soc = Utils::createSoc(Protocol_t::UDP, true);
+        north->soc = Utils::createSoc(PROTOCOL_UDP, true);
         if (north->soc <= 0)
         {
             spdlog::error("[UdpForwardService::getTunnel] create north socket fail.");
             Endpoint::releaseEndpoint(north);
             return nullptr;
         }
-        spdlog::debug("[UdpForwardService::getTunnel] create north socket[{}].", north->soc);
+        // spdlog::debug("[UdpForwardService::getTunnel] create north socket[{}].", north->soc);
 
         // connect to host
         auto addrs = mTargetManager.getAddr(curTime);
-        if (!addrs)
-        {
-            spdlog::error("[UdpForwardService::getTunnel] connect to north host fail.");
-            ::close(north->soc);
-            Endpoint::releaseEndpoint(north);
-            return nullptr;
-        }
-        else if (connect(north->soc, &addrs->addr, addrs->addrLen) < 0)
-        {
-            // report fail
-            mTargetManager.failReport(curTime, &addrs->addr);
-            spdlog::error("[UdpForwardService::getTunnel] connect fail. {} - {}",
-                          errno, strerror(errno));
-            ::close(north->soc);
-            Endpoint::releaseEndpoint(north);
-            return nullptr;
-        }
+        if ([&]() {
+                if (!addrs)
+                {
+                    spdlog::error("[UdpForwardService::getTunnel] connect to north host fail.");
+                    return false;
+                }
+                else if (connect(north->soc, &addrs->addr, addrs->addrLen) < 0)
+                {
+                    // report fail
+                    mTargetManager.failReport(curTime, &addrs->addr);
+                    spdlog::error("[UdpForwardService::getTunnel] connect fail. {} - {}",
+                                  errno, strerror(errno));
+                    return false;
+                }
 
-        // add into epoll driver
-        if (!epollAddEndpoint(north, true, true, true))
+                // add into epoll driver
+                if (!epollAddEndpoint(north, true, true, true))
+                {
+                    spdlog::error("[UdpForwardService::getTunnel] add endpoint[{}] into epoll fail.", north->soc);
+                    return false;
+                }
+
+                return true;
+            }())
         {
-            spdlog::error("[UdpForwardService::getTunnel] add endpoint[{}] into epoll fail.", north->soc);
+            // save ip-tuple info
+            socklen_t socLen;
+            getsockname(north->soc, (sockaddr *)&north->conn.localAddr, &socLen);
+            north->conn.remoteAddr = *(sockaddr_in *)&addrs->addr;
+        }
+        else
+        {
             ::close(north->soc);
             Endpoint::releaseEndpoint(north);
             return nullptr;
         }
-
-        // save ip-tuple info
-        socklen_t socLen;
-        getsockname(north->soc, (sockaddr *)&north->ipTuple.l, &socLen);
-        north->ipTuple.r = *(sockaddr_in *)&addrs->addr;
     }
 
     // create tunnel
-    auto tunnel = Tunnel::getTunnel();
-    if (tunnel == nullptr)
+    auto pt = Tunnel::getTunnel();
+    if (pt == nullptr)
     {
         spdlog::error("[UdpForwardService::getTunnel] create tunnel fail");
         ::close(north->soc);
@@ -287,229 +231,396 @@ UdpTunnel_t *UdpForwardService::getTunnel(time_t curTime, sockaddr_in *southRemo
     }
     else
     {
-        tunnel->service = this;
+        pt->service = this;
     }
 
     // bind tunnel and endpoints
-    tunnel->north = north;
-    tunnel->south = &mServiceEndpoint;
-    north->container = tunnel;
+    pt->north = north;
+    pt->south = &mServiceEndpoint;
+    north->container = pt;
 
     // put into map
-    mAddr2Tunnel[*southRemoteAddr] = tunnel;
-    mAddr2Endpoint[*southRemoteAddr] = north;
+    // spdlog::trace("[UdpForwardService::getTunnel] put addr[{}] into map",
+    //               Utils::dumpSockAddr(southRemoteAddr));
+    mAddr2Tunnel[*southRemoteAddr] = pt;
     mNorthSoc2SouthRemoteAddr[north->soc] = *southRemoteAddr;
 
     // add to timer
-    addToTimer(curTime, &tunnel->timer);
+    mTimeoutTimer.push_back(curTime, &pt->timerEntity);
 
-    spdlog::debug("[UdpForwardService::getTunnel] {}==>{}",
-                  Utils::dumpServiceEndpoint(&mServiceEndpoint, southRemoteAddr),
-                  Utils::dumpEndpoint(north));
+    spdlog::debug("[UdpForwardService::getTunnel] create tunnel[{}]: {}=>{}=>{}",
+                  north->soc,
+                  Utils::dumpSockAddr(southRemoteAddr),
+                  Utils::dumpSockAddr(mServiceEndpoint.conn.localAddr),
+                  Utils::dumpSockAddr(north->conn.remoteAddr));
 
-    return tunnel;
+    return pt;
 }
 
 void UdpForwardService::southRead(time_t curTime, Endpoint_t *pe)
 {
+    if (!pe->valid)
+    {
+        spdlog::critical("[UdpForwardService::southRead] service soc[{}] not valid");
+        return;
+    }
+
+    set<Endpoint_t *> sendList;
+
     while (true)
     {
         // 按最大 UDP 数据包预申请内存
-        void *pBuf = mpDynamicBuffer->reserve(MAX_UDP_BUFFER);
+        auto pBuf = mpBuffer->reserve(PREALLOC_RECV_BUFFER_SIZE);
         if (pBuf == nullptr)
         {
-            // out of memory
-            spdlog::trace("[UdpForwardService::southRead] out of memory");
-            return;
+            // out of buffer
+            spdlog::trace("[UdpForwardService::southRead] out of buffer");
+            // 加入缓冲区等待队列
+            mBufferWaitList.push_back(&pe->bufWaitEntity);
+            break;
         }
 
-        sockaddr_in addr;
-        socklen_t addrLen = sizeof(sockaddr_in);
-        int nRet = recvfrom(mServiceEndpoint.soc, pBuf, MAX_UDP_BUFFER, 0, (sockaddr *)&addr, &addrLen);
-        if (nRet > 0)
+        if (auto pt = southRead(curTime, pe, pBuf))
         {
-            // 查找/分配对应 UDP tunnel
-            auto tunnel = getTunnel(curTime, &addr);
-            if (tunnel && tunnel->north->valid)
-            {
-                Endpoint::appendToSendList(tunnel->north, mpDynamicBuffer->cut(nRet));
-                // 尝试发送
-                northWrite(curTime, tunnel->north);
-            }
-            else
-            {
-                spdlog::error("[UdpForwardService::southRead] tunnel not valid");
-            }
-        }
-        else if (nRet < 0)
-        {
-            if (errno == EAGAIN)
-            {
-                // 此次数据接收已完毕
-            }
-            else
-            {
-                spdlog::error("[UdpForwardService::southRead] service soc[{}] fail: {}:[]",
-                              mServiceEndpoint.soc, errno, strerror(errno));
-                pe->valid = false;
-            }
-            break;
+            sendList.insert(pt->north);
         }
         else
         {
-            spdlog::trace("[UdpForwardService::southRead] skip empty udp packet.");
+            // 此次接收操作已完成
+            break;
         }
     }
+
+    // 尝试发送
+    for (auto &pe : sendList)
+    {
+        northWrite(curTime, pe);
+    }
+}
+
+Tunnel_t *UdpForwardService::southRead(time_t curTime, Endpoint_t *pe, char *buffer)
+{
+    sockaddr_in addr;
+    socklen_t addrLen = sizeof(sockaddr_in);
+    int nRet = recvfrom(mServiceEndpoint.soc, buffer,
+                        PREALLOC_RECV_BUFFER_SIZE,
+                        0,
+                        (sockaddr *)&addr,
+                        &addrLen);
+    if (nRet > 0)
+    {
+        // 查找/分配对应 UDP tunnel
+        auto pt = getTunnel(curTime, &addr);
+        if (pt)
+        {
+            Endpoint::appendToSendList(pt->north, mpBuffer->cut(nRet));
+            mTimeoutTimer.refresh(curTime, &pt->timerEntity);
+            return pt;
+        }
+        else
+        {
+            spdlog::trace("[UdpForwardService::southRead] tunnel closed");
+        }
+    }
+    else if (nRet < 0)
+    {
+        if (errno == EAGAIN)
+        {
+            // 此次数据接收已完毕
+        }
+        else
+        {
+            spdlog::critical("[UdpForwardService::southRead] service soc[{}] fail: {}:[]",
+                             mServiceEndpoint.soc, errno, strerror(errno));
+            pe->valid = false;
+        }
+    }
+    else
+    {
+        spdlog::trace("[UdpForwardService::southRead] skip empty udp packet.");
+    }
+
+    return nullptr;
 }
 
 void UdpForwardService::southWrite(time_t curTime, Endpoint_t *pe)
 {
+    if (!pe->valid)
+    {
+        spdlog::critical("[UdpForwardService::southRead] service soc[{}] not valid");
+        if (pe->sendListHead)
+        {
+            // clean buffer list
+            auto p = (DynamicBuffer::BufBlk_t *)pe->sendListHead;
+            while (p)
+            {
+                auto next = p->next;
+                mpBuffer->release(p);
+                p = next;
+            }
+            pe->sendListHead = pe->sendListTail = nullptr;
+            pe->totalBufSize = 0;
+        }
+        return;
+    }
+
     auto p = (DynamicBuffer::BufBlk_t *)pe->sendListHead;
     while (p)
     {
-        int nRet = sendto(mServiceEndpoint.soc,
-                          p->buffer,
-                          p->size,
-                          0,
-                          (sockaddr *)&p->sockaddr,
-                          sizeof(sockaddr_in));
-        if (nRet < 0)
+        auto it = mAddr2Tunnel.find(p->destAddr);
+        if (it == mAddr2Tunnel.end())
         {
-            if (errno == EAGAIN)
+            // 已被移除 tunnel 的剩余数据
+            spdlog::debug("[UdpForwardService::southWrite] drop closed tunnel[{}] pkt",
+                          Utils::dumpSockAddr(p->destAddr));
+            for (auto &it : mAddr2Tunnel)
             {
-                // 此次数据接收已完毕
+
+                spdlog::debug("[UdpForwardService::southWrite] addr: {}, tunnel: {}",
+                              Utils::dumpSockAddr(it.first), Utils::dumpTunnel(it.second));
+            }
+        }
+        else
+        {
+            int nRet = sendto(mServiceEndpoint.soc,
+                              p->buffer + p->sent,
+                              p->dataSize - p->sent,
+                              0,
+                              (sockaddr *)&p->destAddr,
+                              sizeof(p->destAddr));
+            if (nRet > 0)
+            {
+                p->sent += nRet;
+                if (p->sent < p->dataSize)
+                {
+                    // 数据包中还有数据需要发送
+                    continue;
+                }
+
+                assert(p->sent == p->dataSize);
+                mTimeoutTimer.refresh(curTime, &it->second->timerEntity);
+            }
+            else if (nRet < 0)
+            {
+                if (errno == EAGAIN)
+                {
+                    // 此次数据接收已完毕
+                    break;
+                }
+                else
+                {
+                    spdlog::debug("[UdpForwardService::southWrite] send to client[{}] fail: {}:[]",
+                                  Utils::dumpSockAddr(p->destAddr), errno, strerror(errno));
+
+                    // close client tunnel
+                    addToCloseList(it->second);
+                }
             }
             else
             {
-                spdlog::error("[UdpForwardService::southWrite] service soc[{}] fail: {}:[]",
-                              mServiceEndpoint.soc, errno, strerror(errno));
-                pe->valid = false;
+                // send ZERO data, drop pkt
+                spdlog::warn("[UdpForwardService::southWrite] send ZERO data, drop pkt");
             }
-            break;
         }
 
-        mpDynamicBuffer->release(p);
-        p = p->next;
+        // release sent buffer
+        auto next = p->next;
+        pe->totalBufSize -= p->dataSize;
+        mpBuffer->release(p);
+        p = next;
     }
 
     if (p)
     {
         // 还有数据包未发送
         pe->sendListHead = p;
+        assert(pe->totalBufSize > 0);
     }
     else
     {
         //已无数据包需要发送
         pe->sendListHead = pe->sendListTail = nullptr;
+        assert(pe->totalBufSize == 0);
     }
 }
 
 void UdpForwardService::northRead(time_t curTime, Endpoint_t *pe)
 {
+    if (!pe->valid)
+    {
+        spdlog::debug("[UdpForwardService::northRead] skip invalid soc[{}]");
+        return;
+    }
+
     while (true)
     {
         // 按最大 UDP 数据包预申请内存
-        void *pBuf = mpDynamicBuffer->reserve(MAX_UDP_BUFFER);
-        if (pBuf == nullptr)
+        auto buffer = mpBuffer->reserve(PREALLOC_RECV_BUFFER_SIZE);
+        if (buffer == nullptr)
         {
-            // out of memory
-            spdlog::trace("[UdpForwardService::northRead] out of memory");
+            // out of buffer
+            spdlog::trace("[UdpForwardService::northRead] out of buffer");
+            // 加入缓冲区等待队列
+            mBufferWaitList.push_back(&pe->bufWaitEntity);
             return;
         }
 
-        sockaddr_in addr;
-        socklen_t addrLen = sizeof(sockaddr_in);
-        int nRet = recvfrom(pe->soc, pBuf, MAX_UDP_BUFFER, 0, (sockaddr *)&addr, &addrLen);
-        if (nRet > 0)
+        if (auto pt = northRead(curTime, pe, buffer))
         {
-            // 判断数据包来源是否合法
-            if (Utils::compareAddr(&addr, &pe->ipTuple.r))
-            {
-                // drop unknown incoming packet
-                spdlog::trace("[UdpForwardService::northRead] drop unknown incoming packet");
-                continue;
-            }
+            // refresh timer
+            mTimeoutTimer.refresh(curTime, &pt->timerEntity);
+        }
+        else
+        {
+            // 此次接收操作已完成
+            break;
+        }
+    }
+
+    // 尝试发送
+    if (mServiceEndpoint.sendListHead)
+    {
+        southWrite(curTime, &mServiceEndpoint);
+    }
+}
+
+Tunnel_t *UdpForwardService::northRead(time_t curTime, Endpoint_t *pe, char *buffer)
+{
+    sockaddr_in addr;
+    socklen_t addrLen = sizeof(sockaddr_in);
+    int nRet = recvfrom(pe->soc, buffer, PREALLOC_RECV_BUFFER_SIZE, 0, (sockaddr *)&addr, &addrLen);
+    if (nRet > 0)
+    {
+        // 判断数据包来源是否合法
+        if (Utils::compareAddr(&addr, &pe->conn.remoteAddr))
+        {
+            // drop unknown incoming packet
+            spdlog::debug("[UdpForwardService::northRead] drop invalid addr[{}] pkt at soc[{}] for {}",
+                          Utils::dumpSockAddr(addr),
+                          pe->soc, Utils::dumpSockAddr(pe->conn.remoteAddr));
+        }
+        else
+        {
             // 取南向地址
             auto it = mNorthSoc2SouthRemoteAddr.find(pe->soc);
             if (it == mNorthSoc2SouthRemoteAddr.end())
             {
                 // drop unknown incoming packet
-                spdlog::trace("[UdpForwardService::northRead] south addr not exist");
+                assert(!"[UdpForwardService::northRead] south addr not exist");
+            }
+
+            auto pBlk = mpBuffer->cut(nRet);
+            pBlk->destAddr = it->second;
+
+            Endpoint::appendToSendList(&mServiceEndpoint, pBlk);
+
+            auto pt = (Tunnel_t *)pe->container;
+            mTimeoutTimer.refresh(curTime, &pt->timerEntity);
+
+            return pt;
+        }
+    }
+    else if (nRet < 0)
+    {
+        if (errno == EAGAIN)
+        {
+            // 此次数据接收已完毕
+        }
+        else
+        {
+            spdlog::error("[UdpForwardService::northRead] service soc[{}] fail: {}:[]",
+                          pe->soc, errno, strerror(errno));
+            pe->valid = false;
+
+            // close client tunnel
+            addToCloseList((Tunnel_t *)pe->container);
+        }
+    }
+    else
+    {
+        spdlog::trace("[UdpForwardService::northRead] skip empty udp packet.");
+    }
+
+    return nullptr;
+}
+
+void UdpForwardService::northWrite(time_t curTime, Endpoint_t *pe)
+{
+    if (!pe->valid)
+    {
+        spdlog::critical("[UdpForwardService::northWrite] skip invalid soc[{}]");
+        if (pe->sendListHead)
+        {
+            // clean buffer list
+            auto p = (DynamicBuffer::BufBlk_t *)pe->sendListHead;
+            while (p)
+            {
+                auto next = p->next;
+                mpBuffer->release(p);
+                p = next;
+            }
+            pe->sendListHead = pe->sendListTail = nullptr;
+            pe->totalBufSize = 0;
+        }
+        return;
+    }
+
+    auto p = (buffer::DynamicBuffer::BufBlk_t *)pe->sendListHead;
+    while (p)
+    {
+        int nRet = send(pe->soc, p->buffer, p->dataSize, 0);
+        if (nRet > 0)
+        {
+            p->sent += nRet;
+            if (p->sent < p->dataSize)
+            {
+                // 数据包中还有数据需要发送
                 continue;
             }
 
-            auto pBlk = mpDynamicBuffer->cut(nRet);
-            pBlk->sockaddr = it->second;
-
-            Endpoint::appendToSendList(&mServiceEndpoint, pBlk);
-            // 尝试发送
-            southWrite(curTime, &mServiceEndpoint);
+            assert(p->sent == p->dataSize);
+            mTimeoutTimer.refresh(curTime, &((Tunnel_t *)pe->container)->timerEntity);
         }
         else if (nRet < 0)
         {
             if (errno == EAGAIN)
             {
-                // 此次数据接收已完毕
-                refreshTimer(curTime, &((UdpTunnel_t *)pe->container)->timer);
-            }
-            else
-            {
-                spdlog::error("[UdpForwardService::northRead] service soc[{}] fail: {}:[]",
-                              pe->soc, errno, strerror(errno));
-                pe->valid = false;
-            }
-            break;
-        }
-        else
-        {
-            spdlog::trace("[UdpForwardService::northRead] skip empty udp packet.");
-        }
-    }
-}
-
-void UdpForwardService::northWrite(time_t curTime, Endpoint_t *pe)
-{
-    auto p = (buffer::DynamicBuffer::BufBlk_t *)pe->sendListHead;
-    while (p)
-    {
-        int nRet = send(pe->soc, p->buffer, p->size, 0);
-        if (nRet < 0)
-        {
-            if (errno == EAGAIN)
-            {
                 // 此次发送窗口已关闭
-                refreshTimer(curTime, &((UdpTunnel_t *)pe->container)->timer);
                 break;
             }
 
             spdlog::debug("[UdpForwardService::northWrite] soc[{}] send fail: {} - [{}]",
                           pe->soc, errno, strerror(errno));
-
             pe->valid = false;
 
-            // clean send buffer
-            while (p)
-            {
-                mpDynamicBuffer->release(p);
-                p = p->next;
-            }
+            // close client tunnel
+            addToCloseList((Tunnel_t *)pe->container);
 
             break;
         }
+        else
+        {
+            // send ZERO data, drop pkt
+            spdlog::warn("[UdpForwardService::northWrite] send ZERO data, drop pkt");
+        }
 
-        mpDynamicBuffer->release(p);
+        mTimeoutTimer.refresh(curTime, &((Tunnel_t *)pe->container)->timerEntity);
+        pe->totalBufSize -= p->dataSize;
+        mpBuffer->release(p);
         p = p->next;
     }
 
-    if (p == nullptr)
-    {
-        // 数据发送完毕
-        pe->sendListHead = pe->sendListTail = nullptr;
-    }
-    else
+    if (p)
     {
         // 还有待发送数据
         pe->sendListHead = p;
+        assert(pe->totalBufSize > 0);
+    }
+    else
+    {
+        // 数据发送完毕
+        pe->sendListHead = pe->sendListTail = nullptr;
+        assert(pe->totalBufSize == 0);
     }
 }
 
@@ -519,14 +630,28 @@ void UdpForwardService::closeTunnels()
     {
         for (auto pt : mCloseList)
         {
-            spdlog::debug("[UdpForwardService::closeTunnels] remove endpoint[{}]",
-                          Utils::dumpEndpoint(pt->north));
+            spdlog::debug("[UdpForwardService::closeTunnels] close tunnel[{}]",
+                          pt->north->soc);
+
             // remove from maps
             int northSoc = pt->north->soc;
             auto &addr = mNorthSoc2SouthRemoteAddr[northSoc];
             mAddr2Tunnel.erase(addr);
-            mAddr2Endpoint.erase(addr);
             mNorthSoc2SouthRemoteAddr.erase(northSoc);
+            // spdlog::trace("[UdpForwardService::closeTunnels] remove addr[{}] from map",
+            //               Utils::dumpSockAddr(addr));
+
+            // remove from timer
+            mTimeoutTimer.erase(&pt->timerEntity);
+
+            // 从缓冲区等待队列中移除
+            if (pt->north->bufWaitEntity.inList)
+            {
+                spdlog::trace("[UdpForwardService::closeTunnels] remove north soc[{}]"
+                              " from buffer waiting list",
+                              pt->north->soc);
+                mBufferWaitList.erase(&pt->north->bufWaitEntity);
+            }
 
             // close and release endpoint object
             ::close(northSoc);
@@ -539,87 +664,51 @@ void UdpForwardService::closeTunnels()
     }
 }
 
-void UdpForwardService::addToTimer(time_t curTime, TunnelTimer_t *p)
+void UdpForwardService::processBufferWaitingList(time_t curTime)
 {
-    p->lastActiveTime = curTime;
-    p->next = nullptr;
+    if (mBufferWaitList.mpHead)
+    {
+        set<Endpoint_t *> peList;
+        auto entity = mBufferWaitList.mpHead;
+        auto pe = (Endpoint_t *)entity->container;
+        while (entity)
+        {
+            auto pBuf = mpBuffer->reserve(PREALLOC_RECV_BUFFER_SIZE);
+            if (pBuf == nullptr)
+            {
+                // 已无空闲可用缓冲区
+                break;
+            }
 
-    if (mTimer.next)
-    {
-        // 当前链表不为空
-        p->prev = mTimer.prev;
-        assert(mTimer.prev->next == nullptr);
-        mTimer.prev->next = p;
-        mTimer.prev = p;
-    }
-    else
-    {
-        // 当前链表为空
-        p->prev = nullptr;
-        mTimer.next = mTimer.prev = p;
-    }
-}
+            if (pe->type == TYPE_SERVICE)
+            {
+                auto pt = southRead(curTime, pe, pBuf);
+                peList.insert(pt->north);
+                peList.insert(&mServiceEndpoint);
+            }
+            else
+            {
+                assert(pe->type == TYPE_NORMAL);
 
-void UdpForwardService::refreshTimer(time_t curTime, TunnelTimer_t *p)
-{
-    if (p->lastActiveTime == curTime ||
-        mTimer.prev->lastActiveTime == p->lastActiveTime)
-    {
-        return;
-    }
+                auto pt = southRead(curTime, pe, pBuf);
+                peList.insert(pt->north);
+                peList.insert(&mServiceEndpoint);
+            }
 
-    // remove from list
-    if (p->prev)
-    {
-        p->prev->next = p->next;
-    }
-    else
-    {
-        assert(mTimer.next == p);
-        mTimer.next = p->next;
-    }
-    assert(p->next);
-    p->next->prev = p->prev;
+            // 将当前节点从等待队列中移除
+            auto next = entity->next;
+            mBufferWaitList.erase(entity);
+            entity = next;
+        }
 
-    // append to tail
-    addToTimer(curTime, p);
-}
-
-void UdpForwardService::scanTimeout(time_t curTime)
-{
-    time_t timeoutTime = curTime - mTimeoutInterval;
-    if (mTimer.next == nullptr ||
-        mTimer.next->lastActiveTime > timeoutTime)
-    {
-        return;
-    }
-
-    // get timeout item list
-    auto h = mTimer.next;
-    auto t = h;
-    while (t->next && t->next->lastActiveTime < timeoutTime)
-    {
-        t = t->next;
-    }
-    // 将从 h --> t 的元素移除链表
-    if (t->next)
-    {
-        // 此时剩余链表中还有元素存在
-        t->next->prev = nullptr;
-        mTimer.next = t->next;
-        t->next = nullptr;
-    }
-    else
-    {
-        // 所有元素都已从链表中移除
-        mTimer.next = mTimer.prev = nullptr;
-    }
-
-    // 释放已超时 udp tunnel
-    while (h)
-    {
-        addToCloseList((UdpTunnel_t *)h->tunnel);
-        h = h->next;
+        for (auto pe : peList)
+        {
+            // reset epoll mode
+            if (pe->valid)
+            {
+                epollResetEndpointMode(pe, true, true, true);
+            }
+        }
     }
 }
 

@@ -19,33 +19,29 @@
 #include <memory>
 #include <set>
 #include <thread>
-#include <vector>
-#include "config/config.h"
-#include "config/forward.h"
+#include <rapidjson/document.h>
+#include "buffer/dynamicBuffer.h"
 #include "link/service.h"
 #include "link/type.h"
-#include "link/tunnelMgr.h"
-#include "timer/container.h"
 
 namespace mapper
 {
 
 class NetMgr
 {
-    typedef union CONVERTER {
-        uint32_t u32;
-        void *ptr;
-    } Converter_t;
-
 public:
-    static const int INTERVAL_EPOLL_RETRY;
-    static const int INTERVAL_CONNECT_RETRY;
-    static const int EPOLL_MAX_EVENTS = 16;
+    static const uint32_t INTERVAL_EPOLL_RETRY;
+    static const uint32_t INTERVAL_CONNECT_RETRY;
+    static const uint32_t EPOLL_MAX_EVENTS;
+
+    static const uint32_t DEFAULT_BUFFER_SIZE = 128;
+    static const uint32_t BUFFER_SIZE_UNIT = 1048576;
+    static const char *SETTING_BUFFER_SIZE_PATH;
 
     NetMgr();
     virtual ~NetMgr();
 
-    bool start(config::Config &cfg);
+    bool start(rapidjson::Document &cfg);
     void stop();
 
     void join();
@@ -55,33 +51,14 @@ protected:
     bool initEnv();
     void closeEnv();
 
-    void onSoc(time_t curTime, epoll_event &event);
+    std::list<link::Service *> mServiceList;
 
-    void acceptClient(time_t curTime, link::EndpointService_t *pes);
-    bool onSend(time_t curTime, link::EndpointRemote_t *per, link::Tunnel_t *pt);
-    bool onRecv(time_t curTime, link::EndpointRemote_t *per, link::Tunnel_t *pt);
-    bool epollAddTunnel(link::Tunnel_t *pt);
-    void epollRemoveTunnel(link::Tunnel_t *pt);
-    bool epollAddEndpoint(link::EndpointBase_t *pe, bool read, bool write, bool edgeTriger);
-    void epollRemoveEndpoint(link::EndpointBase_t *pe);
-    bool epollResetEndpointMode(link::EndpointBase_t *pe, bool read, bool write, bool edgeTriger);
-    void postProcess(time_t curTime);
-    void onClose(link::Tunnel_t *pt);
-
-    void timeoutCheck(time_t curTime);
-
-    std::vector<std::shared_ptr<mapper::config::Forward>> mForwards;
-    std::vector<link::EndpointService_t *> mServices;
-    std::vector<link::Service *> mUdpServices;
-
-    config::Config *mpCfg;
+    rapidjson::Document *mpCfg;
     int mEpollfd;
-    link::TunnelMgr mTunnelMgr;
     std::thread mMainRoutineThread;
     volatile bool mStopFlag;
-    std::set<link::Tunnel_t *> mPostProcessList;
 
-    timer::Container mTimer;
+    buffer::DynamicBuffer *mpDynamicBuffer;
 };
 
 } // namespace mapper

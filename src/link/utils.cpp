@@ -2,7 +2,6 @@
 #include <assert.h>
 #include <ifaddrs.h>
 #include <string.h>
-#include <arpa/inet.h>
 #include <sstream>
 #include <spdlog/spdlog.h>
 
@@ -16,11 +15,11 @@ namespace link
 Protocol_t Utils::parseProtocol(const char *protocol)
 {
     return strcasecmp(protocol, "tcp") == 0
-               ? link::Protocol_t::TCP
+               ? link::PROTOCOL_TCP
                : strcasecmp(protocol, "udp") == 0
-                     ? link::Protocol_t::UDP
+                     ? link::PROTOCOL_UDP
                      : (assert(!"unsupported protocol"),
-                        link::Protocol_t::UNKNOWN_PROTOCOL);
+                        link::PROTOCOL_UNKNOWN);
 }
 
 Protocol_t Utils::parseProtocol(const std::string &protocol)
@@ -54,20 +53,10 @@ bool Utils::getIntfAddr(const char *intf, sockaddr_in &sa)
             {
                 continue;
             }
-
-            memcpy(&sa, ifa->ifa_addr, sizeof(sockaddr_in));
-
-            char ip[INET_ADDRSTRLEN];
-            if (inet_ntop(AF_INET, &sa, ip, INET_ADDRSTRLEN))
-            {
-                spdlog::debug("[Utils::getIntfAddr] IPv4 address of interface[{}]: {}", intf, ip);
-                return true;
-            }
             else
             {
-
-                spdlog::error("[Utils::getIntfAddr] get IPv4 address of interface[{}] fail", intf);
-                return false;
+                memcpy(&sa, ifa->ifa_addr, sizeof(sockaddr_in));
+                return true;
             }
         }
 
@@ -94,7 +83,7 @@ bool Utils::getAddrInfo(const char *host,
     hints.ai_canonname = nullptr;
     hints.ai_addr = nullptr;
     hints.ai_next = nullptr;
-    if (protocol == Protocol_t::TCP)
+    if (protocol == PROTOCOL_TCP)
     {
         hints.ai_socktype = SOCK_STREAM;
         hints.ai_protocol = IPPROTO_TCP;
@@ -120,21 +109,43 @@ void Utils::closeAddrInfo(addrinfo *pAddrInfo)
     freeaddrinfo(pAddrInfo);
 }
 
-int Utils::createServiceSoc(Protocol_t protocol, sockaddr_in *sa, socklen_t salen)
+int Utils::createSoc(Protocol_t protocol, bool nonblock)
 {
     // create socket
-    int soc = createSoc(protocol, true);
+    int soc = socket(AF_INET,
+                     protocol == PROTOCOL_TCP ? SOCK_STREAM : SOCK_DGRAM,
+                     0);
     if (soc <= 0)
     {
         spdlog::error("[Utils::createServiceSoc] create socket fail. {} - {}", errno, strerror(errno));
         return -1;
     }
+
+    // set to non-block
+    if (!setSocAttr(soc, true, false))
+    {
+        spdlog::error("[Utils::createServiceSoc] set to attr fail.");
+        close(soc);
+        return -1;
+    }
+
+    return soc;
+}
+
+int Utils::createServiceSoc(Protocol_t protocol, sockaddr_in *sa, socklen_t salen)
+{
+    // create socket
+    int soc = socket(AF_INET, protocol == PROTOCOL_TCP ? SOCK_STREAM : SOCK_DGRAM, 0);
+    if (soc <= 0)
+    {
+        spdlog::error("[Utils::createServiceSoc] create socket fail. {} - {}", errno, strerror(errno));
+        return -1;
+    }
+
     if ([&protocol, &sa, &salen, &soc]() -> bool {
-            // set reuse
-            int opt = 1;
-            if (setsockopt(soc, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt)))
+            if (!setSocAttr(soc, true, true))
             {
-                spdlog::error("[Utils::createServiceSoc] set reuse fail. {} - {}", errno, strerror(errno));
+                spdlog::error("[Utils::createServiceSoc] set soc attr fail.");
                 return false;
             }
             // bind
@@ -144,7 +155,7 @@ int Utils::createServiceSoc(Protocol_t protocol, sockaddr_in *sa, socklen_t sale
                 return false;
             }
             // listen
-            if (protocol == Protocol_t::TCP && listen(soc, SOMAXCONN << 1))
+            if (protocol == PROTOCOL_TCP && listen(soc, SOMAXCONN << 1))
             {
                 spdlog::error("[Utils::createServiceSoc] listen fail. {} - {}", errno, strerror(errno));
                 return false;
@@ -161,96 +172,83 @@ int Utils::createServiceSoc(Protocol_t protocol, sockaddr_in *sa, socklen_t sale
     }
 }
 
-int Utils::createSoc(Protocol_t protocol, bool nonblock)
+bool Utils::setSocAttr(int soc, bool nonblock, bool reuse)
 {
-    // create socket
-    int soc = socket(AF_INET,
-                     protocol == Protocol_t::TCP ? SOCK_STREAM : SOCK_DGRAM,
-                     0);
-    if (soc <= 0)
-    {
-        spdlog::error("[Utils::createServiceSoc] create socket fail. {} - {}", errno, strerror(errno));
-        return -1;
-    }
-
     // set to non-block
     if (nonblock)
     {
         int flags = fcntl(soc, F_GETFL);
         if (flags < 0 || fcntl(soc, F_SETFL, flags | O_NONBLOCK) < 0)
         {
-            spdlog::error("[Utils::createServiceSoc] set to non-block fail. {} - {}", errno, strerror(errno));
+            spdlog::error("[Utils::setSocAttr] set to non-block fail. {} - {}",
+                          errno, strerror(errno));
             close(soc);
-            return -1;
+            return false;
+        }
+    }
+    // set reuse
+    if (reuse)
+    {
+        int opt = 1;
+        if (setsockopt(soc, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt)))
+        {
+            spdlog::error("[Utils::setSocAttr] set reuse fail. {} - {}",
+                          errno, strerror(errno));
+            return false;
         }
     }
 
-    return soc;
+    return true;
 }
 
 int Utils::compareAddr(const sockaddr *l, const sockaddr *r)
 {
-    // family
-    if (l->sa_family != r->sa_family)
-    {
-        return l->sa_family < r->sa_family ? -1 : 1;
-    }
-
-    // ipv4
-    if (l->sa_family == AF_INET)
-    {
-        auto l_addr = reinterpret_cast<const sockaddr_in *>(l);
-        auto r_addr = reinterpret_cast<const sockaddr_in *>(r);
-        // address
-        if (l_addr->sin_addr.s_addr != r_addr->sin_addr.s_addr)
-        {
-            return ntohl(l_addr->sin_addr.s_addr) < ntohl(r_addr->sin_addr.s_addr) ? -1 : 1;
-        }
-        // port
-        if (l_addr->sin_port != r_addr->sin_port)
-        {
-            return ntohs(l_addr->sin_port) < ntohs(r_addr->sin_port) ? -1 : 1;
-        }
-    }
-    else if (l->sa_family == AF_INET6)
-    {
-        auto l_addr = reinterpret_cast<const sockaddr_in6 *>(l);
-        auto r_addr = reinterpret_cast<const sockaddr_in6 *>(r);
-        // address
-        int r = memcmp(l_addr->sin6_addr.s6_addr,
-                       r_addr->sin6_addr.s6_addr,
-                       sizeof(l_addr->sin6_addr.s6_addr));
-        if (r)
-        {
-            return r;
-        }
-        // port
-        if (l_addr->sin6_port != r_addr->sin6_port)
-        {
-            return ntohs(l_addr->sin6_port) < ntohs(r_addr->sin6_port) ? -1 : 1;
-        }
-        // flowinfo
-        if (l_addr->sin6_flowinfo != r_addr->sin6_flowinfo)
-        {
-            return ntohl(l_addr->sin6_flowinfo) < ntohl(r_addr->sin6_flowinfo) ? -1 : 1;
-        }
-        // scop id
-        if (l_addr->sin6_scope_id != r_addr->sin6_scope_id)
-        {
-            return ntohl(l_addr->sin6_scope_id) < ntohl(r_addr->sin6_scope_id) ? -1 : 1;
-        }
-    }
-    else
-    {
-        assert(!"unknown sa_family");
-    }
-
-    return 0;
+    return (l->sa_family != r->sa_family) // family
+               ? (l->sa_family < r->sa_family
+                      ? -1
+                      : 1)
+               : (l->sa_family == AF_INET) // ipv4
+                     ? compareAddr((const sockaddr_in *)l, (const sockaddr_in *)r)
+                     : (l->sa_family == AF_INET6) // ipv6
+                           ? compareAddr((const sockaddr_in6 *)l, (const sockaddr_in6 *)r)
+                           : (assert(!"unknown sa_family"), 0);
 }
 
 int Utils::compareAddr(const sockaddr_in *l, const sockaddr_in *r)
 {
-    return compareAddr((const sockaddr *)l, (const sockaddr *)r);
+    return (l->sin_addr.s_addr != r->sin_addr.s_addr)
+               ? (ntohl(l->sin_addr.s_addr) < ntohl(r->sin_addr.s_addr)
+                      ? -1
+                      : 1)
+               : (l->sin_port != r->sin_port)
+                     ? (ntohs(l->sin_port) < ntohs(r->sin_port)
+                            ? -1
+                            : 1)
+                     : 0;
+}
+
+int Utils::compareAddr(const sockaddr_in6 *l, const sockaddr_in6 *r)
+{
+    // address
+    int addrCmpRet = memcmp(l->sin6_addr.s6_addr,
+                            r->sin6_addr.s6_addr,
+                            sizeof(l->sin6_addr.s6_addr));
+
+    return addrCmpRet
+               ? addrCmpRet
+               : (l->sin6_port != r->sin6_port)
+                     ? (ntohs(l->sin6_port) < ntohs(r->sin6_port)
+                            ? -1
+                            : 1)
+                     : (l->sin6_flowinfo != r->sin6_flowinfo)
+                           ? (ntohl(l->sin6_flowinfo) < ntohl(r->sin6_flowinfo)
+                                  ? -1
+                                  : 1)
+                           : (l->sin6_scope_id != r->sin6_scope_id)
+                                 ? (ntohl(l->sin6_scope_id) < ntohl(r->sin6_scope_id)
+                                        ? -1
+                                        : 1)
+                                 : 0;
 }
 
 int Utils::compareAddr(const addrinfo *l, const addrinfo *r)
@@ -280,7 +278,7 @@ int Utils::compareAddr(const addrinfo *l, const addrinfo *r)
 
 std::string Utils::dumpSockAddr(const sockaddr *addr)
 {
-    return dumpSockAddr((const sockaddr_in *) addr);
+    return dumpSockAddr((const sockaddr_in *)addr);
 }
 
 std::string Utils::dumpSockAddr(const sockaddr &addr)
@@ -310,30 +308,30 @@ std::string Utils::dumpSockAddr(const sockaddr_in &addr)
     return dumpSockAddr(&addr);
 }
 
-std::string Utils::dumpIpTuple(const IpTuple_t *tuple, bool reverse)
+std::string Utils::dumpConnection(const Connection_t *conn, bool reverse)
 {
-    assert(tuple);
+    assert(conn);
 
-    const sockaddr_in *first = &tuple->l;
-    const sockaddr_in *second = &tuple->r;
+    const sockaddr_in *first = &conn->localAddr;
+    const sockaddr_in *second = &conn->remoteAddr;
     if (reverse)
     {
         first = second;
-        second = &tuple->l;
+        second = &conn->localAddr;
     }
 
     stringstream ss;
 
     ss << dumpSockAddr(first)
-       << (tuple->p == Protocol_t::TCP ? "-tcp-" : "-udp-")
+       << (conn->protocol == PROTOCOL_TCP ? "-tcp-" : "-udp-")
        << dumpSockAddr(second);
 
     return ss.str();
 }
 
-std::string Utils::dumpIpTuple(const IpTuple_t &tuple, bool reverse)
+std::string Utils::dumpConnection(const Connection_t &conn, bool reverse)
 {
-    return dumpIpTuple(&tuple, reverse);
+    return dumpConnection(&conn, reverse);
 }
 
 std::string Utils::dumpEndpoint(const Endpoint_t *endpoint, bool reverse)
@@ -343,7 +341,7 @@ std::string Utils::dumpEndpoint(const Endpoint_t *endpoint, bool reverse)
     if (reverse)
     {
         ss << "("
-           << dumpIpTuple(endpoint->ipTuple, reverse)
+           << dumpConnection(endpoint->conn, reverse)
            << ",soc["
            << endpoint->soc
            << "])";
@@ -353,7 +351,7 @@ std::string Utils::dumpEndpoint(const Endpoint_t *endpoint, bool reverse)
         ss << "(soc["
            << endpoint->soc
            << "],"
-           << dumpIpTuple(endpoint->ipTuple, reverse)
+           << dumpConnection(endpoint->conn, reverse)
            << ")";
     }
 
@@ -362,7 +360,7 @@ std::string Utils::dumpEndpoint(const Endpoint_t *endpoint, bool reverse)
 
 std::string Utils::dumpEndpoint(const Endpoint_t &endpoint, bool reverse)
 {
-    return dumpIpTuple(endpoint.ipTuple, reverse);
+    return dumpConnection(endpoint.conn, reverse);
 }
 
 std::string Utils::dumpServiceEndpoint(const Endpoint_t *serviceEndpoint, const sockaddr_in *clientAddr)
@@ -371,8 +369,8 @@ std::string Utils::dumpServiceEndpoint(const Endpoint_t *serviceEndpoint, const 
 
     ss << "("
        << dumpSockAddr(clientAddr)
-       << (serviceEndpoint->ipTuple.p == Protocol_t::TCP ? "-tcp-" : "-udp-")
-       << dumpSockAddr(serviceEndpoint->ipTuple.l)
+       << (serviceEndpoint->conn.protocol == PROTOCOL_TCP ? "-tcp-" : "-udp-")
+       << dumpSockAddr(serviceEndpoint->conn.localAddr)
        << ",soc["
        << serviceEndpoint->soc
        << "])";
@@ -383,6 +381,24 @@ std::string Utils::dumpServiceEndpoint(const Endpoint_t *serviceEndpoint, const 
 std::string Utils::dumpServiceEndpoint(const Endpoint_t &serviceEndpoint, const sockaddr_in &clientAddr)
 {
     return dumpServiceEndpoint(&serviceEndpoint, &clientAddr);
+}
+
+std::string Utils::dumpTunnel(const Tunnel_t *pt, bool reverse)
+{
+    stringstream ss;
+
+    ss << "("
+       << dumpEndpoint(pt->south, true)
+       << "==>"
+       << dumpEndpoint(pt->north, false)
+       << ")";
+
+    return ss.str();
+}
+
+std::string Utils::dumpTunnel(const Tunnel_t &pt, bool reverse)
+{
+    return dumpTunnel(&pt, reverse);
 }
 
 } // namespace link

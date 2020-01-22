@@ -1,0 +1,28 @@
+{
+  "log": {
+    "sink": "console",
+    "level": "info",
+    "file": "mapper.log"
+  },
+  "service": {
+    "forward": [
+      "8000:127.0.0.1:8080",
+      "any:8001:127.0.0.1:8081",
+      "lo:8002:127.0.0.1:8082",
+      "tcp:lo:8003:127.0.0.1:8083",
+      "udp:lo:8003:localhost:8083"
+    ],
+    "setting": {
+      "timeout": {
+        "connect": 3,
+        "session": 180,
+        "release": 3,
+        "udp": 3
+      },
+      "buffer": {
+        "size": 1024,
+        "perSessionLimit": 1
+      }
+    }
+  }
+}

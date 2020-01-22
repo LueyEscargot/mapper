@@ -1,0 +1,103 @@
+namespace mapper
+{
+namespace link
+{
+
+static const char *SERVICE_SCHEMA = R"(
+{
+  "type": "object",
+  "properties": {
+    "tcpForward": {
+      "type": "object"
+    },
+    "udpForward": {
+      "type": "object"
+    }
+  }
+}
+)";
+
+static const char *TCPFORWARD_SCHEMA = R"(
+{
+  "type": "object",
+  "properties": {
+    "forward": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "settings": {
+      "type": "object",
+      "properties": {
+        "timeout": {
+          "type": "object",
+          "properties": {
+            "connect": {
+              "type": "number"
+            },
+            "session": {
+              "type": "number"
+            },
+            "release": {
+              "type": "number"
+            }
+          }
+        },
+        "buffer": {
+          "type": "object",
+          "properties": {
+            "size": {
+              "type": "number"
+            },
+            "perSessionLimit": {
+              "type": "number"
+            }
+          }
+        }
+      }
+    }
+  }
+}
+)";
+
+static const char *UDPFORWARD_SCHEMA = R"(
+{
+  "type": "object",
+  "properties": {
+    "forward": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "settings": {
+      "type": "object",
+      "properties": {
+        "timeout": {
+          "type": "object",
+          "properties": {
+            "session": {
+              "type": "number"
+            }
+          }
+        },
+        "buffer": {
+          "type": "object",
+          "properties": {
+            "size": {
+              "type": "number"
+            },
+            "perSessionLimit": {
+              "type": "number"
+            }
+          }
+        }
+      }
+    }
+  }
+}
+)";
+
+} // namespace link
+} // namespace mapper

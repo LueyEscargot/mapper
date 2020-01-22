@@ -20,26 +20,26 @@ namespace link
 
 class Tunnel
 {
+    static const uint32_t BUFFER_SIZE = 1 << 10;
+    static const uint32_t RELEASE_THRESHOLD = BUFFER_SIZE + 1 << 8;
+    static const uint32_t BATCH_ALLOC_COUNT = 1 << 7;
+
 protected:
     Tunnel() = default;
     Tunnel(const Tunnel &) = default;
     Tunnel &operator=(const Tunnel &) { return *this; }
 
 public:
-    static bool init(Tunnel_t *pt, EndpointService_t *pes, int southSoc);
-    static void setStatus(Tunnel_t *pt, TunnelState_t stat);
-    static std::string toStr(Tunnel_t *pt);
+    static Tunnel_t *getTunnel();
+    static void releaseTunnel(Tunnel_t *pt);
 
-    static UdpTunnel_t *getTunnel();
-    static void releaseTunnel(UdpTunnel_t *pe);
+protected:
+    static void batchAlloc(const uint32_t count);
 
-    static bool connect(Tunnel_t *pt);
-    static bool northSocRecv(Tunnel_t *pt);
-    static bool northSocSend(Tunnel_t *pt);
-    static bool southSocRecv(Tunnel_t *pt);
-    static bool southSocSend(Tunnel_t *pt);
+    static uint32_t gFreeCount;
+    static uint32_t gInUseCount;
 
-    static const bool StateMaine[TUNNEL_STATE_COUNT][TUNNEL_STATE_COUNT];
+    static std::list<Tunnel_t *> gFreeList;
 };
 
 } // namespace link

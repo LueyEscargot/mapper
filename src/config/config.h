@@ -49,6 +49,7 @@ protected:
     static const int DEFAULT_LINK_SOUTHBUF = 1;
     static const int DEFAULT_LINK_UDP_TUNNELS = 1 << 10;
     static const int DEFAULT_LINK_UDP_BUFFER = 1 << 17;
+    static const int DEFAULT_LINK_SHARED_BUFFER = 1 << 20;
 
     static const int BUF_SIZE_UNIT = 1 << 10;
 
@@ -105,6 +106,7 @@ public:
     inline uint32_t getLinkSouthBuf() { return BUF_SIZE_UNIT * getAsUint32("southBuf", "link", DEFAULT_LINK_SOUTHBUF); }
     inline uint32_t getLinkUdpTunnels() { return BUF_SIZE_UNIT * getAsUint32("udpTunnels", "link", DEFAULT_LINK_UDP_TUNNELS); }
     inline uint32_t getLinkUdpBuffer() { return BUF_SIZE_UNIT * getAsUint32("udpBuffer", "link", DEFAULT_LINK_UDP_BUFFER); }
+    inline uint32_t getLinkSharedBuffer() { return BUF_SIZE_UNIT * getAsUint32("sharedBuffer", "link", DEFAULT_LINK_SHARED_BUFFER); }
 
     std::string mConfigFile;
 

@@ -29,20 +29,20 @@ class Container
     static const int DEFAULT_TIMEOUT_INTERVAL = 30;
 
 public:
-    typedef enum TYPE
+    enum Type_t
     {
         TYPE_INVALID = 0,
         TIMER_CONNECT,
         TIMER_ESTABLISHED,
         TIMER_BROKEN,
         TYPE_COUNT
-    } Type_t;
-    typedef struct CLIENT
+    };
+    struct Client_t
     {
         bool inTimer;
         time_t time;
-        CLIENT *prev;
-        CLIENT *next;
+        Client_t *prev;
+        Client_t *next;
         Type_t type;
         void *tag; // 客户端自维护指针，此类不负责初始化、生命周期管理、校验、释放等等
 
@@ -52,9 +52,9 @@ public:
             time = 0;
             prev = nullptr;
             next = nullptr;
-            type = Type_t::TYPE_INVALID;
+            type = TYPE_INVALID;
         }
-    } Client_t;
+    };
 
     Container();
     ~Container();
