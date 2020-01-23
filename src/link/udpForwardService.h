@@ -72,7 +72,8 @@ protected:
     utils::BaseList mBufferWaitList;
 
     std::map<sockaddr_in, Tunnel_t *, Utils::Comparator_t> mAddr2Tunnel;
-    std::map<int, sockaddr_in> mNorthSoc2SouthRemoteAddr;
+    std::map<int, sockaddr_in> mSoc2SouthRemoteAddr;
+    std::map<int, Tunnel_t *> mSoc2Tunnel;
 };
 
 } // namespace link

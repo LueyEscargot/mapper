@@ -288,7 +288,8 @@ Tunnel_t *UdpForwardService::getTunnel(time_t curTime, sockaddr_in *southRemoteA
     // spdlog::trace("[UdpForwardService::getTunnel] put addr[{}] into map",
     //               Utils::dumpSockAddr(southRemoteAddr));
     mAddr2Tunnel[*southRemoteAddr] = pt;
-    mNorthSoc2SouthRemoteAddr[north->soc] = *southRemoteAddr;
+    mSoc2SouthRemoteAddr[north->soc] = *southRemoteAddr;
+    mSoc2Tunnel[north->soc] = pt;
 
     // add to timer
     mTimeoutTimer.push_back(curTime, &pt->timerEntity);
@@ -436,12 +437,6 @@ void UdpForwardService::southWrite(time_t curTime, Endpoint_t *pe)
             if (nRet > 0)
             {
                 p->sent += nRet;
-                if (p->sent < p->dataSize)
-                {
-                    // 数据包中还有数据需要发送
-                    continue;
-                }
-
                 assert(p->sent == p->dataSize);
                 mTimeoutTimer.refresh(curTime, &it->second->timerEntity);
             }
@@ -547,8 +542,8 @@ Tunnel_t *UdpForwardService::northRead(time_t curTime, Endpoint_t *pe, char *buf
         else
         {
             // 取南向地址
-            auto it = mNorthSoc2SouthRemoteAddr.find(pe->soc);
-            if (it == mNorthSoc2SouthRemoteAddr.end())
+            auto it = mSoc2SouthRemoteAddr.find(pe->soc);
+            if (it == mSoc2SouthRemoteAddr.end())
             {
                 // drop unknown incoming packet
                 assert(!"[UdpForwardService::northRead] south addr not exist");
@@ -617,12 +612,6 @@ void UdpForwardService::northWrite(time_t curTime, Endpoint_t *pe)
         if (nRet > 0)
         {
             p->sent += nRet;
-            if (p->sent < p->dataSize)
-            {
-                // 数据包中还有数据需要发送
-                continue;
-            }
-
             assert(p->sent == p->dataSize);
             mTimeoutTimer.refresh(curTime, &((Tunnel_t *)pe->container)->timerEntity);
         }
@@ -680,9 +669,10 @@ void UdpForwardService::closeTunnels()
 
             // remove from maps
             int northSoc = pt->north->soc;
-            auto &addr = mNorthSoc2SouthRemoteAddr[northSoc];
+            auto &addr = mSoc2SouthRemoteAddr[northSoc];
             mAddr2Tunnel.erase(addr);
-            mNorthSoc2SouthRemoteAddr.erase(northSoc);
+            mSoc2SouthRemoteAddr.erase(northSoc);
+            mSoc2Tunnel.erase(northSoc);
             // spdlog::trace("[UdpForwardService::closeTunnels] remove addr[{}] from map",
             //               Utils::dumpSockAddr(addr));
 
