@@ -116,11 +116,7 @@ void NetMgr::threadFunc()
                 curTime = time(nullptr);
                 if (nRet < 0)
                 {
-                    if (errno == EAGAIN || errno == EINTR)
-                    {
-                        this_thread::sleep_for(chrono::milliseconds(INTERVAL_EPOLL_RETRY));
-                    }
-                    else
+                    if (errno != EAGAIN && errno != EINTR)
                     {
                         spdlog::error("[NetMgr::threadFunc] epoll fail. {} - {}",
                                       errno, strerror(errno));
