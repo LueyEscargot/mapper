@@ -23,6 +23,8 @@ namespace link
 
 UdpForwardService::UdpForwardService()
     : Service("UdpForwardService"),
+      mServiceEpollfd(0),
+      mForwardEpollfd(0),
       mForwardCmd(nullptr),
       mLastActionTime(0)
 {
@@ -43,6 +45,8 @@ bool UdpForwardService::init(int epollfd,
     mSetting = setting;
 
     mForwardCmd = forward;
+
+    // TODO: init epoll
 
     mServiceEndpoint.init(PROTOCOL_UDP, TO_SOUTH, TYPE_SERVICE);
     mServiceEndpoint.service = this;
@@ -95,6 +99,8 @@ void UdpForwardService::close()
         ::close(mServiceEndpoint.soc);
         mServiceEndpoint.soc = 0;
     }
+
+    // TODO: close epoll
 }
 
 void UdpForwardService::onSoc(time_t curTime, uint32_t events, Endpoint_t *pe)

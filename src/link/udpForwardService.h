@@ -62,6 +62,9 @@ protected:
     inline void addToCloseList(Endpoint_t *pe) { addToCloseList((Tunnel_t *)pe->container); }
     void closeTunnels();
 
+    int mServiceEpollfd;
+    int mForwardEpollfd;
+
     std::shared_ptr<Forward> mForwardCmd;
     TargetManager mTargetManager;
 
