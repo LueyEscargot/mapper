@@ -10,6 +10,7 @@
     - [2.2. 数据结构说明](#22-数据结构说明)
         - [2.2.1. 会话结构体](#221-会话结构体)
     - [2.3. 状态机](#23-状态机)
+    - [2.4. Target Manager](#24-target-manager)
 - [3. 其它](#3-其它)
     - [3.1. 编译、运行](#31-编译运行)
     - [3.2. config.ini](#32-configini)
@@ -46,6 +47,12 @@
 会话结构体中的状态机定义如下图所示:
 
 ![doc/images/stateMachine.svg](doc/images/stateMachine.svg)
+
+### 2.4. Target Manager
+
+Target Manager 的用力图如下所示:
+
+![doc/images/targetMgr.svg](doc/images/targetMgr.svg)
 
 ## 3. 其它
 
