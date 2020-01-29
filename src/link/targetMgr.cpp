@@ -17,8 +17,7 @@ TargetManager::~TargetManager()
 {
 }
 
-bool TargetManager::addTarget(time_t curTime,
-                              int serviceId,
+bool TargetManager::addTarget(int id,
                               const char *host,
                               const char *service,
                               const Protocol_t protocol)
@@ -29,18 +28,19 @@ bool TargetManager::addTarget(time_t curTime,
                             protocol,
                             &pAddrInfo))
     {
-        spdlog::debug("[TargetManager::addTarget] get addr fail: {}:{}({})",
+        spdlog::error("[TargetManager::addTarget] get addr fail: {}:{}({})",
                       host, service, protocol);
+        return false;
     }
 
     addrinfo *p = pAddrInfo;
     while (p)
     {
         assert(p->ai_family == AF_INET);
-        appendAddrItem(serviceId, (sockaddr_in *)p->ai_addr);
+        appendAddrItem(id, (sockaddr_in *)p->ai_addr);
 
-        spdlog::trace("[TargetManager::addTarget] {}:{} -> {}",
-                      host, service, Utils::dumpSockAddr(p->ai_addr));
+        spdlog::trace("[TargetManager::addTarget] {} -> {}",
+                      id, Utils::dumpSockAddr(p->ai_addr));
 
         p = p->ai_next;
     }
@@ -49,42 +49,49 @@ bool TargetManager::addTarget(time_t curTime,
     return true;
 }
 
-const sockaddr_in *TargetManager::getAddr(time_t curTime, int serviceId)
+const sockaddr_in *TargetManager::getAddr(int id)
 {
-    auto it = mId2AddrArray.find(serviceId);
+    auto it = mId2AddrArray.find(id);
     if (it == mId2AddrArray.end())
     {
-        spdlog::error("[TargetManager::getAddr] id[{}] not exist.", serviceId);
+        spdlog::error("[TargetManager::getAddr] id[{}] not exist.", id);
         return nullptr;
     }
 
-    ++mId2AddrArrayIndex[serviceId];
-    mId2AddrArrayIndex[serviceId] %= mId2AddrArrayLength[serviceId];
+    ++mId2AddrArrayIndex[id];
+    mId2AddrArrayIndex[id] %= mId2AddrArrayLength[id];
 
-    return &it->second[mId2AddrArrayIndex[serviceId]];
+    return &it->second[mId2AddrArrayIndex[id]];
 }
 
-void TargetManager::failReport(time_t curTime, int serviceId, sockaddr_in *sa)
+void TargetManager::failReport(int id, const sockaddr_in *sa)
 {
     // do nothing at this version
 }
 
-void TargetManager::appendAddrItem(int serviceId, sockaddr_in *addr)
+void TargetManager::clear()
 {
-    auto it = mId2AddrArray.find(serviceId);
+    mId2AddrArray.clear();
+    mId2AddrArrayIndex.clear();
+    mId2AddrArrayLength.clear();
+}
+
+void TargetManager::appendAddrItem(int id, sockaddr_in *addr)
+{
+    auto it = mId2AddrArray.find(id);
     if (it == mId2AddrArray.end())
     {
         // 新 service id
-        mId2AddrArrayIndex[serviceId] = 0;
-        mId2AddrArrayLength[serviceId] = 1;
+        mId2AddrArrayIndex[id] = 0;
+        mId2AddrArrayLength[id] = 1;
     }
     else
     {
         // 已有 service id 存在
-        ++mId2AddrArrayLength[serviceId];
+        ++mId2AddrArrayLength[id];
     }
 
-    mId2AddrArray[serviceId].push_back(*addr);
+    mId2AddrArray[id].push_back(*addr);
 }
 
 } // namespace link

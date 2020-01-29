@@ -11,9 +11,9 @@
 #ifndef __MAPPER_LINK_TARGETMGR_H__
 #define __MAPPER_LINK_TARGETMGR_H__
 
-#include <time.h>
 #include <map>
 #include <vector>
+#include "type.h"
 
 namespace mapper
 {
@@ -30,16 +30,16 @@ public:
     TargetManager();
     virtual ~TargetManager();
 
-    bool addTarget(time_t curTime,
-                   int serviceId,
+    bool addTarget(int id,
                    const char *host,
                    const char *service,
                    const Protocol_t protocol);
-    const sockaddr_in *getAddr(time_t curTime, int serviceId);
-    void failReport(time_t curTime, int serviceId, sockaddr_in *sa);
+    const sockaddr_in *getAddr(int id);
+    void failReport(int id, const sockaddr_in *sa);
+    void clear();
 
 protected:
-    void appendAddrItem(int serviceId, sockaddr_in *addr);
+    void appendAddrItem(int id, sockaddr_in *addr);
 
     std::map<int, std::vector<sockaddr_in>> mId2AddrArray;
     std::map<int, uint32_t> mId2AddrArrayIndex;

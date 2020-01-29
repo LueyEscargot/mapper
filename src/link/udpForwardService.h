@@ -14,6 +14,7 @@
 #include <list>
 #include <set>
 #include <string>
+#include <thread>
 #include "forward.h"
 #include "service.h"
 #include "targetMgr.h"
@@ -29,51 +30,65 @@ namespace link
 class UdpForwardService : public Service
 {
 protected:
-    static const uint32_t PREALLOC_RECV_BUFFER_SIZE = 1 << 16;
+    static const uint32_t EPOLL_THREAD_RETRY_INTERVAL;
+    static const uint32_t EPOLL_MAX_EVENTS;
+    static const uint32_t INTERVAL_EPOLL_WAIT_TIME;
+    static const uint32_t PREALLOC_RECV_BUFFER_SIZE;
     using Addr2TunIter = std::map<sockaddr_in, Tunnel_t *>::iterator;
 
-    UdpForwardService(const UdpForwardService &) : Service("UdpForwardService"){};
+    UdpForwardService(const UdpForwardService &) : Service(""){};
     UdpForwardService &operator=(const UdpForwardService &) { return *this; }
 
 public:
     UdpForwardService();
     virtual ~UdpForwardService();
 
-    bool init(int epollfd,
-              buffer::DynamicBuffer *pBuffer,
-              std::shared_ptr<Forward> forward,
-              Setting_t &setting);
+    bool init(std::list<std::shared_ptr<Forward>> &forwardList,
+              Service::Setting_t &setting);
+
+    void join() override;
+    void stop() override;
     void close() override;
-    void onSoc(time_t curTime, uint32_t events, Endpoint_t *pe) override;
-    void postProcess(time_t curTime) override;
-    void scanTimeout(time_t curTime) override;
-    void processBufferWaitingList(time_t curTime) override;
 
 protected:
-    Tunnel_t *getTunnel(time_t curTime, sockaddr_in *pSAI);
-    void southRead(time_t curTime, Endpoint_t *pe);
-    Tunnel_t *southRead(time_t curTime, Endpoint_t *pe, char *buffer);
+    void epollThread();
+    bool initEnv();
+    void closeEnv();
+    void onTunnelSoc(time_t curTime, Endpoint_t *pe);
+    bool doNorthEpoll(time_t curTime, int epollfd);
+    bool doSouthEpoll(time_t curTime, int epollfd);
+    void postProcess(time_t curTime);
+    void scanTimeout(time_t curTime);
+
+    Tunnel_t *getTunnel(time_t curTime, Endpoint_t *pse, sockaddr_in *pSAI);
+    void southRead(time_t curTime, Endpoint_t *pse);
+    bool southRead(time_t curTime, Endpoint_t *pse, char *buffer);
     void southWrite(time_t curTime, Endpoint_t *pe);
     void northRead(time_t curTime, Endpoint_t *pe);
-    Tunnel_t *northRead(time_t curTime, Endpoint_t *pe, char *buffer);
+    bool northRead(time_t curTime, Endpoint_t *pe, char *buffer);
     void northWrite(time_t curTime, Endpoint_t *pe);
 
     inline void addToCloseList(Tunnel_t *pt) { mCloseList.insert(pt); };
-    inline void addToCloseList(Endpoint_t *pe) { addToCloseList((Tunnel_t *)pe->container); }
+    inline void addToCloseList(Endpoint_t *pe)
+    {
+        addToCloseList((Tunnel_t *)pe->container);
+    }
     void closeTunnels();
+    void releaseEndpointBuffer(Endpoint_t *pe);
 
     int mServiceEpollfd;
     int mForwardEpollfd;
+    volatile bool mStopFlag;
+    std::thread mMainRoutineThread;
 
-    std::shared_ptr<Forward> mForwardCmd;
-    TargetManager mTargetManager;
-
-    time_t mLastActionTime;
-    Setting_t mSetting;
+    std::list<std::shared_ptr<Forward>> mForwardList;
+    Service::Setting_t mSetting;
+    buffer::DynamicBuffer *mpDynamicBuffer;
     std::set<Tunnel_t *> mCloseList;
     utils::TimerList mTimeoutTimer;
-    utils::BaseList mBufferWaitList;
+    TargetManager mTargetManager;
 
+    std::map<sockaddr_in, Endpoint_t *, Utils::Comparator_t> mAddr2ServiceEndpoint;
     std::map<sockaddr_in, Tunnel_t *, Utils::Comparator_t> mAddr2Tunnel;
     std::map<int, sockaddr_in> mSoc2SouthRemoteAddr;
     std::map<int, Tunnel_t *> mSoc2Tunnel;

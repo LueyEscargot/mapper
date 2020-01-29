@@ -68,8 +68,9 @@ void Endpoint::releaseEndpoint(Endpoint_t *pe)
     }
 }
 
-void Endpoint::appendToSendList(Endpoint_t *pe, DynamicBuffer::BufBlk_t *pBufBlk)
+bool Endpoint::appendToSendList(Endpoint_t *pe, DynamicBuffer::BufBlk_t *pBufBlk)
 {
+    bool firstEntity = false;
     if (pe->sendListTail)
     {
         // 链表中有数据
@@ -87,11 +88,14 @@ void Endpoint::appendToSendList(Endpoint_t *pe, DynamicBuffer::BufBlk_t *pBufBlk
         // 当前链表为空
         pBufBlk->prev = pBufBlk->next = nullptr;
         pe->sendListHead = pe->sendListTail = pBufBlk;
+        firstEntity = true;
     }
 
     // 更新总发送数
     assert(pBufBlk->sent == 0);
     pe->totalBufSize += pBufBlk->dataSize;
+
+    return firstEntity;
 }
 
 uint32_t Endpoint::sendListLength(const Endpoint_t *pe)

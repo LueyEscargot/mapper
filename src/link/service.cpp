@@ -21,15 +21,14 @@ namespace link
 
 const string Service::CONFIG_BASE_PATH = "/service";
 
-Service::Service(string name)
-    : mName(name)
-{
-}
-
-bool Service::create(int epollfd, DynamicBuffer *pBuffer, Document &cfg, list<Service *> &serviceList)
+bool Service::create(Document &cfg, list<Service *> &serviceList)
 {
     auto serviceCfg = JsonUtils::getObj(&cfg, CONFIG_BASE_PATH);
-    assert(serviceCfg);
+    if (!serviceCfg)
+    {
+        spdlog::error("[Service::create] config entity[{}] not exist", CONFIG_BASE_PATH);
+        return false;
+    }
 
     // validate by schema
     stringstream ss;
@@ -50,6 +49,9 @@ bool Service::create(int epollfd, DynamicBuffer *pBuffer, Document &cfg, list<Se
         spdlog::warn("[Service::create] no forwards has been found");
         return true;
     }
+
+    list<shared_ptr<Forward>> tcpForwardList;
+    list<shared_ptr<Forward>> udpForwardList;
     for (auto it = forwards->Begin(); it != forwards->End(); ++it)
     {
         if (it->GetType() == kStringType)
@@ -62,46 +64,12 @@ bool Service::create(int epollfd, DynamicBuffer *pBuffer, Document &cfg, list<Se
                 if (protocol == PROTOCOL_TCP)
                 {
                     // TCP Forward service
-                    auto pService = new TcpForwardService;
-                    if (pService)
-                    {
-                        if (pService->init(epollfd, pBuffer, forward, setting))
-                        {
-                            spdlog::debug("[Service::create] create service: {}", forwardStr);
-                            serviceList.push_back(pService);
-                        }
-                        else
-                        {
-                            spdlog::error("[Service::create] init tcp forward service object fail");
-                            delete pService;
-                        }
-                    }
-                    else
-                    {
-                        spdlog::error("[Service::create] create tcp forward service object fail");
-                    }
+                    tcpForwardList.push_back(forward);
                 }
                 else if (protocol == PROTOCOL_UDP)
                 {
                     // UDP Forward service
-                    auto pService = new UdpForwardService;
-                    if (pService)
-                    {
-                        if (pService->init(epollfd, pBuffer, forward, setting))
-                        {
-                            spdlog::debug("[Service::create] create service: {}", forwardStr);
-                            serviceList.push_back(pService);
-                        }
-                        else
-                        {
-                            spdlog::error("[Service::create] init udp forward service object fail");
-                            delete pService;
-                        }
-                    }
-                    else
-                    {
-                        spdlog::error("[Service::create] create udp forward service fail");
-                    }
+                    udpForwardList.push_back(forward);
                 }
                 else
                 {
@@ -115,7 +83,63 @@ bool Service::create(int epollfd, DynamicBuffer *pBuffer, Document &cfg, list<Se
         }
     }
 
-    return true;
+    if ([&]() {
+            // init tcp forward service
+            if (!tcpForwardList.empty())
+            {
+                auto pService = new TcpForwardService;
+                if (pService)
+                {
+                    if (pService->init(tcpForwardList, setting))
+                    {
+                        serviceList.push_back(pService);
+                    }
+                    else
+                    {
+                        spdlog::error("[Service::create] init tcp forward service object fail");
+                        delete pService;
+                        return false;
+                    }
+                }
+                else
+                {
+                    spdlog::error("[Service::create] create tcp forward service fail");
+                    return false;
+                }
+            }
+
+            // create udp forward service
+            if (!udpForwardList.empty())
+            {
+                auto pService = new UdpForwardService;
+                if (pService)
+                {
+                    if (pService->init(udpForwardList, setting))
+                    {
+                        serviceList.push_back(pService);
+                    }
+                    else
+                    {
+                        spdlog::error("[Service::create] init udp forward service object fail");
+                        delete pService;
+                        return false;
+                    }
+                }
+                else
+                {
+                    spdlog::error("[Service::create] create udp forward service fail");
+                    return false;
+                }
+            }
+        }())
+    {
+        return true;
+    }
+    else
+    {
+        release(serviceList);
+        return false;
+    }
 }
 
 void Service::release(list<Service *> &serviceList)
@@ -160,29 +184,7 @@ void Service::loadSetting(rapidjson::Document &cfg, Setting_t &setting)
         SEETING_BUFFER_SIZE_UNIT;
 }
 
-string Service::dumpSetting(Setting_t &setting)
-{
-    stringstream ss;
-
-    ss << R"({"timeout": {"connect":)" << setting.connectTimeout
-       << R"(,"session":)" << setting.sessionTimeout
-       << R"(,"release":)" << setting.releaseTimeout
-       << R"(},"buffer": {"size":)" << setting.bufferSize
-       << R"(,"perSessionLimit":)" << setting.bufferPerSessionLimit
-       << R"(}})";
-
-    return ss.str();
-}
-
-bool Service::init(int epollfd, DynamicBuffer *pBuffer)
-{
-    mEpollfd = epollfd;
-    mpBuffer = pBuffer;
-
-    return true;
-}
-
-bool Service::epollAddEndpoint(Endpoint_t *pe, bool read, bool write, bool edgeTriger)
+bool Service::epollAddEndpoint(int epollfd, Endpoint_t *pe, bool read, bool write, bool edgeTriger)
 {
     // spdlog::debug("[Service::epollAddEndpoint] endpoint[{}], read[{}], write[{}]",
     //               Endpoint::toStr(pe), read, write);
@@ -193,7 +195,7 @@ bool Service::epollAddEndpoint(Endpoint_t *pe, bool read, bool write, bool edgeT
                    (read ? EPOLLIN : 0) |      // enable read
                    (write ? EPOLLOUT : 0) |    // enable write
                    (edgeTriger ? EPOLLET : 0); // use edge triger or level triger
-    if (epoll_ctl(mEpollfd, EPOLL_CTL_ADD, pe->soc, &event))
+    if (epoll_ctl(epollfd, EPOLL_CTL_ADD, pe->soc, &event))
     {
         spdlog::error("[Service::epollAddEndpoint] events[EPOLLRDHUP{}{}{}]-soc[{}] join fail. Error {}: {}",
                       event.events & EPOLLIN ? "|EPOLLIN" : "",
@@ -209,7 +211,7 @@ bool Service::epollAddEndpoint(Endpoint_t *pe, bool read, bool write, bool edgeT
     return true;
 }
 
-bool Service::epollResetEndpointMode(Endpoint_t *pe, bool read, bool write, bool edgeTriger)
+bool Service::epollResetEndpointMode(int epollfd, Endpoint_t *pe, bool read, bool write, bool edgeTriger)
 {
     // spdlog::debug("[Service::epollResetEndpointMode] endpoint[{}], read: {}, write: {}, edgeTriger: {}",
     //               Utils::dumpEndpoint(pe), read, write, edgeTriger);
@@ -220,7 +222,7 @@ bool Service::epollResetEndpointMode(Endpoint_t *pe, bool read, bool write, bool
                    (read ? EPOLLIN : 0) |      // enable read
                    (write ? EPOLLOUT : 0) |    // enable write
                    (edgeTriger ? EPOLLET : 0); // use edge triger or level triger
-    if (epoll_ctl(mEpollfd, EPOLL_CTL_MOD, pe->soc, &event))
+    if (epoll_ctl(epollfd, EPOLL_CTL_MOD, pe->soc, &event))
     {
         spdlog::error("[Service::epollResetEndpointMode] events[EPOLLRDHUP{}{}{}]-soc[{}] reset fail. Error {}: {}",
                       event.events & EPOLLIN ? "|EPOLLIN" : "",
@@ -233,29 +235,29 @@ bool Service::epollResetEndpointMode(Endpoint_t *pe, bool read, bool write, bool
     return true;
 }
 
-bool Service::epollResetEndpointMode(Tunnel_t *pt, bool read, bool write, bool edgeTriger)
+bool Service::epollResetEndpointMode(int epollfd, Tunnel_t *pt, bool read, bool write, bool edgeTriger)
 {
-    return epollResetEndpointMode(pt->north, read, write, edgeTriger) &&
-           epollResetEndpointMode(pt->south, read, write, edgeTriger);
+    return epollResetEndpointMode(epollfd, pt->north, read, write, edgeTriger) &&
+           epollResetEndpointMode(epollfd, pt->south, read, write, edgeTriger);
 }
 
-void Service::epollRemoveEndpoint(Endpoint_t *pe)
+void Service::epollRemoveEndpoint(int epollfd, Endpoint_t *pe)
 {
     // spdlog::trace("[Service::epollRemoveEndpoint] remove endpoint[{}]",
     //               Utils::dumpEndpoint(pe));
 
     // remove from epoll driver
-    if (epoll_ctl(mEpollfd, EPOLL_CTL_DEL, pe->soc, nullptr))
+    if (epoll_ctl(epollfd, EPOLL_CTL_DEL, pe->soc, nullptr))
     {
         spdlog::error("[Service::epollRemoveEndpoint] remove endpoint[{}] from epoll fail. {} - {}",
                       Utils::dumpEndpoint(pe), errno, strerror(errno));
     }
 }
 
-void Service::epollRemoveTunnel(Tunnel_t *pt)
+void Service::epollRemoveTunnel(int epollfd, Tunnel_t *pt)
 {
-    epollRemoveEndpoint(pt->north);
-    epollRemoveEndpoint(pt->south);
+    epollRemoveEndpoint(epollfd, pt->north);
+    epollRemoveEndpoint(epollfd, pt->south);
 }
 
 } // namespace link
