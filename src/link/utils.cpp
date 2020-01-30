@@ -179,8 +179,8 @@ int Utils::createServiceSoc(Protocol_t protocol, sockaddr_in *sa, socklen_t sale
             case PROTOCOL_UDP:
             {
                 // reset receive buffer size for udp service socket
-                int s = 1 << 20; // 1MB
-                if (setsockopt(soc, SOL_SOCKET, SO_RCVBUF, (const char *)&s, sizeof(s)))
+                int s = 1 << 24; // 16MB
+                if (setsockopt(soc, SOL_SOCKET, SO_RCVBUF, &s, sizeof(s)))
                 {
                     spdlog::error("[Utils::createServiceSoc] reset udp receive buffer size fail. {} - {}",
                                   errno, strerror(errno));
