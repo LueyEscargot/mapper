@@ -28,7 +28,8 @@ protected:
 public:
     static Endpoint_t *getEndpoint(Protocol_t protocol, Direction_t direction, Type_t type);
     static void releaseEndpoint(Endpoint_t *pe);
-    static bool appendToSendList(Endpoint_t *pe, DynamicBuffer::BufBlk_t *pBufBlk);
+    static bool appendPacketToSendList(Endpoint_t *pe, DynamicBuffer::BufBlk_t *pBufBlk);
+    static bool appendPacketListToSendList(Endpoint_t *pe, DynamicBuffer::BufBlk_t *pBufBlkListHead);
     static uint32_t sendListLength(const Endpoint_t *pe);
 
 protected:
