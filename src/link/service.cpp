@@ -14,6 +14,9 @@ using namespace rapidjson;
 using namespace mapper::buffer;
 using namespace mapper::utils;
 
+#define ENABLE_DETAIL_LOGS
+#undef ENABLE_DETAIL_LOGS
+
 namespace mapper
 {
 namespace link
@@ -186,15 +189,21 @@ void Service::loadSetting(rapidjson::Document &cfg, Setting_t &setting)
 
 bool Service::epollAddEndpoint(int epollfd, Endpoint_t *pe, bool read, bool write, bool edgeTriger)
 {
-    // spdlog::debug("[Service::epollAddEndpoint] endpoint[{}], read[{}], write[{}]",
-    //               Endpoint::toStr(pe), read, write);
-
     struct epoll_event event;
     event.data.ptr = pe;
     event.events = EPOLLRDHUP |                // for peer close
                    (read ? EPOLLIN : 0) |      // enable read
                    (write ? EPOLLOUT : 0) |    // enable write
                    (edgeTriger ? EPOLLET : 0); // use edge triger or level triger
+
+#ifdef ENABLE_DETAIL_LOGS
+    spdlog::debug("[Service::epollAddEndpoint] soc[{}] events[EPOLLRDHUP{}{}{}]",
+                  pe->soc,
+                  event.events & EPOLLIN ? "|EPOLLIN" : "",
+                  event.events & EPOLLOUT ? "|EPOLLOUT" : "",
+                  event.events & EPOLLET ? "|EPOLLET" : "");
+#endif // ENABLE_DETAIL_LOGS
+
     if (epoll_ctl(epollfd, EPOLL_CTL_ADD, pe->soc, &event))
     {
         spdlog::error("[Service::epollAddEndpoint] events[EPOLLRDHUP{}{}{}]-soc[{}] join fail. Error {}: {}",
@@ -205,23 +214,26 @@ bool Service::epollAddEndpoint(int epollfd, Endpoint_t *pe, bool read, bool writ
         return false;
     }
 
-    // spdlog::debug("[Service::epollAddEndpoint] endpoint[{}], event.events[0x{:X}]",
-    //               Endpoint::toStr(pe), event.events);
-
     return true;
 }
 
 bool Service::epollResetEndpointMode(int epollfd, Endpoint_t *pe, bool read, bool write, bool edgeTriger)
 {
-    // spdlog::debug("[Service::epollResetEndpointMode] endpoint[{}], read: {}, write: {}, edgeTriger: {}",
-    //               Utils::dumpEndpoint(pe), read, write, edgeTriger);
-
     struct epoll_event event;
     event.data.ptr = pe;
     event.events = EPOLLRDHUP |                // for peer close
                    (read ? EPOLLIN : 0) |      // enable read
                    (write ? EPOLLOUT : 0) |    // enable write
                    (edgeTriger ? EPOLLET : 0); // use edge triger or level triger
+
+#ifdef ENABLE_DETAIL_LOGS
+    spdlog::debug("[Service::epollResetEndpointMode] soc[{}] events[EPOLLRDHUP{}{}{}]",
+                  pe->soc,
+                  event.events & EPOLLIN ? "|EPOLLIN" : "",
+                  event.events & EPOLLOUT ? "|EPOLLOUT" : "",
+                  event.events & EPOLLET ? "|EPOLLET" : "");
+#endif // ENABLE_DETAIL_LOGS
+
     if (epoll_ctl(epollfd, EPOLL_CTL_MOD, pe->soc, &event))
     {
         spdlog::error("[Service::epollResetEndpointMode] events[EPOLLRDHUP{}{}{}]-soc[{}] reset fail. Error {}: {}",
@@ -243,8 +255,9 @@ bool Service::epollResetEndpointMode(int epollfd, Tunnel_t *pt, bool read, bool 
 
 void Service::epollRemoveEndpoint(int epollfd, Endpoint_t *pe)
 {
-    // spdlog::trace("[Service::epollRemoveEndpoint] remove endpoint[{}]",
-    //               Utils::dumpEndpoint(pe));
+#ifdef ENABLE_DETAIL_LOGS
+    spdlog::debug("[Service::epollRemoveEndpoint] soc[{}]", pe->soc);
+#endif // ENABLE_DETAIL_LOGS
 
     // remove from epoll driver
     if (epoll_ctl(epollfd, EPOLL_CTL_DEL, pe->soc, nullptr))
