@@ -99,8 +99,17 @@ string JsonUtils::get(Document &doc, string path, string defaultValue)
 int32_t JsonUtils::getAsInt32(Document &doc, string path, int32_t defaultValue)
 {
     auto value = Pointer(path.c_str()).Get(doc);
-    return value ? (value->IsInt() && !value->IsUint()
+    return value ? (value->IsInt()
                         ? value->GetInt()
+                        : defaultValue)
+                 : defaultValue;
+}
+
+int64_t JsonUtils::getAsInt64(Document &doc, string path, int64_t defaultValue)
+{
+    auto value = Pointer(path.c_str()).Get(doc);
+    return value ? (value->IsInt64()
+                        ? value->GetInt64()
                         : defaultValue)
                  : defaultValue;
 }
@@ -108,8 +117,17 @@ int32_t JsonUtils::getAsInt32(Document &doc, string path, int32_t defaultValue)
 uint32_t JsonUtils::getAsUint32(Document &doc, string path, uint32_t defaultValue)
 {
     auto value = Pointer(path.c_str()).Get(doc);
-    return value ? (value->IsInt()
-                        ? value->GetInt()
+    return value ? (value->IsUint()
+                        ? value->GetUint()
+                        : defaultValue)
+                 : defaultValue;
+}
+
+uint64_t JsonUtils::getAsUint64(Document &doc, string path, uint64_t defaultValue)
+{
+    auto value = Pointer(path.c_str()).Get(doc);
+    return value ? (value->IsUint64()
+                        ? value->GetUint64()
                         : defaultValue)
                  : defaultValue;
 }
