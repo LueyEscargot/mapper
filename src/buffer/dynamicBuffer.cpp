@@ -55,7 +55,7 @@ DynamicBuffer *DynamicBuffer::allocDynamicBuffer(uint64_t capacity)
     else
     {
         pDynamicBuffer->mpFreePos = (BufBlk_t *)pDynamicBuffer->mBuffer;
-        pDynamicBuffer->mpFreePos->init();
+        pDynamicBuffer->mpFreePos->init(pDynamicBuffer);
         pDynamicBuffer->mpFreePos->__innerBlockSize = capacity;
         pDynamicBuffer->mTotalFree = capacity;
 
@@ -149,7 +149,7 @@ char *DynamicBuffer::reserve(int req_size)
     }
 }
 
-DynamicBuffer::BufBlk_t *DynamicBuffer::cut(uint64_t req_size)
+DynamicBuffer::BufBlk_t *DynamicBuffer::cutNoLock(uint64_t req_size)
 {
     assert(mpFreePos &&
            req_size <= (mpFreePos->__innerBlockSize - BUFBLK_HEAD_SIZE) &&
@@ -177,7 +177,7 @@ DynamicBuffer::BufBlk_t *DynamicBuffer::cut(uint64_t req_size)
         auto p = (char *)mpFreePos;
         auto nextBlk = (BufBlk_t *)(p + allocSize);
 
-        nextBlk->init();
+        nextBlk->init(this);
         nextBlk->__innerBlockSize = remainSize;
         nextBlk->__innerPrev = mpFreePos;
         nextBlk->__innerNext = mpFreePos->__innerNext;
@@ -243,7 +243,7 @@ DynamicBuffer::BufBlk_t *DynamicBuffer::cut(uint64_t req_size)
     mTotalFree -= cutBlock->__innerBlockSize;
     mTotalInUse += cutBlock->__innerBlockSize;
     ++mInUseCount;
-    // spdlog::debug("[DynamicBuffer::cut] mInUseCount[{}] - {}", mInUseCount, dumpBlk(cutBlock));
+    // spdlog::debug("[DynamicBuffer::cutNoLock] mInUseCount[{}] - {}", mInUseCount, dumpBlk(cutBlock));
     assert(mTotalFree >= 0);
 
     cutBlock->inUse = true;
@@ -253,9 +253,26 @@ DynamicBuffer::BufBlk_t *DynamicBuffer::cut(uint64_t req_size)
     return cutBlock;
 }
 
+DynamicBuffer::BufBlk_t *DynamicBuffer::getBufBlk(uint64_t size)
+{
+    lock_guard<mutex> lg(mAccessMutex);
+
+    if (reserve(size))
+    {
+        return cutNoLock(size);
+    }
+    else
+    {
+        return nullptr;
+    }
+}
+
 void DynamicBuffer::release(BufBlk_t *pBlk)
 {
+    lock_guard<mutex> lg(mAccessMutex);
+
     assert(pBlk && pBlk->inUse);
+    assert(pBlk->__dynamicBufferObj == this);
 
     --mInUseCount;
     assert(mInUseCount >= 0);
@@ -297,7 +314,7 @@ void DynamicBuffer::release(BufBlk_t *pBlk)
     BufBlk_t *prevItem = pBlk->__innerPrev;
     if (prevItem && prevItem->inUse == false)
     {
-        prevItem->__innerBlockSize +=  pBlk->__innerBlockSize;
+        prevItem->__innerBlockSize += pBlk->__innerBlockSize;
         prevItem->__innerNext = pBlk->__innerNext;
         if (prevItem->__innerNext)
         {
@@ -313,14 +330,22 @@ void DynamicBuffer::release(BufBlk_t *pBlk)
         }
     }
 
-    assert((mpFreePos->__innerPrev == nullptr || mpFreePos->__innerPrev->inUse) &&
-           (mpFreePos->__innerNext == nullptr || mpFreePos->__innerNext->inUse));
+    if (mpFreePos->__innerPrev)
+    {
+        assert(mpFreePos->__innerPrev->inUse);
+    };
+    if (mpFreePos->__innerNext)
+    {
+        assert(mpFreePos->__innerNext->inUse);
+    };
     // assert(healthCheck());
     assert(mTotalInUse >= 0);
 }
 
 bool DynamicBuffer::check()
 {
+    lock_guard<mutex> lg(mAccessMutex);
+
     auto p = (BufBlk_t *)mBuffer;
     while (p)
     {

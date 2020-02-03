@@ -15,6 +15,7 @@
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <list>
+#include <mutex>
 #include <string>
 #include <tuple>
 
@@ -33,6 +34,7 @@ public:
 
     struct BufBlk_t
     {
+        DynamicBuffer *__dynamicBufferObj;
         BufBlk_t *__innerPrev;
         BufBlk_t *__innerNext;
         uint64_t __innerBlockSize; // 整个数据体大小，包含头部及缓冲区大小
@@ -40,13 +42,15 @@ public:
         bool inUse;
         BufBlk_t *prev;
         BufBlk_t *next;
-        sockaddr_in destAddr;
+        sockaddr_in srcAddr;
+        sockaddr_in dstAddr;
         uint64_t dataSize;
         uint64_t sent;
         char buffer[0];
 
-        inline void init()
+        inline void init(DynamicBuffer *obj)
         {
+            __dynamicBufferObj = obj;
             __innerPrev = nullptr;
             __innerNext = nullptr;
             __innerBlockSize = 0;
@@ -54,7 +58,8 @@ public:
             inUse = false;
             prev = nullptr;
             next = nullptr;
-            destAddr = {0};
+            srcAddr = {0};
+            dstAddr = {0};
             dataSize = 0;
             sent = 0;
         }
@@ -73,12 +78,19 @@ public:
     inline bool empty() { return mpFreePos; }
     inline BufBlk_t *getCurBufBlk() { return mpFreePos; }
     char *reserve(int size);
-    BufBlk_t *cut(uint64_t size);
+    inline BufBlk_t *cut(uint64_t size)
+    {
+        std::lock_guard<std::mutex> lg(mAccessMutex);
+        return cutNoLock(size);
+    }
+    BufBlk_t *cutNoLock(uint64_t size);
+    BufBlk_t *getBufBlk(uint64_t size);
     void release(BufBlk_t *pBuffer);
 
     bool check();
 
 protected:
+    std::mutex mAccessMutex;
     void *mBuffer;
     BufBlk_t *mpFreePos;
     int64_t mTotalBuffer;
