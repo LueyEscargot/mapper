@@ -15,6 +15,7 @@
 #include <memory>
 #include <set>
 #include <string>
+#include <thread>
 #include "forward.h"
 #include "service.h"
 #include "targetMgr.h"
@@ -30,6 +31,11 @@ namespace link
 class TcpForwardService : public Service
 {
 protected:
+    static const uint32_t EPOLL_THREAD_RETRY_INTERVAL;
+    static const uint32_t EPOLL_MAX_EVENTS;
+    static const uint32_t INTERVAL_EPOLL_WAIT_TIME;
+
+protected:
     TcpForwardService(const TcpForwardService &) : Service(""){};
     TcpForwardService &operator=(const TcpForwardService &) { return *this; }
 
@@ -37,21 +43,27 @@ public:
     TcpForwardService();
     virtual ~TcpForwardService();
 
-    bool init(int epollfd,
-              buffer::DynamicBuffer *pBuffer,
-              std::shared_ptr<Forward> forward,
-              Setting_t &setting);
+    bool init(std::list<std::shared_ptr<Forward>> &forwardList,
+              Service::Setting_t &setting);
 
+    void join() override;
+    void stop() override;
     void close() override;
-    void onSoc(time_t curTime, uint32_t events, Endpoint_t *pe) override;
-    void postProcess(time_t curTime) override;
-    void scanTimeout(time_t curTime) override;
+    void postProcess(time_t curTime);
+    void scanTimeout(time_t curTime);
 
 protected:
+    void epollThread();
+    bool initEnv();
+    void closeEnv();
+    bool doEpoll(int epollfd);
+    void doTunnelSoc(time_t curTime, Endpoint_t *pe, uint32_t events);
+
     static void setStatus(Tunnel_t *pt, TunnelState_t stat);
+
     Tunnel_t *getTunnel();
     void acceptClient(time_t curTime, Endpoint_t *pe);
-    bool connect(time_t curTime, Tunnel_t *pt);
+    bool connect(time_t curTime, Endpoint_t *pse, Tunnel_t *pt);
 
     void onRead(time_t curTime, int events, Endpoint_t *pe);
     void onWrite(time_t curTime, Endpoint_t *pe);
@@ -59,6 +71,7 @@ protected:
     inline void addToCloseList(Tunnel_t *pt) { mPostProcessList.insert(pt); };
     inline void addToCloseList(Endpoint_t *pe) { addToCloseList((Tunnel_t *)pe->container); }
     void closeTunnel(Tunnel_t *pt);
+    void releaseEndpointBuffer(Endpoint_t *pe);
 
     inline void addToTimer(utils::TimerList &timer, time_t curTime, Tunnel_t *pt)
     {
@@ -79,17 +92,22 @@ protected:
         dst.push_back(curTime, &pt->timerEntity);
     }
 
-    void processBufferWaitingList();
-
     static const bool StateMaine[TUNNEL_STATE_COUNT][TUNNEL_STATE_COUNT];
 
+    int mEpollfd;
+    volatile bool mStopFlag;
+    std::thread mMainRoutineThread;
+
+    std::list<std::shared_ptr<Forward>> mForwardList;
+    Service::Setting_t mSetting;
+    buffer::DynamicBuffer *mpDynamicBuffer;
+    std::set<Tunnel_t *> mPostProcessList;
+    std::set<Tunnel_t *> mCloseList;
     TargetManager mTargetManager;
 
-    Setting_t mSetting;
+    std::map<sockaddr_in, Endpoint_t *, Utils::Comparator_t> mAddr2ServiceEndpoint;
     std::set<Tunnel_t *> mTunnelList;
-    std::set<Tunnel_t *> mPostProcessList;
 
-    utils::BaseList mBufferWaitList;
     utils::TimerList mConnectTimer;
     utils::TimerList mSessionTimer;
     utils::TimerList mReleaseTimer;

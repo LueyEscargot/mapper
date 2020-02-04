@@ -117,16 +117,28 @@ int Utils::createSoc(Protocol_t protocol, bool nonblock)
                      0);
     if (soc <= 0)
     {
-        spdlog::error("[Utils::createServiceSoc] create socket fail. {} - {}", errno, strerror(errno));
+        spdlog::error("[Utils::createSoc] create socket fail. {} - {}", errno, strerror(errno));
         return -1;
     }
 
     // set to non-block
     if (!setSocAttr(soc, true, false))
     {
-        spdlog::error("[Utils::createServiceSoc] set to attr fail.");
+        spdlog::error("[Utils::createSoc] set to attr fail.");
         close(soc);
         return -1;
+    }
+
+    // reset receive buffer size for UDP socket
+    if (protocol == PROTOCOL_UDP)
+    {
+        int s = 1 << 20; // 1MB
+        if (setsockopt(soc, SOL_SOCKET, SO_RCVBUF, (const char *)&s, sizeof(s)))
+        {
+            spdlog::error("[Utils::createSoc] reset udp receive buffer fail. {} - {}",
+                          errno, strerror(errno));
+            return false;
+        }
     }
 
     return soc;
@@ -154,12 +166,33 @@ int Utils::createServiceSoc(Protocol_t protocol, sockaddr_in *sa, socklen_t sale
                 spdlog::error("[Utils::createServiceSoc] bind fail. {} - {}", errno, strerror(errno));
                 return false;
             }
-            // listen
-            if (protocol == PROTOCOL_TCP && listen(soc, SOMAXCONN << 1))
+            switch (protocol)
             {
-                spdlog::error("[Utils::createServiceSoc] listen fail. {} - {}", errno, strerror(errno));
-                return false;
+            case PROTOCOL_TCP:
+                // listen
+                if (listen(soc, SOMAXCONN << 1))
+                {
+                    spdlog::error("[Utils::createServiceSoc] listen fail. {} - {}", errno, strerror(errno));
+                    return false;
+                }
+                break;
+            case PROTOCOL_UDP:
+            {
+                // reset receive buffer size for udp service socket
+                int s = 1 << 24; // 16MB
+                if (setsockopt(soc, SOL_SOCKET, SO_RCVBUF, &s, sizeof(s)))
+                {
+                    spdlog::error("[Utils::createServiceSoc] reset udp receive buffer size fail. {} - {}",
+                                  errno, strerror(errno));
+                    return false;
+                }
             }
+            break;
+
+            default:
+                assert(!"unsupported protocol");
+            }
+
             return true;
         }())
     {

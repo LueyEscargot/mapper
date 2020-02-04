@@ -1,47 +1,54 @@
 #include "mapper.h"
-#include <assert.h>
-#include <errno.h>
-#include <string.h>
 #include <spdlog/spdlog.h>
 
 using namespace std;
+using namespace mapper::link;
 
 namespace mapper
 {
 
-Mapper::Mapper()
-    : mNetMgr()
-{
-}
-
-Mapper::~Mapper()
-{
-}
-
 bool Mapper::run(rapidjson::Document &cfg)
 {
-    spdlog::info("[Mapper::run]");
+    spdlog::info("[Mapper::run] start.");
 
-    // start net manager
-    if (!mNetMgr.start(cfg))
+    // create services
+    spdlog::trace("[Mapper::run] create services");
+    if (!Service::create(cfg, mServiceList))
     {
-        spdlog::error("[Mapper::run] start net manager fail.");
+        spdlog::error("[Mapper::run] create services fail.");
         return false;
     }
 
-    mNetMgr.join();
+    spdlog::trace("[Mapper::run] join services");
+    join();
 
-    spdlog::info("[Mapper::run] stop running.");
+    spdlog::info("[Mapper::run] stop.");
 
     return true;
 }
 
+void Mapper::join()
+{
+    // join net manager
+    spdlog::trace("[Mapper::join] start join services.");
+    for (auto &service : mServiceList)
+    {
+        service->join();
+        spdlog::debug("[Mapper::join] close service[{}]", service->name());
+        service->close();
+    }
+    spdlog::debug("[Mapper::join] stop all join");
+}
+
 void Mapper::stop()
 {
-    // stpo net manager
-    spdlog::debug("[Mapper::stop] stop net manager.");
-    mNetMgr.stop();
-    spdlog::debug("[Mapper::stop] stop");
+    // close services
+    spdlog::trace("[Mapper::stop] stop services.");
+    for (auto &service : mServiceList)
+    {
+        service->stop();
+    }
+    spdlog::debug("[Mapper::stop] services closed");
 }
 
 } // namespace mapper

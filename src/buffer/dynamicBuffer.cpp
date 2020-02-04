@@ -1,6 +1,10 @@
 #include "dynamicBuffer.h"
+#include <assert.h>
 #include <sstream>
 #include <spdlog/spdlog.h>
+
+#define ENABLE_PERFORMANCE_MODE
+#undef ENABLE_PERFORMANCE_MODE
 
 using namespace std;
 
@@ -10,9 +14,11 @@ namespace buffer
 {
 
 const uint64_t DynamicBuffer::BUFBLK_HEAD_SIZE = sizeof(BufBlk_t);
-const uint32_t DynamicBuffer::ALLOC_UNIT_SIZE = 128;
-const uint32_t DynamicBuffer::MIN_BLK_HEAD_BODY_LENGTH = ALLOC_UNIT_SIZE;
-const uint32_t DynamicBuffer::MIN_BLK_BODY_LENGTH = MIN_BLK_HEAD_BODY_LENGTH - BUFBLK_HEAD_SIZE;
+const uint64_t DynamicBuffer::UNIT_ALLIGN_BIT_WIDTH = 7;
+const uint64_t DynamicBuffer::UNIT_ALLIGN_SIZE = 1 << UNIT_ALLIGN_BIT_WIDTH;
+const uint64_t DynamicBuffer::UNIT_ALLIGN_FIELD_MASK = UNIT_ALLIGN_SIZE - 1;
+const uint64_t DynamicBuffer::UNIT_ALLIGN_MASK = ~UNIT_ALLIGN_FIELD_MASK;
+const uint32_t DynamicBuffer::MIN_BLK_HEAD_BODY_LENGTH = UNIT_ALLIGN_SIZE;
 
 DynamicBuffer::DynamicBuffer()
     : mBuffer(nullptr),
@@ -34,7 +40,8 @@ DynamicBuffer::~DynamicBuffer()
 
 DynamicBuffer *DynamicBuffer::allocDynamicBuffer(uint64_t capacity)
 {
-    assert(capacity > MIN_BLK_HEAD_BODY_LENGTH);
+    uint64_t alignedCapacity = sizeAllign(capacity);
+    assert(alignedCapacity > MIN_BLK_HEAD_BODY_LENGTH);
 
     DynamicBuffer *pDynamicBuffer = new DynamicBuffer();
     if (!pDynamicBuffer)
@@ -43,21 +50,21 @@ DynamicBuffer *DynamicBuffer::allocDynamicBuffer(uint64_t capacity)
         return nullptr;
     }
 
-    spdlog::trace("[DynamicBuffer::allocDynamicBuffer] capacity: {}", capacity);
-    pDynamicBuffer->mBuffer = (char *)malloc(capacity);
+    spdlog::trace("[DynamicBuffer::allocDynamicBuffer] capacity: {}", alignedCapacity);
+    pDynamicBuffer->mBuffer = (char *)malloc(alignedCapacity);
     if (pDynamicBuffer->mBuffer == nullptr)
     {
         spdlog::error("[DynamicBuffer::allocDynamicBuffer] malloc {} bytes fail.",
-                      capacity);
+                      alignedCapacity);
         delete pDynamicBuffer;
         return nullptr;
     }
     else
     {
         pDynamicBuffer->mpFreePos = (BufBlk_t *)pDynamicBuffer->mBuffer;
-        pDynamicBuffer->mpFreePos->init();
-        pDynamicBuffer->mpFreePos->__innerBlockSize = capacity;
-        pDynamicBuffer->mTotalFree = capacity;
+        pDynamicBuffer->mpFreePos->init(pDynamicBuffer);
+        pDynamicBuffer->mpFreePos->__innerBlockSize = alignedCapacity;
+        pDynamicBuffer->mTotalFree = alignedCapacity;
 
         return pDynamicBuffer;
     }
@@ -149,20 +156,10 @@ char *DynamicBuffer::reserve(int req_size)
     }
 }
 
-DynamicBuffer::BufBlk_t *DynamicBuffer::cut(uint64_t req_size)
+DynamicBuffer::BufBlk_t *DynamicBuffer::cutNoLock(uint64_t req_size)
 {
-    assert(mpFreePos &&
-           req_size <= (mpFreePos->__innerBlockSize - BUFBLK_HEAD_SIZE) &&
-           mpFreePos->inUse == false);
-
-    // 相邻缓冲区为空，或者已被分配（否则应该与当前缓冲区合并）
-    assert((mpFreePos->__innerPrev == nullptr || mpFreePos->__innerPrev->inUse) ||
-           (mpFreePos->__innerNext == nullptr || mpFreePos->__innerNext->inUse));
-
-    // 为避免过多碎片，每次分配最小必须达到 ALLOC_UNIT_SIZE 中定义的长度
-    uint64_t allocSize = req_size < MIN_BLK_BODY_LENGTH
-                             ? MIN_BLK_HEAD_BODY_LENGTH
-                             : BUFBLK_HEAD_SIZE + req_size;
+    // 为避免过多碎片，每次分配最小必须达到 UNIT_ALLIGN_BIT_WIDTH 中定义的长度
+    uint64_t allocSize = sizeAllign(BUFBLK_HEAD_SIZE + req_size);
 
     auto cutBlock = mpFreePos;
 
@@ -171,13 +168,23 @@ DynamicBuffer::BufBlk_t *DynamicBuffer::cut(uint64_t req_size)
 
     uint64_t remainSize = mpFreePos->__innerBlockSize - allocSize;
 
+#ifdef ENABLE_PERFORMANCE_MODE
+    assert(mpFreePos && !mpFreePos->inUse);
+
+    // 相邻缓冲区为空，或者已被分配（否则应该与当前缓冲区合并）
+    assert((mpFreePos->__innerPrev == nullptr || mpFreePos->__innerPrev->inUse) ||
+           (mpFreePos->__innerNext == nullptr || mpFreePos->__innerNext->inUse));
+
+    assert(allocSize <= mpFreePos->__innerBlockSize);
+#endif // ENABLE_PERFORMANCE_MODE
+
     if (remainSize >= MIN_BLK_HEAD_BODY_LENGTH)
     {
         // 分割当前缓冲区
         auto p = (char *)mpFreePos;
         auto nextBlk = (BufBlk_t *)(p + allocSize);
 
-        nextBlk->init();
+        nextBlk->init(this);
         nextBlk->__innerBlockSize = remainSize;
         nextBlk->__innerPrev = mpFreePos;
         nextBlk->__innerNext = mpFreePos->__innerNext;
@@ -194,6 +201,11 @@ DynamicBuffer::BufBlk_t *DynamicBuffer::cut(uint64_t req_size)
 
         // 将 mpFreePos 指针指向新建节点
         mpFreePos = nextBlk;
+
+#ifdef ENABLE_PERFORMANCE_MODE
+        // nextBlk->__innerBlockSize 必然是大小符合对齐要求的
+        assert((nextBlk->__innerBlockSize & UNIT_ALLIGN_FIELD_MASK) == 0);
+#endif // ENABLE_PERFORMANCE_MODE
     }
     else
     {
@@ -237,14 +249,19 @@ DynamicBuffer::BufBlk_t *DynamicBuffer::cut(uint64_t req_size)
         }
     }
 
+#ifdef ENABLE_PERFORMANCE_MODE
     assert(!mpFreePos || mpFreePos->__innerBlockSize >= MIN_BLK_HEAD_BODY_LENGTH);
+#endif // ENABLE_PERFORMANCE_MODE
 
     // 缓冲区分配出去的空间
     mTotalFree -= cutBlock->__innerBlockSize;
     mTotalInUse += cutBlock->__innerBlockSize;
     ++mInUseCount;
-    // spdlog::debug("[DynamicBuffer::cut] mInUseCount[{}] - {}", mInUseCount, dumpBlk(cutBlock));
+
+#ifdef ENABLE_PERFORMANCE_MODE
+    // spdlog::debug("[DynamicBuffer::cutNoLock] mInUseCount[{}] - {}", mInUseCount, dumpBlk(cutBlock));
     assert(mTotalFree >= 0);
+#endif // ENABLE_PERFORMANCE_MODE
 
     cutBlock->inUse = true;
     cutBlock->dataSize = req_size;
@@ -253,17 +270,33 @@ DynamicBuffer::BufBlk_t *DynamicBuffer::cut(uint64_t req_size)
     return cutBlock;
 }
 
+DynamicBuffer::BufBlk_t *DynamicBuffer::getBufBlk(uint64_t size)
+{
+    lock_guard<mutex> lg(mAccessMutex);
+
+    if (reserve(size))
+    {
+        return cutNoLock(size);
+    }
+    else
+    {
+        return nullptr;
+    }
+}
+
 void DynamicBuffer::release(BufBlk_t *pBlk)
 {
+    lock_guard<mutex> lg(mAccessMutex);
+
+#ifdef ENABLE_PERFORMANCE_MODE
     assert(pBlk && pBlk->inUse);
+    assert(pBlk->__dynamicBufferObj == this);
+#endif // ENABLE_PERFORMANCE_MODE
 
     --mInUseCount;
-    assert(mInUseCount >= 0);
 
     mTotalFree += pBlk->__innerBlockSize;
     mTotalInUse -= pBlk->__innerBlockSize;
-
-    // assert(healthCheck());
 
     pBlk->inUse = false;
     if (mpFreePos == nullptr)
@@ -276,51 +309,19 @@ void DynamicBuffer::release(BufBlk_t *pBlk)
     }
 
     // 向后合并（即：释放后一个节点，将之合并到当前节点）
-    BufBlk_t *nextItem = pBlk->__innerNext;
-    if (nextItem && nextItem->inUse == false)
-    {
-        pBlk->__innerBlockSize += nextItem->__innerBlockSize;
-        pBlk->__innerNext = nextItem->__innerNext;
-        if (pBlk->__innerNext)
-        {
-            pBlk->__innerNext->__innerPrev = pBlk;
-        }
-
-        if (mpFreePos == nextItem)
-        {
-            // 调整 mpFreePos
-            mpFreePos = pBlk;
-        }
-    }
+    mergeNext(pBlk);
 
     // 向前合并（即：释放当前节点，将之合并到前一个节点）
-    BufBlk_t *prevItem = pBlk->__innerPrev;
-    if (prevItem && prevItem->inUse == false)
-    {
-        prevItem->__innerBlockSize +=  pBlk->__innerBlockSize;
-        prevItem->__innerNext = pBlk->__innerNext;
-        if (prevItem->__innerNext)
-        {
-            assert(prevItem->__innerNext->inUse); // 否则之前向后合并时已被合并
+    mergePrev(pBlk);
 
-            prevItem->__innerNext->__innerPrev = prevItem;
-        }
-
-        if (mpFreePos == pBlk)
-        {
-            // 调整 mpFreePos
-            mpFreePos = prevItem;
-        }
-    }
-
-    assert((mpFreePos->__innerPrev == nullptr || mpFreePos->__innerPrev->inUse) &&
-           (mpFreePos->__innerNext == nullptr || mpFreePos->__innerNext->inUse));
-    // assert(healthCheck());
-    assert(mTotalInUse >= 0);
+#ifdef ENABLE_PERFORMANCE_MODE
+    assert(check());
+#endif // ENABLE_PERFORMANCE_MODE
 }
 
 bool DynamicBuffer::check()
 {
+    // check link
     auto p = (BufBlk_t *)mBuffer;
     while (p)
     {
@@ -328,12 +329,85 @@ bool DynamicBuffer::check()
             p->__innerNext &&
             !p->__innerNext->inUse)
         {
-            spdlog::error("[DynamicBuffer::healthCheck] fail: {}", dumpBlk(p));
+            spdlog::error("[DynamicBuffer::check] fail: {}", dumpBlk(p));
             return false;
         }
+
+        // p->__innerBlockSize 必然是大小符合对齐要求的
+        assert((p->__innerBlockSize & UNIT_ALLIGN_FIELD_MASK) == 0);
+
         p = p->__innerNext;
     }
+
+    // check statistic value
+    if (mInUseCount < 0)
+    {
+        spdlog::error("[DynamicBuffer::check] invalid in use count: {}", mInUseCount);
+        return false;
+    }
+
+    // check mpFreePos
+    if (mpFreePos->__innerPrev && !mpFreePos->__innerPrev->inUse)
+    {
+        spdlog::error("[DynamicBuffer::check] mpFreePos->__innerPrev->inUse is false");
+        return false;
+    };
+    if (mpFreePos->__innerNext)
+    {
+        spdlog::error("[DynamicBuffer::check] mpFreePos->__innerNext->inUse is false");
+        return false;
+    };
+
     return true;
+}
+
+uint64_t DynamicBuffer::sizeAllign(const uint64_t size)
+{
+    auto s = size & UNIT_ALLIGN_MASK;
+    s += (size & UNIT_ALLIGN_FIELD_MASK) ? UNIT_ALLIGN_SIZE : 0;
+    return s;
+}
+
+void DynamicBuffer::mergePrev(BufBlk_t *p)
+{
+    // 向前合并（即：释放当前节点，将之合并到前一个节点）
+    BufBlk_t *prevItem = p->__innerPrev;
+    if (prevItem && prevItem->inUse == false)
+    {
+        prevItem->__innerBlockSize += p->__innerBlockSize;
+        prevItem->__innerNext = p->__innerNext;
+        if (prevItem->__innerNext)
+        {
+            prevItem->__innerNext->__innerPrev = prevItem;
+        }
+
+        if (mpFreePos == p)
+        {
+            // 调整 mpFreePos
+            mpFreePos = prevItem;
+        }
+    }
+}
+
+void DynamicBuffer::mergeNext(BufBlk_t *p)
+{
+    // 向后合并（即：释放后一个节点，将之合并到当前节点）
+    BufBlk_t *nextItem = p->__innerNext;
+    if (nextItem && nextItem->inUse == false)
+    {
+        p->__innerBlockSize += nextItem->__innerBlockSize;
+        p->__innerNext = nextItem->__innerNext;
+        if (p->__innerNext)
+        {
+            p->__innerNext->__innerPrev = p;
+        }
+
+        if (mpFreePos == nextItem)
+        {
+            // 调整 mpFreePos
+            mpFreePos = p;
+        }
+    }
 }
 
 } // namespace buffer

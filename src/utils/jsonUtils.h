@@ -36,7 +36,9 @@ public:
 
     static std::string get(rapidjson::Document &doc, std::string path, std::string defaultValue = "");
     static int32_t getAsInt32(rapidjson::Document &doc, std::string path, int32_t defaultValue = 0);
+    static int64_t getAsInt64(rapidjson::Document &doc, std::string path, int64_t defaultValue = 0);
     static uint32_t getAsUint32(rapidjson::Document &doc, std::string path, uint32_t defaultValue = 0);
+    static uint64_t getAsUint64(rapidjson::Document &doc, std::string path, uint64_t defaultValue = 0);
     static rapidjson::Value *getObj(rapidjson::Value *value, std::string path);
     static rapidjson::Value *getArray(rapidjson::Value *value, std::string path);
  

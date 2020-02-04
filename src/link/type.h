@@ -86,12 +86,9 @@ struct Endpoint_t
     Direction_t direction;
     Type_t type;
     bool valid;
-    bool stopRecv;
 
     int soc;
     Connection_t conn;
-
-    utils::BaseList::Entity_t bufWaitEntity;
 
     Endpoint_t *prev;
     Endpoint_t *next;
@@ -110,12 +107,9 @@ struct Endpoint_t
         direction = _direction;
         type = _type;
         valid = true;
-        stopRecv = false;
 
         soc = 0;
         conn.init(protocol);
-
-        bufWaitEntity.init(this);
 
         prev = nullptr;
         next = nullptr;

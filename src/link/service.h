@@ -45,42 +45,34 @@ protected:
         uint32_t releaseTimeout;
         uint32_t udpTimeout;
         // buffer
-        uint32_t bufferSize;
-        uint32_t bufferPerSessionLimit;
+        uint64_t bufferSize;
+        uint64_t bufferPerSessionLimit;
     };
 
-public:
-    Service(std::string name);
+    Service(const char *name) { mName = name; };
     virtual ~Service() {}
 
-    static bool create(int epollfd,
-                       buffer::DynamicBuffer *pBuffer,
-                       rapidjson::Document &cfg,
+public:
+    static bool create(rapidjson::Document &cfg,
                        std::list<Service *> &serviceList);
     static void release(std::list<Service *> &serviceList);
-    static void loadSetting(rapidjson::Document &cfg, Setting_t &setting);
-    static std::string dumpSetting(Setting_t &setting);
 
-    bool init(int epollfd, buffer::DynamicBuffer *pBuffer);
-    inline std::string &getName() { return mName; }
-    inline Endpoint_t &getServiceEndpoint() { return mServiceEndpoint; }
-
+    virtual void join() = 0;
+    virtual void stop() = 0;
     virtual void close() = 0;
-    virtual void onSoc(time_t curTime, uint32_t events, Endpoint_t *pe) = 0;
-    virtual void postProcess(time_t curTime) = 0;
-    virtual void scanTimeout(time_t curTime) = 0;
+
+    inline std::string name() { return mName; }
 
 protected:
-    bool epollAddEndpoint(Endpoint_t *pe, bool read, bool write, bool edgeTriger);
-    bool epollResetEndpointMode(Endpoint_t *pe, bool read, bool write, bool edgeTriger);
-    bool epollResetEndpointMode(Tunnel_t *pt, bool read, bool write, bool edgeTriger);
-    void epollRemoveEndpoint(Endpoint_t *pe);
-    void epollRemoveTunnel(Tunnel_t *pt);
+    static void loadSetting(rapidjson::Document &cfg, Setting_t &setting);
 
-    int mEpollfd;
+    static bool epollAddEndpoint(int epollfd, Endpoint_t *pe, bool read, bool write, bool edgeTriger);
+    static bool epollResetEndpointMode(int epollfd, Endpoint_t *pe, bool read, bool write, bool edgeTriger);
+    static bool epollResetEndpointMode(int epollfd, Tunnel_t *pt, bool read, bool write, bool edgeTriger);
+    static void epollRemoveEndpoint(int epollfd, Endpoint_t *pe);
+    static void epollRemoveTunnel(int epollfd, Tunnel_t *pt);
+
     std::string mName;
-    Endpoint_t mServiceEndpoint;
-    buffer::DynamicBuffer *mpBuffer;
 };
 
 } // namespace link
