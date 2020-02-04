@@ -12,6 +12,7 @@
 #define __MAPPER_LINK_UDPFORWARDSERVICE_H__
 
 #include <list>
+#include <mutex>
 #include <set>
 #include <string>
 #include <thread>
@@ -51,9 +52,12 @@ public:
     void close() override;
 
 protected:
-    void epollThread();
-    bool initEnv();
-    void closeEnv();
+    void northThread();
+    void southThread();
+    bool initNorthEnv();
+    bool initSouthEnv();
+    void closeNorthEnv();
+    void closeSouthEnv();
     void onTunnelSoc(time_t curTime, Endpoint_t *pe);
     bool doNorthEpoll(time_t curTime, int epollfd);
     bool doSouthEpoll(time_t curTime, int epollfd);
@@ -62,11 +66,11 @@ protected:
 
     Tunnel_t *getTunnel(time_t curTime, Endpoint_t *pse, sockaddr_in *pSAI);
     void southRead(time_t curTime, Endpoint_t *pse);
-    bool southRead(time_t curTime, Endpoint_t *pse, char *buffer);
     void southWrite(time_t curTime, Endpoint_t *pe);
     void northRead(time_t curTime, Endpoint_t *pe);
-    bool northRead(time_t curTime, Endpoint_t *pe, char *buffer);
     void northWrite(time_t curTime, Endpoint_t *pe);
+    void processToNorthPkts(time_t curTime);
+    void processToSouthPkts(time_t curTime);
 
     inline void addToCloseList(Tunnel_t *pt) { mCloseList.insert(pt); };
     inline void addToCloseList(Endpoint_t *pe)
@@ -78,19 +82,24 @@ protected:
 
     int mServiceEpollfd;
     int mForwardEpollfd;
+    std::thread mSouthThread;
+    std::thread mNorthThread;
     volatile bool mStopFlag;
-    std::thread mMainRoutineThread;
+
+    std::mutex mAccessMutex;
+    std::list<buffer::DynamicBuffer::BufBlk_t *> mToNorthPktList;
+    std::list<buffer::DynamicBuffer::BufBlk_t *> mToSouthPktList;
 
     std::list<std::shared_ptr<Forward>> mForwardList;
     Service::Setting_t mSetting;
-    buffer::DynamicBuffer *mpDynamicBuffer;
+    buffer::DynamicBuffer *mpToNorthDynamicBuffer;
+    buffer::DynamicBuffer *mpToSouthDynamicBuffer;
     std::set<Tunnel_t *> mCloseList;
     utils::TimerList mTimeoutTimer;
     TargetManager mTargetManager;
 
     std::map<sockaddr_in, Endpoint_t *, Utils::Comparator_t> mAddr2ServiceEndpoint;
     std::map<sockaddr_in, Tunnel_t *, Utils::Comparator_t> mAddr2Tunnel;
-    std::map<int, sockaddr_in> mSoc2SouthRemoteAddr;
     std::map<int, Tunnel_t *> mSoc2Tunnel;
 };
 

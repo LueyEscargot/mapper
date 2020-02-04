@@ -28,9 +28,11 @@ class DynamicBuffer
 {
 public:
     static const uint64_t BUFBLK_HEAD_SIZE;
-    static const uint32_t ALLOC_UNIT_SIZE;
+    static const uint64_t UNIT_ALLIGN_SIZE;
+    static const uint64_t UNIT_ALLIGN_FIELD_MASK;
+    static const uint64_t UNIT_ALLIGN_MASK;
+    static const uint64_t UNIT_ALLIGN_BIT_WIDTH;
     static const uint32_t MIN_BLK_HEAD_BODY_LENGTH;
-    static const uint32_t MIN_BLK_BODY_LENGTH;
 
     struct BufBlk_t
     {
@@ -90,6 +92,11 @@ public:
     bool check();
 
 protected:
+    static uint64_t sizeAllign(const uint64_t size);
+
+    void mergePrev(BufBlk_t *p);
+    void mergeNext(BufBlk_t *p);
+
     std::mutex mAccessMutex;
     void *mBuffer;
     BufBlk_t *mpFreePos;

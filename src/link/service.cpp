@@ -134,6 +134,8 @@ bool Service::create(Document &cfg, list<Service *> &serviceList)
                     return false;
                 }
             }
+
+            return true;
         }())
     {
         return true;
@@ -176,12 +178,12 @@ void Service::loadSetting(rapidjson::Document &cfg, Setting_t &setting)
                                SEETING_TIMEOUT_UDP);
     // buffer
     setting.bufferSize =
-        JsonUtils::getAsUint32(cfg,
+        JsonUtils::getAsUint64(cfg,
                                CONFIG_BASE_PATH + "/setting/buffer/size",
                                SEETING_BUFFER_SIZE) *
         SEETING_BUFFER_SIZE_UNIT;
     setting.bufferPerSessionLimit =
-        JsonUtils::getAsUint32(cfg,
+        JsonUtils::getAsUint64(cfg,
                                CONFIG_BASE_PATH + "/setting/buffer/perSessionLimit",
                                SEETING_BUFFER_PERSESSIONLIMIT) *
         SEETING_BUFFER_SIZE_UNIT;

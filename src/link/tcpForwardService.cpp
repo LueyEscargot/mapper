@@ -345,9 +345,10 @@ bool TcpForwardService::initEnv()
                                      forward->targetService.c_str(),
                                      PROTOCOL_TCP))
         {
-            spdlog::debug("[TcpForwardService::initEnv] add target: {} -> {}:{}",
-                          Utils::dumpSockAddr(pse->conn.localAddr),
-                          forward->interface, forward->service);
+            spdlog::info("[TcpForwardService::initEnv] service[{}] add target: {} -> {}:{}",
+                         pse->soc,
+                         Utils::dumpSockAddr(pse->conn.localAddr),
+                         forward->targetHost, forward->targetService);
         }
         else
         {
@@ -709,7 +710,7 @@ void TcpForwardService::onRead(time_t curTime, int events, Endpoint_t *pe)
     if (events & EPOLLRDHUP)
     {
         // peer stop send
-        spdlog::debug("[TcpForwardService::onRead] close soc[{}] due to peer stop send");
+        spdlog::debug("[TcpForwardService::onRead] close soc[{}] due to peer stop send"), pe->soc;
         pe->valid = false;
         addToCloseList(pt);
         return;
