@@ -71,12 +71,21 @@ cmake .. && make
 ```json
 {
   "log": {
+    // sink: console, file
+    // level: trace, debug, info, warn, error, critical
+    // file: log file name
+
     "sink": "console",
     "level": "info",
     "file": "mapper.log"
   },
   "service": {
     "forward": [
+      // syntac: [[protocol]:interface]:service port:target addr:targetport
+      //    protocol: tcp|udp
+      //    interface: any|lo|interface name
+      //    target addr: ip, host name or domain name
+
       "8000:127.0.0.1:8080",
       "any:8001:127.0.0.1:8081",
       "lo:8002:127.0.0.1:8082",
@@ -85,12 +94,16 @@ cmake .. && make
     ],
     "setting": {
       "timeout": {
+        // unit: second
+
         "connect": 3,
         "session": 180,
         "release": 3,
         "udp": 3
       },
       "buffer": {
+        // unit: mega bytes
+
         "size": 1024,
         "perSessionLimit": 1
       }
