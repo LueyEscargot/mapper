@@ -12,6 +12,10 @@ namespace mapper
 namespace link
 {
 
+const char *Utils::UNITS = " kmgtp";
+const uint32_t Utils::UNIT_COUNT = 6;
+const uint32_t Utils::UNIT_NUMBER = 1024;
+
 Protocol_t Utils::parseProtocol(const char *protocol)
 {
     return strcasecmp(protocol, "tcp") == 0
@@ -432,6 +436,29 @@ std::string Utils::dumpTunnel(const Tunnel_t *pt, bool reverse)
 std::string Utils::dumpTunnel(const Tunnel_t &pt, bool reverse)
 {
     return dumpTunnel(&pt, reverse);
+}
+
+std::string Utils::toHumanStr(float num)
+{
+    int i;
+    for (i = 0; i < UNIT_COUNT - 1; ++i)
+    {
+        if (num < 1000)
+        {
+            break;
+        }
+
+        num /= 1000;
+    }
+
+    stringstream ss;
+
+    ss << num
+       << UNITS[i];
+
+    ss.precision(3);
+
+    return ss.str();
 }
 
 } // namespace link

@@ -24,6 +24,11 @@ namespace link
 
 class Utils
 {
+protected:
+    static const char *UNITS;
+    static const uint32_t UNIT_COUNT;
+    static const uint32_t UNIT_NUMBER;
+
 public:
     struct Comparator_t
     {
@@ -69,6 +74,8 @@ public:
     static std::string dumpServiceEndpoint(const Endpoint_t &serviceEndpoint, const sockaddr_in &clientAddr);
     static std::string dumpTunnel(const Tunnel_t *Tunnel, bool reverse = false);
     static std::string dumpTunnel(const Tunnel_t &Tunnel, bool reverse = false);
+
+    static std::string toHumanStr(float num);
 };
 
 } // namespace link
