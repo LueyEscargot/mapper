@@ -50,7 +50,11 @@ TcpForwardService::TcpForwardService()
     : Service("TcpForwardService"),
       mEpollfd(0),
       mStopFlag(false),
-      mpDynamicBuffer(nullptr)
+      mpDynamicBuffer(nullptr),
+      mUp(0),
+      mDown(0),
+      mTotalUp(0),
+      mTotalDown(0)
 {
 }
 
@@ -132,6 +136,27 @@ void TcpForwardService::close()
     // release buffer
     spdlog::trace("[TcpForwardService::close] release buffer");
     mpDynamicBuffer && (DynamicBuffer::releaseDynamicBuffer(mpDynamicBuffer), mpDynamicBuffer = nullptr);
+}
+
+string TcpForwardService::getStatistic(time_t curTime)
+{
+    static time_t lastTime = 0;
+    time_t deltaTime = curTime - lastTime;
+    lastTime = curTime;
+    deltaTime = deltaTime ? deltaTime : 1;
+
+    stringstream ss;
+
+    ss << "u/d:" << Utils::toHumanStr(mUp / deltaTime) << "ps/" << Utils::toHumanStr(mDown / deltaTime)
+       << "ps,tu/td:" << Utils::toHumanStr(mTotalUp) << "/" << Utils::toHumanStr(mTotalDown);
+
+    return ss.str();
+}
+
+void TcpForwardService::resetStatistic()
+{
+    mUp = 0;
+    mDown = 0;
 }
 
 void TcpForwardService::postProcess(time_t curTime)
@@ -451,58 +476,11 @@ void TcpForwardService::doTunnelSoc(time_t curTime, Endpoint_t *pe, uint32_t eve
         return;
     }
 
-    if (pe->direction == TO_NORTH)
-    {
-        // to north socket
+    // Write
+    (events & EPOLLOUT) && (onWrite(curTime, events, pe), true);
 
-        // Write
-        if (events & EPOLLOUT)
-        {
-            // CONNECT 状态处理
-            if ((pt->stat == TUNSTAT_CONNECT))
-            {
-                if (events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR))
-                {
-                    // 连接失败
-                    spdlog::error("[TcpForwardService::doTunnelSoc] north soc[{}] connect fail", pe->soc);
-                    addToCloseList(pt);
-                }
-                else
-                {
-                    // 北向连接成功建立，添加南向 soc 到 epoll 中，并将被向 soc 修改为 收 模式
-                    epollResetEndpointMode(mEpollfd, pt->north, true, false, false);
-                    epollResetEndpointMode(mEpollfd, pt->south, true, false, false);
-
-                    setStatus(pt, TUNSTAT_ESTABLISHED);
-
-                    spdlog::debug("[TcpForwardService::doTunnelSoc] tunnel[{},{}] established.",
-                                  pt->south->soc, pt->north->soc);
-
-                    // 切换定时器
-                    switchTimer(mConnectTimer, mSessionTimer, curTime, pt);
-                }
-
-                return;
-            }
-
-            pe->sendListHead && (onWrite(curTime, pe), true);
-        }
-
-        // Read
-        (events & EPOLLIN && !pe->peer->bufferFull) && (onRead(curTime, events, pe), true);
-    }
-    else
-    {
-        // to south socket
-
-        assert(pe->direction == TO_SOUTH);
-
-        // Write
-        (events & EPOLLOUT) && (onWrite(curTime, pe), true);
-
-        // Read
-        (events & EPOLLIN) && (onRead(curTime, events, pe), true);
-    }
+    // Read
+    (events & EPOLLIN && !pe->peer->bufferFull) && (onRead(curTime, events, pe), true);
 }
 
 void TcpForwardService::setStatus(Tunnel_t *pt, TunnelState_t stat)
@@ -767,6 +745,13 @@ void TcpForwardService::onRead(time_t curTime, int events, Endpoint_t *pe)
             epollResetEndpointMode(mEpollfd, pe->peer, true, true, false);
         }
 
+        // statistic
+        if (pe->direction == TO_SOUTH)
+        {
+            mUp += nRet;
+            mTotalUp += nRet;
+        }
+
         isRead = true;
     }
 
@@ -777,7 +762,7 @@ void TcpForwardService::onRead(time_t curTime, int events, Endpoint_t *pe)
     }
 }
 
-void TcpForwardService::onWrite(time_t curTime, Endpoint_t *pe)
+void TcpForwardService::onWrite(time_t curTime, int events, Endpoint_t *pe)
 {
     if (!pe->valid)
     {
@@ -790,6 +775,28 @@ void TcpForwardService::onWrite(time_t curTime, Endpoint_t *pe)
     auto pt = (Tunnel_t *)pe->container;
     switch (pt->stat)
     {
+    case TUNSTAT_CONNECT:
+        if (events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR))
+        {
+            // 连接失败
+            spdlog::error("[TcpForwardService::doTunnelSoc] tunnel-soc[{}] connect fail", pe->soc);
+            addToCloseList(pt);
+        }
+        else
+        {
+            // 北向连接成功建立，添加南向 soc 到 epoll 中，并将被向 soc 修改为 收 模式
+            epollResetEndpointMode(mEpollfd, pt->north, true, false, false);
+            epollResetEndpointMode(mEpollfd, pt->south, true, false, false);
+
+            setStatus(pt, TUNSTAT_ESTABLISHED);
+
+            spdlog::debug("[TcpForwardService::doTunnelSoc] tunnel[{},{}] established.",
+                          pt->south->soc, pt->north->soc);
+
+            // 切换定时器
+            switchTimer(mConnectTimer, mSessionTimer, curTime, pt);
+        }
+        return;
     case TUNSTAT_ESTABLISHED:
     case TUNSTAT_BROKEN:
         break;
@@ -836,6 +843,13 @@ void TcpForwardService::onWrite(time_t curTime, Endpoint_t *pe)
             }
 
             pktReleased = true;
+
+            // statistic
+            if (pe->direction == TO_SOUTH)
+            {
+                mDown += nRet;
+                mTotalDown += nRet;
+            }
         }
     }
     if (pkt == nullptr)

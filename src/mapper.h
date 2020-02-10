@@ -22,8 +22,10 @@ namespace mapper
 
 class Mapper
 {
+    static const uint32_t STATISTIC_INTERVAL;
+
 public:
-    Mapper(){};
+    Mapper();
     ~Mapper(){};
 
     bool run(rapidjson::Document &cfg);
@@ -33,6 +35,7 @@ protected:
     void join();
 
     std::list<link::Service *> mServiceList;
+    volatile bool mStop;
 };
 
 } // namespace mapper

@@ -49,6 +49,9 @@ public:
     void join() override;
     void stop() override;
     void close() override;
+    std::string getStatistic(time_t curTime) override;
+    void resetStatistic() override;
+
     void postProcess(time_t curTime);
     void scanTimeout(time_t curTime);
 
@@ -66,7 +69,7 @@ protected:
     bool connect(time_t curTime, Endpoint_t *pse, Tunnel_t *pt);
 
     void onRead(time_t curTime, int events, Endpoint_t *pe);
-    void onWrite(time_t curTime, Endpoint_t *pe);
+    void onWrite(time_t curTime, int events, Endpoint_t *pe);
 
     inline void addToCloseList(Tunnel_t *pt) { mPostProcessList.insert(pt); };
     inline void addToCloseList(Endpoint_t *pe) { addToCloseList((Tunnel_t *)pe->container); }
@@ -111,6 +114,12 @@ protected:
     utils::TimerList mConnectTimer;
     utils::TimerList mSessionTimer;
     utils::TimerList mReleaseTimer;
+
+    // for statistic
+    volatile float mUp;
+    volatile float mDown;
+    volatile float mTotalUp;
+    volatile float mTotalDown;
 };
 
 } // namespace link

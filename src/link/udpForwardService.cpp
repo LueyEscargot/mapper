@@ -34,7 +34,11 @@ UdpForwardService::UdpForwardService()
     : Service("UdpForwardService"),
       mServiceEpollfd(0),
       mForwardEpollfd(0),
-      mStopFlag(false)
+      mStopFlag(false),
+      mUp(0),
+      mDown(0),
+      mTotalUp(0),
+      mTotalDown(0)
 {
 }
 
@@ -103,6 +107,27 @@ void UdpForwardService::close()
     spdlog::trace("[UdpForwardService::close] release buffer");
     mpToNorthDynamicBuffer && (DynamicBuffer::releaseDynamicBuffer(mpToNorthDynamicBuffer), mpToNorthDynamicBuffer = nullptr);
     mpToSouthDynamicBuffer && (DynamicBuffer::releaseDynamicBuffer(mpToSouthDynamicBuffer), mpToSouthDynamicBuffer = nullptr);
+}
+
+string UdpForwardService::getStatistic(time_t curTime)
+{
+    static time_t lastTime = 0;
+    time_t deltaTime = curTime - lastTime;
+    lastTime = curTime;
+    deltaTime = deltaTime ? deltaTime : 1;
+
+    stringstream ss;
+
+    ss << "u/d:" << Utils::toHumanStr(mUp / deltaTime) << "ps/" << Utils::toHumanStr(mDown / deltaTime)
+       << "ps,tu/td:" << Utils::toHumanStr(mTotalUp) << "/" << Utils::toHumanStr(mTotalDown);
+
+    return ss.str();
+}
+
+void UdpForwardService::resetStatistic()
+{
+    mUp = 0;
+    mDown = 0;
 }
 
 void UdpForwardService::northThread()
@@ -673,6 +698,10 @@ void UdpForwardService::southRead(time_t curTime, Endpoint_t *pse)
         recvfrom(pse->soc, pBufBlk->buffer, pktLen, 0, (sockaddr *)&pBufBlk->srcAddr, &addrLen);
         pBufBlk->dstAddr = pse->conn.localAddr;
         recvList.push_back(pBufBlk);
+
+        // statistic
+        mUp += pktLen;
+        mTotalUp += pktLen;
     }
 
     // merge receive list
@@ -736,6 +765,10 @@ void UdpForwardService::southWrite(time_t curTime, Endpoint_t *pse)
         mpToSouthDynamicBuffer->release(pkt);
 
         pkt = next;
+
+        // statistic
+        mDown += nRet;
+        mTotalDown += nRet;
     }
 
     if (pkt)

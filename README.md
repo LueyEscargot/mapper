@@ -13,7 +13,7 @@
     - [2.4. Target Manager](#24-target-manager)
 - [3. 其它](#3-其它)
     - [3.1. 编译、运行](#31-编译运行)
-    - [3.2. config.ini](#32-configini)
+    - [3.2. config.json](#32-configjson)
     - [3.3. 第三方库](#33-第三方库)
     - [3.4. 推荐列表](#34-推荐列表)
 
@@ -63,21 +63,53 @@ mkdir -p build
 cd build
 cmake .. && make
 
-./mapper -c config.ini -s 128 -m 1022:192.168.2:22 -m 1080:192.168.1.2:80
+./mapper -c config.json -s 128 -m 1022:192.168.2:22 -m 1080:192.168.1.2:80
 ```
 
-### 3.2. config.ini
+### 3.2. config.json
 
-```ini
-[global]
-sessions=256
-bufferSize=1024
+```json
+{
+  "log": {
+    // sink: console, file
+    // level: trace, debug, info, warn, error, critical
+    // file: log file name
 
-[log]
-level = info # trace, debug, info, warn, err, critical, off. Default: info
+    "sink": "console",
+    "level": "info",
+    "file": "mapper.log"
+  },
+  "service": {
+    "forward": [
+      // syntac: [[protocol]:interface]:service port:target addr:targetport
+      //    protocol: tcp|udp
+      //    interface: any|lo|interface name
+      //    target addr: ip, host name or domain name
 
-[mapping]
-8000:127.0.0.1:8080 # for example: forward 0.0.0.0:8000 port to 127.0.0.1:8080
+      "8000:127.0.0.1:8080",
+      "any:8001:127.0.0.1:8081",
+      "lo:8002:127.0.0.1:8082",
+      "tcp:lo:8003:127.0.0.1:8083",
+      "udp:lo:8003:localhost:8083"
+    ],
+    "setting": {
+      "timeout": {
+        // unit: second
+
+        "connect": 3,
+        "session": 180,
+        "release": 3,
+        "udp": 3
+      },
+      "buffer": {
+        // unit: mega bytes
+
+        "size": 1024,
+        "perSessionLimit": 1
+      }
+    }
+  }
+}
 ```
 
 ### 3.3. 第三方库
@@ -89,4 +121,4 @@ level = info # trace, debug, info, warn, err, critical, off. Default: info
 ### 3.4. 推荐列表
 
 - 此项目中配图多为通过 yEd ([https://www.yworks.com](https://www.yworks.com)) 绘制。此工具小巧灵活，方便好用，推荐之。
-- 虽然对 M$ 一直不怎么感冒，但他家可在 Linux 下使用的 VSCode 真不错：[https://code.visualstudio.com](https://code.visualstudio.com)
+- 虽然对 M\$ 一直不怎么感冒，但他家可在 Linux 下使用的 VSCode 真不错：[https://code.visualstudio.com](https://code.visualstudio.com)

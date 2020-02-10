@@ -60,6 +60,8 @@ public:
     virtual void join() = 0;
     virtual void stop() = 0;
     virtual void close() = 0;
+    virtual std::string getStatistic(time_t curTime) = 0;
+    virtual void resetStatistic() = 0;
 
     inline std::string name() { return mName; }
 

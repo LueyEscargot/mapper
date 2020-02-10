@@ -50,6 +50,8 @@ public:
     void join() override;
     void stop() override;
     void close() override;
+    std::string getStatistic(time_t curTime) override;
+    void resetStatistic() override;
 
 protected:
     void northThread();
@@ -101,6 +103,12 @@ protected:
     std::map<sockaddr_in, Endpoint_t *, Utils::Comparator_t> mAddr2ServiceEndpoint;
     std::map<sockaddr_in, Tunnel_t *, Utils::Comparator_t> mAddr2Tunnel;
     std::map<int, Tunnel_t *> mSoc2Tunnel;
+
+    // for statistic
+    volatile float mUp;
+    volatile float mDown;
+    volatile float mTotalUp;
+    volatile float mTotalDown;
 };
 
 } // namespace link
