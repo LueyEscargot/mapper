@@ -24,11 +24,6 @@ namespace link
 
 class Utils
 {
-protected:
-    static const char *UNITS;
-    static const uint32_t UNIT_COUNT;
-    static const uint32_t UNIT_NUMBER;
-
 public:
     struct Comparator_t
     {

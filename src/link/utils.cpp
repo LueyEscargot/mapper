@@ -12,10 +12,6 @@ namespace mapper
 namespace link
 {
 
-const char *Utils::UNITS = " kmgtp";
-const uint32_t Utils::UNIT_COUNT = 6;
-const uint32_t Utils::UNIT_NUMBER = 1024;
-
 Protocol_t Utils::parseProtocol(const char *protocol)
 {
     return strcasecmp(protocol, "tcp") == 0
@@ -440,25 +436,41 @@ std::string Utils::dumpTunnel(const Tunnel_t &pt, bool reverse)
 
 std::string Utils::toHumanStr(float num)
 {
+    static const char *B = " B";
+    static const char *KB = " K";
+    static const char *MB = " M";
+    static const char *GB = " G";
+    static const char *TB = " T";
+    static const char *PB = " P";
+    static const char *UNIT[] = {B,
+                                 KB,
+                                 MB,
+                                 GB,
+                                 TB,
+                                 PB};
+    static const uint32_t UNIT_COUNT = 6;
+    static const uint32_t UNIT_NUMBER = 1000;
+    char buffer[128];
+
     int i;
     for (i = 0; i < UNIT_COUNT - 1; ++i)
     {
-        if (num < 1000)
+        if (num < UNIT_NUMBER)
         {
             break;
         }
 
-        num /= 1000;
+        num /= UNIT_NUMBER;
     }
 
-    stringstream ss;
+    int nRet = snprintf(buffer, 128, "%.2f%s", num, UNIT[i]);
+    while (buffer[nRet -1] == '0' || buffer[nRet -1] == '.') {
+        --nRet;
+    }
+    nRet = nRet ? nRet : 1;
+    buffer[nRet] = 0;
 
-    ss << num
-       << UNITS[i];
-
-    ss.precision(3);
-
-    return ss.str();
+    return buffer;
 }
 
 } // namespace link
