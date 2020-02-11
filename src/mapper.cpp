@@ -1,14 +1,17 @@
 #include "mapper.h"
 #include <time.h>
 #include <spdlog/spdlog.h>
+#include "utils/jsonUtils.h"
 
 using namespace std;
 using namespace mapper::link;
+using namespace mapper::utils;
 
 namespace mapper
 {
 
-const uint32_t Mapper::STATISTIC_INTERVAL = 1;
+const uint32_t Mapper::STATISTIC_INTERVAL = 60;
+const char *Mapper::STATISTIC_CONFIG_PATH = "/statistic/interval";
 
 Mapper::Mapper()
     : mStop(false)
@@ -27,12 +30,18 @@ bool Mapper::run(rapidjson::Document &cfg)
         return false;
     }
 
+    // statistic
+    uint32_t statisticInterfal =
+        JsonUtils::getAsUint32(cfg, STATISTIC_CONFIG_PATH, STATISTIC_INTERVAL);
+    statisticInterfal = statisticInterfal < 1 ? 1 : statisticInterfal;
+    time_t curTime = time(nullptr);
+
     spdlog::trace("[Mapper::run] start statistic routine");
     while (!mStop)
     {
-        this_thread::sleep_for(chrono::seconds(STATISTIC_INTERVAL));
+        this_thread::sleep_for(chrono::seconds(statisticInterfal));
 
-        time_t curTime = time(nullptr);
+        curTime = time(nullptr);
         for (auto &service : mServiceList)
         {
             spdlog::info("{}: {}", service->name(), service->getStatistic(curTime));

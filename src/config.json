@@ -24,5 +24,8 @@
         "perSessionLimit": 1
       }
     }
+  },
+  "statistic": {
+    "interval": 60
   }
 }
