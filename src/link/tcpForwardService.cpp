@@ -47,7 +47,7 @@ const bool TcpForwardService::StateMaine[TUNNEL_STATE_COUNT][TUNNEL_STATE_COUNT]
 };
 
 TcpForwardService::TcpForwardService()
-    : Service("TcpForwardService"),
+    : Service("tcpFwd"),
       mEpollfd(0),
       mStopFlag(false),
       mpDynamicBuffer(nullptr),
@@ -78,6 +78,9 @@ TcpForwardService::~TcpForwardService()
         closeTunnel(pt);
     }
     mTunnelList.clear();
+
+    // release buffer
+    mpDynamicBuffer && (DynamicBuffer::releaseDynamicBuffer(mpDynamicBuffer), mpDynamicBuffer = nullptr);
 }
 
 bool TcpForwardService::init(list<shared_ptr<Forward>> &forwardList,
@@ -135,7 +138,11 @@ void TcpForwardService::close()
 
     // release buffer
     spdlog::trace("[TcpForwardService::close] release buffer");
-    mpDynamicBuffer && (DynamicBuffer::releaseDynamicBuffer(mpDynamicBuffer), mpDynamicBuffer = nullptr);
+    if (mpDynamicBuffer)
+    {
+        DynamicBuffer::releaseDynamicBuffer(mpDynamicBuffer);
+        mpDynamicBuffer = nullptr;
+    }
 }
 
 string TcpForwardService::getStatistic(time_t curTime)

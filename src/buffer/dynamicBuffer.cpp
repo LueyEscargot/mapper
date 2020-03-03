@@ -72,7 +72,7 @@ DynamicBuffer *DynamicBuffer::allocDynamicBuffer(uint64_t capacity)
 
 void DynamicBuffer::releaseDynamicBuffer(DynamicBuffer *pDynamicBuffer)
 {
-    pDynamicBuffer || (delete pDynamicBuffer, true);
+    pDynamicBuffer && (delete pDynamicBuffer, true);
 }
 
 string DynamicBuffer::dumpBlk(BufBlk_t *p)

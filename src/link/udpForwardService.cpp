@@ -31,7 +31,7 @@ const uint32_t UdpForwardService::INTERVAL_EPOLL_WAIT_TIME = 50;
 const uint32_t UdpForwardService::PREALLOC_RECV_BUFFER_SIZE = 1 << 16;
 
 UdpForwardService::UdpForwardService()
-    : Service("UdpForwardService"),
+    : Service("udpFwd"),
       mServiceEpollfd(0),
       mForwardEpollfd(0),
       mStopFlag(false),
@@ -45,6 +45,10 @@ UdpForwardService::UdpForwardService()
 UdpForwardService::~UdpForwardService()
 {
     closeTunnels();
+
+    // release buffer
+    mpToNorthDynamicBuffer && (DynamicBuffer::releaseDynamicBuffer(mpToNorthDynamicBuffer), mpToNorthDynamicBuffer = nullptr);
+    mpToSouthDynamicBuffer && (DynamicBuffer::releaseDynamicBuffer(mpToSouthDynamicBuffer), mpToSouthDynamicBuffer = nullptr);
 }
 
 bool UdpForwardService::init(list<shared_ptr<Forward>> &forwardList, Setting_t &setting)
@@ -105,8 +109,16 @@ void UdpForwardService::close()
 
     // release buffer
     spdlog::trace("[UdpForwardService::close] release buffer");
-    mpToNorthDynamicBuffer && (DynamicBuffer::releaseDynamicBuffer(mpToNorthDynamicBuffer), mpToNorthDynamicBuffer = nullptr);
-    mpToSouthDynamicBuffer && (DynamicBuffer::releaseDynamicBuffer(mpToSouthDynamicBuffer), mpToSouthDynamicBuffer = nullptr);
+    if (mpToNorthDynamicBuffer)
+    {
+        DynamicBuffer::releaseDynamicBuffer(mpToNorthDynamicBuffer);
+        mpToNorthDynamicBuffer = nullptr;
+    }
+    if (mpToSouthDynamicBuffer)
+    {
+        DynamicBuffer::releaseDynamicBuffer(mpToSouthDynamicBuffer);
+        mpToSouthDynamicBuffer = nullptr;
+    }
 }
 
 string UdpForwardService::getStatistic(time_t curTime)

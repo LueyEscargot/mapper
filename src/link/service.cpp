@@ -77,6 +77,7 @@ bool Service::create(Document &cfg, list<Service *> &serviceList)
                 else
                 {
                     spdlog::error("[Service::create] unsupported protocol[{}]", forward->protocol);
+                    Forward::release(forward);
                 }
             }
             else
