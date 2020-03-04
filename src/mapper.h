@@ -23,6 +23,7 @@ namespace mapper
 class Mapper
 {
     static const uint32_t STATISTIC_INTERVAL;
+    static const char * STATISTIC_CONFIG_PATH;
 
 public:
     Mapper();

@@ -1,11 +1,13 @@
 {
   "log": {
     "sink": "console",
-    "level": "info",
+    "level": "trace",
     "file": "mapper.log"
   },
   "service": {
     "forward": [
+      "6666:127.0.0.1:7777",
+      "udp:lo:6666:127.0.0.1:7777",
       "8000:127.0.0.1:8080",
       "any:8001:127.0.0.1:8081",
       "lo:8002:127.0.0.1:8082",
@@ -24,8 +26,5 @@
         "perSessionLimit": 1
       }
     }
-  },
-  "statistic": {
-    "interval": 60
   }
 }

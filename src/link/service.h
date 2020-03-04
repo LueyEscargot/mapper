@@ -49,7 +49,7 @@ protected:
         uint64_t bufferPerSessionLimit;
     };
 
-    Service(const char *name) { mName = name; };
+    Service(std::string &&name) { mName = name; };
     virtual ~Service() {}
 
 public:
